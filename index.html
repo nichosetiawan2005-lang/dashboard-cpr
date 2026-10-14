@@ -238,6 +238,16 @@ details.more[open] > summary::before { content: "▾ "; }
 
   <!-- KINERJA KA -->
   <section class="panel" id="panel-ka" role="tabpanel" aria-labelledby="tab-ka">
+    <div class="card" style="margin-top:16px">
+      <h3>Data kinerja: CPR yang sudah jadi PO</h3>
+      <div class="sub">Upload export CPR_Cleaned terbaru. Hanya CPR yang sudah punya PO yang dihitung, jadi kinerjanya berdasarkan pekerjaan yang benar-benar selesai.</div>
+      <div class="filters" style="border:0;padding:0;margin:8px 0 0">
+        <label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload CPR yang sudah jadi PO<input type="file" id="filePo" accept=".xlsx,.xls,.csv"></label>
+        <div class="field"><label for="poFrom">PO dibuat dari</label><input type="date" id="poFrom"></div>
+        <div class="field"><label for="poTo">sampai</label><input type="date" id="poTo"></div>
+      </div>
+      <p class="note" id="poInfo"></p>
+    </div>
     <p class="note" id="kaNote"></p>
     <div class="section-title"><h2>Rata-rata lama KA mengerjakan CPR</h2><p>Review 1 = CPR diterima KA sampai di-approve. Review 2 = CPR kembali ke KA sampai di-approve. Waktu menunggu approver lain tidak dihitung.</p></div>
     <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Review 1</span><span><i style="background:var(--s2)"></i>Review 2</span></div><div class="chart" id="chKa"></div></div>
@@ -289,7 +299,8 @@ const COL = {
   cpr: "Nomor CPR", unit: "Hospital", vendor: "Vendor ID", vendorName: "Vendor Name", ka: "Username Key Account Ho", kaName: "User KA",
   create: "CPR Create Date", phIn: "Date Received CPR by Purchasing Head HU", phOut: "Date_Approved_CPR_by_Purchasing_Head_HU",
   kaIn: "Date Received CPR by Key Account HO", kaOut: "Date Approved CPR by Key Account HO",
-  back: "Date Received CPR by PurchasingHO", backOut: "Date Approved CPR by PurchasingHO", capex: "Capex Category"
+  back: "Date Received CPR by PurchasingHO", backOut: "Date Approved CPR by PurchasingHO", capex: "Capex Category",
+  submit: "CPR Submit Date"
 };
 const REQUIRED = ["cpr", "unit", "vendor", "create", "kaIn", "kaOut", "back", "backOut"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
@@ -302,6 +313,22 @@ const kaOf = (r) => (META.hasKa ? r.ka : SIM_KA.get(r.cpr) || null);
 const $ = (id) => document.getElementById(id);
 
 /* ---------- Small helpers ---------- */
+// date + time as "YYYY-MM-DD HH:MM" (null when the value has no usable date)
+function toStamp(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number" && isFinite(v)) {
+    const ms = Math.round((v - 25569) * 864e5 / 60000) * 60000; // Excel serial -> minutes
+    return new Date(ms).toISOString().slice(0, 16).replace("T", " ");
+  }
+  const m = String(v).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}` + (m[4] ? ` ${m[4].padStart(2, "0")}:${m[5]}` : "");
+  const d = toDay(v); return d === null ? null : dayToIso(d);
+}
+function fmtStampShort(st) {
+  if (!st) return "";
+  const d = toDay(st.slice(0, 10)); const t = st.length > 10 ? st.slice(11, 16) : "";
+  return fmtDay(d) + (t ? " " + t : "");
+}
 function toDay(v) {
   if (v === null || v === undefined || v === "") return null;
   if (v instanceof Date) return isNaN(v) ? null : Math.floor(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate()) / 864e5);
@@ -516,7 +543,8 @@ function buildRecords(rows, columns) {
       ka: kaUser, kaName: r[COL.kaName] ? String(r[COL.kaName]).trim() : null,
       create: toDay(r[COL.create]), phIn: toDay(r[COL.phIn]), phOut: toDay(r[COL.phOut]),
       kaIn: toDay(r[COL.kaIn]), kaOut: toDay(r[COL.kaOut]), back: toDay(r[COL.back]), backOut: toDay(r[COL.backOut]),
-      capex: r[COL.capex] ? String(r[COL.capex]) : null
+      capex: r[COL.capex] ? String(r[COL.capex]) : null,
+      createAt: toStamp(r[COL.create]), submitAt: toStamp(r[COL.submit])
     };
     finishRec(rec);
     recs.push(rec);
@@ -692,7 +720,8 @@ function pivotHistory(rows, roleKa, roleBack) {
       create: minDay(req.length ? req : list, HCOL.submit), phIn: null, phOut: null,
       kaIn: minDay(kaRows, HCOL.submit), kaOut: maxDay(kaRows, HCOL.approve),
       back: minDay(backRows, HCOL.submit), backOut: maxDay(backRows, HCOL.approve),
-      capex: last[HCOL.category] ? String(last[HCOL.category]) : null
+      capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
+      createAt: (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null, submitAt: null
     }));
   }
   return { recs, dropped, cprs: byCpr.size };
@@ -835,7 +864,7 @@ if (SB) {
 
 let DB = null, DB_READY = false, LOCKED = new Map(), SAVED_AT = null;
 const CHUNK = 1000;
-const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex"];
+const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt"];
 const useLocks = () => !!DB && !IS_SAMPLE && !META.hasKa;
 const canSave = () => !!DB && (!SB || IS_ADMIN);
 const monthKey = (d) => dayToIso(d).slice(0, 7);
@@ -855,7 +884,8 @@ async function initDb() {
     const params = await DB.doc("settings/params").get();
     if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; }
     if (pic.exists) PIC_LIST = pic.data().list || null;
-    if (!meta.exists) { renderSavedInfo(); renderQuality(); return; }
+    try { await loadPo(); } catch {}
+    if (!meta.exists) { renderSavedInfo(); renderQuality(); renderKa(); return; }
     setStatus("Memuat data tersimpan …");
     const m = meta.data();
     const chunks = await Promise.all(Array.from({ length: m.chunks }, (_, i) => DB.doc("cpr/chunk-" + i).get()));
@@ -962,6 +992,9 @@ $("btnClearSaved").addEventListener("click", async () => {
     const n = meta.exists ? meta.data().chunks || 0 : 0;
     for (let i = 0; i < n; i++) await DB.doc("cpr/chunk-" + i).delete();
     await DB.doc("cpr/meta").delete(); await DB.doc("settings/pic").delete(); await DB.doc("settings/params").delete();
+    const pm = await DB.doc("po/meta").get(); const pn = pm.exists ? pm.data().chunks || 0 : 0;
+    for (let i = 0; i < pn; i++) await DB.doc("po/chunk-" + i).delete();
+    await DB.doc("po/meta").delete();
     await clearAlloc();
     location.reload();
   } catch (err) { setStatus("Gagal menghapus: " + (err.message || err.code)); }
@@ -1009,6 +1042,85 @@ function loadView() {
 }
 // The KA who really did the work: "Username Key Account Ho" (CPR_Cleaned) or the Username on the
 // Key Account role row (CPRHistory). The DSS plan is never used here, because a plan is not proof of who worked.
+/* ---------- Performance data: CPRs that already became PO ----------
+   Saved separately (po/meta, po/chunk-N) so it never replaces the main CPR data. */
+const PO_FIELDS = ["cpr", "unit", "ka", "kaName", "create", "kaIn", "kaOut", "back", "backOut", "po", "poStatus"];
+const PO_COL = { po: "CREATEDDATETIME PO by PurchasingHO", poNo: "Nomor PO", poStatus: "PO Status" };
+let PO_RECS = [], PO_META = null;
+function poRecFromArray(a) { const r = {}; PO_FIELDS.forEach((k, i) => { r[k] = a[i]; }); return finishPoRec(r); }
+function finishPoRec(r) {
+  r.rev1 = diff(r.kaOut, r.kaIn); r.rev2 = diff(r.backOut, r.back);
+  r.toPo = diff(r.po, r.create); r.kaToPo = diff(r.po, r.kaIn);
+  return r;
+}
+function buildPoRecords(rows) {
+  const seen = new Set(), out = [];
+  for (const r of rows) {
+    const cpr = r[COL.cpr]; if (!cpr || seen.has(cpr)) continue;
+    const po = toDay(r[PO_COL.po]); if (po === null) continue;             // not a PO yet
+    if (/cancel/i.test(String(r[PO_COL.poStatus] ?? ""))) continue;         // cancelled PO is not finished work
+    seen.add(cpr);
+    out.push(finishPoRec({
+      cpr: String(cpr), unit: r[COL.unit] ? String(r[COL.unit]).trim() : "(kosong)",
+      ka: r[COL.ka] ? String(r[COL.ka]).trim() : null, kaName: r[COL.kaName] ? String(r[COL.kaName]).trim() : null,
+      create: toDay(r[COL.create]), kaIn: toDay(r[COL.kaIn]), kaOut: toDay(r[COL.kaOut]), back: toDay(r[COL.back]), backOut: toDay(r[COL.backOut]),
+      po, poStatus: r[PO_COL.poStatus] ? String(r[PO_COL.poStatus]) : null
+    }));
+  }
+  return out;
+}
+// who did the work: the KA the DSS assigned (saved), otherwise the KA written in the file
+function poKa(r) {
+  const lock = LOCKED.get(r.cpr);
+  if (lock) return { ka: lock.ka, src: "dss" };
+  if (r.ka) {
+    if (META.hasKa) return { ka: r.ka, src: "file" };
+    const u = r.ka.toLowerCase(), name = (r.kaName || "").toLowerCase();
+    const hit = (META.kaList || []).find((n) => u.includes(n.toLowerCase()) || name === n.toLowerCase());
+    return { ka: hit || r.kaName || r.ka, src: "file" };
+  }
+  return { ka: null, src: null };
+}
+async function savePo() {
+  if (!DB || !canSave()) return;
+  const rows = PO_RECS.map((r) => PO_FIELDS.map((k) => r[k] ?? null));
+  const n = Math.ceil(rows.length / CHUNK);
+  const old = await DB.doc("po/meta").get(); const oldN = old.exists ? old.data().chunks || 0 : 0;
+  for (let i = 0; i < n; i++) await DB.doc("po/chunk-" + i).set({ rows: rows.slice(i * CHUNK, (i + 1) * CHUNK) });
+  for (let i = n; i < oldN; i++) await DB.doc("po/chunk-" + i).delete();
+  await DB.doc("po/meta").set(PO_META);
+}
+async function loadPo() {
+  if (!DB) return;
+  const meta = await DB.doc("po/meta").get(); if (!meta.exists) return;
+  PO_META = meta.data();
+  const chunks = await Promise.all(Array.from({ length: PO_META.chunks || 0 }, (_, i) => DB.doc("po/chunk-" + i).get()));
+  PO_RECS = chunks.flatMap((c) => (c.exists ? c.data().rows : [])).map(poRecFromArray);
+  setPoDates();
+}
+function setPoDates() {
+  const d = PO_RECS.map((r) => r.po).filter((x) => x !== null); if (!d.length) return;
+  const max = Math.max(...d), min = Math.min(...d);
+  $("poTo").value = dayToIso(max); $("poFrom").value = dayToIso(Math.max(min, max - 90)); // default: last 3 months of PO
+}
+$("filePo").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  setStatus(`Membaca ${file.name} …`);
+  try {
+    const { rows, columns } = await readWorkbook(file);
+    const need = [COL.cpr, PO_COL.po].filter((c) => !columns.includes(c));
+    if (need.length) { setStatus(`File kinerja tidak bisa dipakai: kolom ${need.map((c) => `"${c}"`).join(", ")} tidak ditemukan. Pakai export CPR_Cleaned yang ada kolom PO-nya.`); return; }
+    PO_RECS = buildPoRecords(rows);
+    PO_META = { fileName: file.name, savedAt: new Date().toISOString(), chunks: Math.ceil(PO_RECS.length / CHUNK), count: PO_RECS.length, rawRows: rows.length };
+    setPoDates(); renderKa();
+    let saved = "";
+    if (DB && canSave()) { try { await savePo(); saved = " Tersimpan."; } catch (err) { saved = " Tidak tersimpan: " + saveErrorText(err) + "."; } }
+    setStatus(`${fmtInt(PO_RECS.length)} CPR yang sudah jadi PO terbaca dari ${file.name} (dari ${fmtInt(rows.length)} baris).${saved}`);
+  } catch (err) { setStatus("File kinerja tidak bisa dibaca: " + err.message); }
+  e.target.value = "";
+});
+for (const id of ["poFrom", "poTo"]) $(id).addEventListener("change", () => renderKa());
+
 function realKa(r) {
   if (!r.ka) return null;
   if (META.hasKa) return r.ka;
@@ -1018,6 +1130,9 @@ function realKa(r) {
 }
 function renderKa() {
   const view = loadView();
+  $("lblPo").hidden = SB && !IS_ADMIN;
+  if (PO_RECS.length) return renderKaFromPo(view);
+  $("poInfo").textContent = "Belum ada data kinerja. Sementara ini lama kerja dihitung dari data CPR utama.";
   const data = filtered().filter((r) => realKa(r) && (r.rev1 !== null || r.rev2 !== null));
   $("kaNote").textContent = META.hasKa ? "" : data.length
     ? `Lama kerja dihitung dari ${fmtInt(data.length)} CPR yang di file tercatat siapa KA-nya (Username pada role Key Account). CPR tanpa catatan itu tidak dihitung.`
@@ -1050,6 +1165,46 @@ function renderKa() {
     { key: "totAvg", label: "Total (hari)", num: true, render: (r) => fmtNum(r.totAvg) },
     { key: "loadAvg", label: "Beban rata-rata/hari", num: true, render: (r) => fmtNum(r.loadAvg) },
     { key: "loadPeak", label: "Beban tertinggi", num: true, render: (r) => fmtNum(r.loadPeak) }
+  ], rows, kaSort);
+  renderLoadTable(view);
+}
+function renderKaFromPo(view) {
+  const from = isoToDay($("poFrom").value), to = isoToDay($("poTo").value);
+  const inRange = PO_RECS.filter((r) => (from === null || r.po >= from) && (to === null || r.po <= to));
+  const groups = new Map(); let fromDss = 0, fromFile = 0, unknown = 0;
+  for (const r of inRange) {
+    const { ka, src } = poKa(r);
+    if (!ka) { unknown++; continue; }
+    if (src === "dss") fromDss++; else fromFile++;
+    if (!groups.has(ka)) groups.set(ka, []); groups.get(ka).push(r);
+  }
+  if (view) for (const ka of SIM.kaList) if (!groups.has(ka)) groups.set(ka, []);
+  $("poInfo").textContent = `File: ${PO_META ? PO_META.fileName : "–"} · ${fmtInt(PO_RECS.length)} CPR sudah jadi PO · dihitung ${fmtInt(inRange.length)} CPR dengan PO dibuat ${$("poFrom").value ? fmtDay(from) : "–"} – ${$("poTo").value ? fmtDay(to) : "–"}.`;
+  $("kaNote").textContent = `KA tiap CPR: ${fmtInt(fromDss)} dari hasil pembagian DSS, ${fmtInt(fromFile)} dari kolom KA di file` + (unknown ? `, ${fmtInt(unknown)} CPR tidak diketahui KA-nya (tidak dihitung).` : ".");
+  const rows = [...groups.entries()].map(([ka, list]) => {
+    const tot = list.map((r) => (r.rev1 !== null && r.rev2 !== null ? r.rev1 + r.rev2 : null));
+    const lv = view && view.perKa[ka];
+    return {
+      ka, name: kaLabel(ka), n: list.length,
+      r1avg: mean(list.map((r) => r.rev1)), r2avg: mean(list.map((r) => r.rev2)), totAvg: mean(tot),
+      kaToPo: mean(list.map((r) => r.kaToPo)), toPo: mean(list.map((r) => r.toPo)),
+      loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null
+    };
+  }).sort((a, b) => (b.totAvg ?? 0) - (a.totAvg ?? 0));
+  const withWork = rows.filter((r) => r.n > 0);
+  barChartH($("chKa"), withWork.map((r) => `${r.name} (${r.n})`), [
+    { name: "Rata-rata review 1 (hari)", color: "var(--s1)", values: withWork.map((r) => r.r1avg) },
+    { name: "Rata-rata review 2 (hari)", color: "var(--s2)", values: withWork.map((r) => r.r2avg) }
+  ], { stacked: true, dec: 1, label: "Rata-rata lama review per KA" });
+  renderTable($("tblKa"), [
+    { key: "name", label: "Key Account" },
+    { key: "n", label: "CPR jadi PO", num: true, render: (r) => fmtInt(r.n) },
+    { key: "r1avg", label: "Review 1 (hari)", num: true, render: (r) => fmtNum(r.r1avg) },
+    { key: "r2avg", label: "Review 2 (hari)", num: true, render: (r) => fmtNum(r.r2avg) },
+    { key: "totAvg", label: "Total review (hari)", num: true, render: (r) => fmtNum(r.totAvg) },
+    { key: "kaToPo", label: "Tiba di KA → PO (hari)", num: true, render: (r) => fmtNum(r.kaToPo) },
+    { key: "toPo", label: "CPR dibuat → PO (hari)", num: true, render: (r) => fmtNum(r.toPo) },
+    { key: "loadAvg", label: "Beban rata-rata/hari", num: true, render: (r) => fmtNum(r.loadAvg) }
   ], rows, kaSort);
   renderLoadTable(view);
 }
@@ -1249,7 +1404,7 @@ function simulate() {
     const lock = useLocks() ? LOCKED.get(r.cpr) : null;
     const c = {
       r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2,
-      f1: lock ? lock.f1 : f1Pred(r), f2: lock ? lock.f2 : Math.round(f2Unit[r.unit] ?? f2All),
+      f1: f1Pred(r), f2: Math.round(f2Unit[r.unit] ?? f2All), // forecasts always use the latest model; only the KA is locked
       lock: lock && kaList.includes(lock.ka) ? lock : null
     };
     c.predArrival = r.create + c.f1; c.s1 = c.predArrival; c.s2 = c.s1 + w1 + c.f2;
@@ -1370,7 +1525,10 @@ function renderIncoming() {
     { key: "cpr", label: "Nomor CPR", code: true, sortable: false, render: (c) => c.r.cpr },
     { key: "unit", label: "RS", sortable: false },
     { key: "vendor", label: "Vendor", sortable: false, render: (c) => c.r.vendorName ? c.r.vendorName.slice(0, 32) : c.vendor },
-    { key: "create", label: "Dibuat", sortable: false, render: (c) => fmtDay(c.r.create) },
+    { key: "create", label: "Dibuat / submit", sortable: false, render: (c) => {
+      const box = el("div"); box.append(el("div", {}, c.r.createAt ? fmtStampShort(c.r.createAt) : fmtDay(c.r.create)));
+      if (c.r.submitAt && c.r.submitAt !== c.r.createAt) box.append(el("div", { class: "note", style: "margin:0;font-size:11.5px" }, "submit " + fmtStampShort(c.r.submitAt)));
+      return box; } },
     { key: "pred", label: "Tiba di KA", sortable: false, render: (c) => (c.r.kaIn !== null ? fmtDay(c.r.kaIn) : fmtDay(c.predArrival) + " (perkiraan)") },
     { key: "ka", label: "KA", sortable: false, render: (c) => kaLabel(c.ka) },
     { key: "rule", label: "Aturan", sortable: false, render: (c) => pill(c.rule, ruleKind[c.rule]) },
@@ -1383,7 +1541,7 @@ $("incNext").addEventListener("click", () => { incState.page++; renderIncoming()
 $("incCopy").addEventListener("click", async () => {
   if (!SIM) return;
   const lines = [["Nomor CPR", "RS", "Vendor ID", "Dibuat", "Perkiraan tiba KA", "Aktual tiba KA", "KA DSS", "Aturan", ...(META.hasKa ? ["KA aktual"] : [])].join("\t")];
-  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.vendor, dayToIso(c.r.create), dayToIso(c.predArrival), c.r.kaIn !== null ? dayToIso(c.r.kaIn) : "", kaLabel(c.ka), c.rule, ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
+  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.vendor, c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), c.r.kaIn !== null ? dayToIso(c.r.kaIn) : "", kaLabel(c.ka), c.rule, ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
   const text = lines.join("\n");
   try { await navigator.clipboard.writeText(text); setStatus(`${fmtInt(lines.length - 1)} baris disalin. Tempel ke Excel dengan Ctrl+V.`); }
   catch { const ta = el("textarea", { style: "position:fixed;left:-9999px" }); ta.value = text; document.body.append(ta); ta.select(); const ok = document.execCommand && document.execCommand("copy"); ta.remove(); setStatus(ok ? `${fmtInt(lines.length - 1)} baris disalin.` : "Browser menolak menyalin otomatis. Pilih tabel lalu salin manual."); }
