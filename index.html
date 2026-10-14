@@ -348,6 +348,7 @@ details.more[open] > summary::before { content: "▾ "; }
         <div class="filters" style="margin:0 0 10px;border:0;padding:0">
           <div class="field"><label for="roleKa">Role untuk Key Account HO (review 1)</label><select id="roleKa"></select></div>
           <div class="field"><label for="roleBack">Role untuk PurchasingHO (review 2)</label><select id="roleBack"></select></div>
+          <div class="field"><label for="histMode">Arti kolom Approval Date</label><select id="histMode"><option value="selesai">Tanggal role itu menyetujui (sesuai CPR_Cleaned)</option><option value="masuk">Tanggal CPR masuk ke role itu</option></select></div>
         </div>
         <p class="note" id="histNote" style="margin:0 0 8px"></p>
         <div class="tbl-wrap"><table id="tblRoles"></table></div>
@@ -774,6 +775,10 @@ const HCOL = { cpr: "Capital Req ID", unit: "Unit", role: "Role", user: "Usernam
 // only these two are needed: new CPRs that are still waiting have no approval yet, so "Approval Date" may be missing
 const HREQUIRED = ["cpr", "submit"];
 let HIST = null; // { rows, fileName } of the last history upload, kept in memory for role re-mapping
+// meaning of "Approval Date" in CPRHistory: "selesai" = this role approved it (default, matches CPR_Cleaned:
+// the KA row's Approval Date equals "Date Approved CPR by Key Account HO"; the row before it gives the arrival at KA),
+// "masuk" = the CPR reached this role
+let HIST_MODE = "selesai";
 const isHistory = (columns) => columns.includes(HCOL.cpr);
 const normRole = (x) => String(x ?? "").trim().toLowerCase();
 function guessRole(roles, kind) {
@@ -800,10 +805,41 @@ function pivotHistory(rows, roleKa, roleBack) {
     const maxDay = (a, col) => { const v = a.map((x) => toDay(x[col])).filter((d) => d !== null); return v.length ? Math.max(...v) : null; };
     const req = list.filter((x) => normRole(x[HCOL.role]) === "requester" || Number(x[HCOL.seq]) === 0);
     const kaRows = roleKa ? pick(roleKa) : [], backRows = roleBack ? pick(roleBack) : [];
+    // arrival at a role = the latest approval of an earlier step (lower Sequence); this is the "approval date = masuk ke KA" of the step before
+    const arrival = (rowsOfRole) => {
+      if (!rowsOfRole.length) return null;
+      const seq = Math.min(...rowsOfRole.map((x) => Number(x[HCOL.seq] ?? 0)));
+      const prev = list.filter((x) => Number(x[HCOL.seq] ?? 0) < seq).map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort();
+      return prev.length ? prev[prev.length - 1] : stamps(rowsOfRole, HCOL.submit)[0] || null;
+    };
     const code = String(id).split("-")[1] || String(last[HCOL.unit]);
     const assetUnit = String(last[HCOL.asset] ?? "").split(".")[0].trim();
     const kaUser = kaRows.length ? String(kaRows[kaRows.length - 1][HCOL.user] ?? "").trim() || null : null;
     const stamps = (a, col) => a.map((x) => toStamp(x[col])).filter(Boolean).sort();
+    if (HIST_MODE === "masuk") {
+      // "Approval Date" = the moment the CPR reached this role. Time at a role ends when the next role receives it.
+      const tl = list.filter((x) => toStamp(x[HCOL.approve])).sort((a, b) => { const sa = toStamp(a[HCOL.approve]), sb = toStamp(b[HCOL.approve]); return sa < sb ? -1 : sa > sb ? 1 : Number(a[HCOL.seq] || 0) - Number(b[HCOL.seq] || 0); });
+      const span = (role, from) => {
+        const i = tl.findIndex((x, k) => k >= from && normRole(x[HCOL.role]) === role); if (!role || i < 0) return [null, null, -1];
+        let j = i + 1; while (j < tl.length && normRole(tl[j][HCOL.role]) === role) j++;
+        return [toStamp(tl[i][HCOL.approve]), j < tl.length ? toStamp(tl[j][HCOL.approve]) : null, i];
+      };
+      const [kIn, kOut, ki] = span(roleKa, 0), [bIn, bOut] = span(roleBack, Math.max(0, ki));
+      const kaRow = ki >= 0 ? tl[ki] : null, now = tl[tl.length - 1];
+      const kaUserM = kaRow ? String(kaRow[HCOL.user] ?? "").trim() || null : null;
+      const d = (st) => (st ? toDay(st.slice(0, 10)) : null);
+      recs.push(finishRec({
+        cpr: String(id), unit: known[code] || assetUnit || String(last[HCOL.unit]), vendor: "(kosong)", vendorName: String(last[HCOL.subject] ?? "").slice(0, 60),
+        ka: kaUserM, kaName: kaUserM,
+        create: minDay(req.length ? req : list, HCOL.submit), phIn: null, phOut: null,
+        kaIn: d(kIn), kaOut: d(kOut), back: d(bIn), backOut: d(bOut),
+        capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
+        createAt: (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null, submitAt: null,
+        kaInAt: kIn, kaOutAt: kOut, backAt: bIn, backOutAt: bOut,
+        stage: now && normRole(now[HCOL.role]) !== "requester" ? String(now[HCOL.role] ?? "").trim() || null : null, stageSince: now ? d(toStamp(now[HCOL.approve])) : null
+      }));
+      continue;
+    }
     // waiting stage: the last approval step that has a submit date but no approval yet
     const pending = list.filter((x) => toDay(x[HCOL.submit]) !== null && toDay(x[HCOL.approve]) === null && normRole(x[HCOL.role]) !== "requester");
     const waitRow = pending[pending.length - 1];
@@ -811,25 +847,27 @@ function pivotHistory(rows, roleKa, roleBack) {
       cpr: String(id), unit: known[code] || assetUnit || String(last[HCOL.unit]), vendor: "(kosong)", vendorName: String(last[HCOL.subject] ?? "").slice(0, 60),
       ka: kaUser, kaName: kaUser,
       create: minDay(req.length ? req : list, HCOL.submit), phIn: null, phOut: null,
-      kaIn: minDay(kaRows, HCOL.submit), kaOut: maxDay(kaRows, HCOL.approve),
-      back: minDay(backRows, HCOL.submit), backOut: maxDay(backRows, HCOL.approve),
+      kaIn: toDay((arrival(kaRows) || "").slice(0, 10) || null), kaOut: maxDay(kaRows, HCOL.approve),
+      back: toDay((arrival(backRows) || "").slice(0, 10) || null), backOut: maxDay(backRows, HCOL.approve),
       capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
       createAt: (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null, submitAt: null,
-      kaInAt: stamps(kaRows, HCOL.submit)[0] || null, kaOutAt: stamps(kaRows, HCOL.approve).slice(-1)[0] || null,
-      backAt: stamps(backRows, HCOL.submit)[0] || null, backOutAt: stamps(backRows, HCOL.approve).slice(-1)[0] || null,
+      kaInAt: arrival(kaRows), kaOutAt: stamps(kaRows, HCOL.approve).slice(-1)[0] || null,
+      backAt: arrival(backRows), backOutAt: stamps(backRows, HCOL.approve).slice(-1)[0] || null,
       stage: waitRow ? String(waitRow[HCOL.role] ?? "").trim() || null : null, stageSince: waitRow ? toDay(waitRow[HCOL.submit]) : null
     }));
   }
   return { recs, dropped, cprs: byCpr.size };
 }
 // put new records over the saved ones: same CPR number -> filled values replace old ones
-function mergeRecs(base, fresh) {
+// fields that the approval history describes completely: a missing value there means "not happened yet"
+const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince"];
+function mergeRecs(base, fresh, authoritative = []) {
   const map = new Map(base.map((r) => [r.cpr, r]));
   for (const r of fresh) {
     const old = map.get(r.cpr);
     if (!old) { map.set(r.cpr, r); continue; }
     const m = { ...old };
-    for (const k of FIELDS) if (r[k] !== null && r[k] !== undefined && !(k === "vendor" && r[k] === "(kosong)")) m[k] = r[k];
+    for (const k of FIELDS) if ((r[k] !== null && r[k] !== undefined && !(k === "vendor" && r[k] === "(kosong)")) || authoritative.includes(k)) m[k] = r[k] ?? null;
     map.set(r.cpr, m);
   }
   return [...map.values()];
@@ -846,7 +884,9 @@ function renderHistInfo() {
     sel.value = cur || "";
   }
   const res = HIST.result;
+  $("histMode").value = HIST_MODE;
   $("histNote").textContent = `${fmtInt(HIST.rows.length)} baris → ${fmtInt(res.cprs)} CPR (${fmtInt(res.dropped)} rejected/batal dibuang). `
+    + (HIST_MODE === "masuk" ? "Approval Date dibaca sebagai tanggal CPR masuk ke role itu: review KA dianggap selesai saat role berikutnya menerima CPR. " : "Approval Date dibaca sebagai tanggal role itu menyetujui; tanggal CPR masuk ke KA = Approval Date langkah sebelumnya. ")
     + (!HIST.roleKa ? "Role Key Account tidak ditemukan, jadi tanggal tiba di KA masih kosong untuk CPR dari file ini. " : "")
     + (!HIST.roleBack ? "Role PurchasingHO tidak ditemukan, jadi tanggal kembali ke KA masih kosong. " : "")
     + "File ini tidak punya Vendor ID, jadi aturan vendor sama tidak dipakai untuk CPR dari file ini.";
@@ -864,11 +904,13 @@ async function applyHistory(rows, fileName, roleKa, roleBack) {
   const feedHasKa = result.recs.some((r) => r.ka);
   const base = IS_SAMPLE ? [] : RECS;
   META.hasKa = (!IS_SAMPLE && META.hasKa && feedHasKa) || (IS_SAMPLE && feedHasKa);
-  RECS = mergeRecs(base, result.recs).map(finishRec);
+  RECS = mergeRecs(base, result.recs, HIST_KEYS).map(finishRec);
   return result;
 }
 
-for (const id of ["roleKa", "roleBack"]) $(id).addEventListener("change", async () => {
+for (const id of ["roleKa", "roleBack", "histMode"]) $(id).addEventListener("change", async () => {
+  HIST_MODE = $("histMode").value;
+  if (DB && canSave()) { try { await saveParams(); } catch {} }
   if (!HIST) return;
   // undo the previous merge is not possible, so re-merge over the saved base
   const base = BASE_BEFORE_HIST;
@@ -978,7 +1020,7 @@ async function initDb() {
     const meta = await DB.doc("cpr/meta").get();
     const pic = await DB.doc("settings/pic").get();
     const params = await DB.doc("settings/params").get();
-    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = !!p.usePic; $("sPicTol").value = p.picTol ?? 10; }
+    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = !!p.usePic; $("sPicTol").value = p.picTol ?? 10; HIST_MODE = p.histMode || "selesai"; $("histMode").value = HIST_MODE; }
     if (pic.exists) PIC_LIST = pic.data().list || null;
     try { await loadPo(); } catch {}
     await loadLog(); renderLog(); await loadSpv();
@@ -1021,10 +1063,10 @@ async function saveData() {
     simFrom: $("sFrom").value, simTo: $("sTo").value });
 }
 async function saveParams() {
-  if (!DB || IS_SAMPLE) return;
-  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: $("sPic").checked, picTol: parseFloat($("sPicTol").value) || 0 });
+  if (!DB) return;
+  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: $("sPic").checked, picTol: parseFloat($("sPicTol").value) || 0, histMode: HIST_MODE });
   const meta = await DB.doc("cpr/meta").get();
-  if (meta.exists) await DB.doc("cpr/meta").update({ simFrom: $("sFrom").value, simTo: $("sTo").value });
+  if (meta.exists && !IS_SAMPLE) await DB.doc("cpr/meta").update({ simFrom: $("sFrom").value, simTo: $("sTo").value });
 }
 // write the KA of CPRs that were assigned for the first time in this run
 async function saveNewAssignments() {
@@ -1910,7 +1952,7 @@ $("trCancel").addEventListener("click", () => { $("trCard").hidden = true; });
 $("trSave").addEventListener("click", async () => {
   const cpr = $("trCpr").value.trim(), c = findAssigned(cpr), to = $("trTo").value;
   if (!c) { $("trMsg").textContent = "Nomor CPR tidak ditemukan di pembagian saat ini."; return; }
-  if (c.r.back !== null || c.r.kaOut !== null) { $("trMsg").textContent = "CPR ini sudah dikerjakan KA (review 1 selesai), jadi tidak dialihkan."; return; }
+  if (c.r.back !== null || c.r.kaOut !== null) { $("trMsg").textContent = `CPR ini sudah di-approve KA pada ${c.r.kaOutAt ? fmtStampShort(c.r.kaOutAt) : fmtDay(c.r.kaOut)} (review 1 selesai)${c.r.backOut !== null ? ` dan review 2 selesai ${fmtDay(c.r.backOut)}` : ""}, jadi tidak dialihkan.`; return; }
   if (!to || to === c.ka) { $("trMsg").textContent = "Pilih KA tujuan yang berbeda."; return; }
   const t = { at: new Date().toISOString(), cpr, unit: c.unit, from: c.ka, to, reason: $("trReason").value, note: $("trNote").value.trim(), by: "SPV" };
   try {
