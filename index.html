@@ -192,10 +192,9 @@ details.more[open] > summary::before { content: "▾ "; }
     <div><b>Ini data contoh.</b> Upload file CPR (.xlsx) dan List RS PIC untuk memakai data asli. Data yang di-upload disimpan di dashboard ini.</div>
   </div>
   <div class="card" id="loginCard" hidden style="margin-top:16px;max-width:420px">
-    <h3>Login</h3><div class="sub">Pakai email dan password yang dibuat admin di Supabase.</div>
+    <h3>Kode akses</h3><div class="sub">Minta kode ke admin dashboard. Kode diingat di browser ini.</div>
     <form id="loginForm" class="filters" style="border:0;padding:0;margin:8px 0 0">
-      <div class="field"><label for="loginEmail">Email</label><input type="email" id="loginEmail" autocomplete="username" required></div>
-      <div class="field"><label for="loginPass">Password</label><input type="password" id="loginPass" autocomplete="current-password" required></div>
+      <div class="field"><label for="loginCode">Kode</label><input type="password" id="loginCode" autocomplete="off" required></div>
       <button class="btn" type="submit">Masuk</button>
     </form>
     <p class="note" id="loginMsg"></p>
@@ -759,36 +758,35 @@ let BASE_BEFORE_HIST = [];
                      { items: { "<Nomor CPR>": [ka, rule, weight, f1, f2, assignedOn] } }
    A CPR found in alloc keeps its KA on every later upload (operational mode). */
 /* ---------- Supabase (used when the page runs outside Claude, e.g. GitHub Pages) ----------
-   Fill these two values in config to switch the storage to Supabase. The anon key is meant to be public;
-   the data itself is protected by Row Level Security: only logged-in users read, only admins write. */
-const CONFIG = { supabaseUrl: "https://pdsjxriakcrmeeyfzefu.supabase.co", supabaseKey: "sb_publishable_PNDmMLXqH4ujxtj9v8cANQ_lXDXQk1P" }; // key: "anon public" (legacy) or "Publishable key" (sb_publishable_...)
+   Fill these two values to switch the storage to Supabase. The publishable key is meant to be public.
+   The data is protected in Supabase itself: every request carries the access code typed by the user
+   (header "x-access-code"), and Row Level Security only lets the "view" code read and the "admin" code write. */
+const CONFIG = { supabaseUrl: "https://pdsjxriakcrmeeyfzefu.supabase.co", supabaseKey: "sb_publishable_PNDmMLXqH4ujxtj9v8cANQ_lXDXQk1P" }; // key: "Publishable key" (sb_publishable_...) or legacy "anon public"
 const SB = !!(CONFIG.supabaseUrl && CONFIG.supabaseKey);
-let SESSION = null, IS_ADMIN = false;
-function loadSession() { try { SESSION = JSON.parse(localStorage.getItem("cprSession") || "null"); } catch { SESSION = null; } }
-function storeSession(s) { SESSION = s; try { s ? localStorage.setItem("cprSession", JSON.stringify(s)) : localStorage.removeItem("cprSession"); } catch {} }
-async function authCall(grant, body) {
-  const res = await fetch(`${CONFIG.supabaseUrl}/auth/v1/token?grant_type=${grant}`, { method: "POST", headers: { apikey: CONFIG.supabaseKey, "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(j.error_description || j.msg || "login gagal");
-  return { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: j.user && j.user.email };
-}
-async function validToken() {
-  if (!SESSION) return null;
-  if (Date.now() < SESSION.expires_at - 60000) return SESSION.access_token;
-  try { storeSession(await authCall("refresh_token", { refresh_token: SESSION.refresh_token })); return SESSION.access_token; }
-  catch { storeSession(null); return null; }
+let ACCESS_CODE = "", ACCESS = "none", IS_ADMIN = false; // ACCESS: "none" | "view" | "admin"
+function loadCode() { try { ACCESS_CODE = localStorage.getItem("cprCode") || ""; } catch { ACCESS_CODE = ""; } }
+function storeCode(c) { ACCESS_CODE = c; try { c ? localStorage.setItem("cprCode", c) : localStorage.removeItem("cprCode"); } catch {} }
+const sbHeaders = (extra = {}) => ({ apikey: CONFIG.supabaseKey, "Content-Type": "application/json", "x-access-code": ACCESS_CODE || "", ...extra });
+// ask Supabase which level the current code gives
+async function checkAccess() {
+  ACCESS = "none";
+  if (!ACCESS_CODE) return;
+  try {
+    const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/rpc/cpr_access_level`, { method: "POST", headers: sbHeaders(), body: "{}" });
+    if (res.ok) ACCESS = (await res.json()) || "none";
+  } catch { ACCESS = "none"; }
+  IS_ADMIN = ACCESS === "admin";
 }
 // same shape as the Claude db: doc(path).get/set/update/delete and collection(path).get
 function makeSupabaseDb() {
   const base = `${CONFIG.supabaseUrl}/rest/v1/cpr_store`;
   const call = async (url, opts = {}) => {
-    const token = await validToken();
-    const res = await fetch(url, { ...opts, headers: { apikey: CONFIG.supabaseKey, ...(token ? { Authorization: `Bearer ${token}` } : {}), "Content-Type": "application/json", ...(opts.headers || {}) } });
+    const res = await fetch(url, { ...opts, headers: sbHeaders(opts.headers || {}) });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       throw { code: res.status === 401 || res.status === 403 ? "invalid_argument" : res.status === 413 ? "quota_exceeded" : "unavailable", message: j.message || res.statusText };
     }
-    return res.status === 204 ? null : res.json().catch(() => null);
+    return res.status === 204 || res.status === 201 ? null : res.json().catch(() => null);
   };
   const snap = (id, data) => ({ id, exists: data !== undefined, data: () => data });
   const doc = (path) => ({
@@ -806,33 +804,25 @@ function makeSupabaseDb() {
     })
   };
 }
-async function checkAdmin() {
-  IS_ADMIN = false;
-  const token = await validToken(); if (!token) return;
-  try {
-    const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/cpr_admins?select=email`, { headers: { apikey: CONFIG.supabaseKey, Authorization: `Bearer ${token}` } });
-    IS_ADMIN = res.ok && (await res.json()).length > 0;
-  } catch { IS_ADMIN = false; }
-}
 function renderAuth() {
   if (!SB) return;
   $("authBox").hidden = false;
-  $("authUser").textContent = SESSION ? SESSION.email + (IS_ADMIN ? " · admin" : "") : "";
-  $("btnLogin").textContent = SESSION ? "Keluar" : "Login";
+  $("authUser").textContent = ACCESS === "admin" ? "Akses: admin" : ACCESS === "view" ? "Akses: lihat" : "";
+  $("btnLogin").textContent = ACCESS !== "none" ? "Keluar" : "Masukkan kode";
   // only admins upload
   $("lblCpr").hidden = !IS_ADMIN; $("lblPic").hidden = !IS_ADMIN;
 }
 if (SB) {
   $("btnLogin").addEventListener("click", () => {
-    if (SESSION) { storeSession(null); location.reload(); return; }
+    if (ACCESS !== "none") { storeCode(""); location.reload(); return; }
     $("loginCard").hidden = !$("loginCard").hidden;
   });
   $("loginForm").addEventListener("submit", async (e) => {
-    e.preventDefault(); $("loginMsg").textContent = "Masuk …";
-    try {
-      storeSession(await authCall("password", { email: $("loginEmail").value.trim(), password: $("loginPass").value }));
-      location.reload();
-    } catch (err) { $("loginMsg").textContent = "Login gagal: " + err.message; }
+    e.preventDefault(); $("loginMsg").textContent = "Memeriksa kode …";
+    storeCode($("loginCode").value.trim());
+    await checkAccess();
+    if (ACCESS === "none") { storeCode(""); $("loginMsg").textContent = "Kode tidak dikenal. Periksa lagi huruf besar/kecilnya."; return; }
+    location.reload();
   });
 }
 
@@ -845,7 +835,7 @@ const monthKey = (d) => dayToIso(d).slice(0, 7);
 
 async function initDb() {
   if (SB) {
-    loadSession(); await validToken(); await checkAdmin();
+    loadCode(); await checkAccess();
     DB = makeSupabaseDb(); renderAuth();
   } else {
     try { DB = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch { DB = null; }
@@ -929,7 +919,7 @@ function renderSaveBadge() {
   let text, kind;
   if (!DB_READY) { text = "Memeriksa penyimpanan …"; kind = "muted"; }
   else if (!DB) { text = "Penyimpanan tidak aktif: data hilang saat refresh"; kind = "bad"; }
-  else if (SB && !SESSION) { text = "Belum login: data asli tidak ditampilkan"; kind = "warn"; }
+  else if (SB && ACCESS === "none") { text = "Belum memasukkan kode: data asli tidak ditampilkan"; kind = "warn"; }
   else if (!IS_SAMPLE && SAVED_AT) { text = "Tersimpan " + fmtStamp(SAVED_AT); kind = "good"; }
   else if (!IS_SAMPLE) { text = "Belum tersimpan"; kind = "warn"; }
   else { text = PIC_LIST ? "List RS PIC tersimpan · data CPR belum ada" : "Belum ada data tersimpan"; kind = "muted"; }
@@ -971,7 +961,7 @@ $("btnClearSaved").addEventListener("click", async () => {
 });
 function saveErrorText(err) {
   const code = err && err.code;
-  if (code === "invalid_argument") return SB ? "akun ini tidak punya akses menyimpan (hanya admin)" : "kamu tidak punya akses untuk menyimpan (hanya pemilik atau Editor dashboard)";
+  if (code === "invalid_argument") return SB ? "kode ini tidak punya akses menyimpan (hanya kode admin)" : "kamu tidak punya akses untuk menyimpan (hanya pemilik atau Editor dashboard)";
   if (code === "quota_exceeded") return "ruang penyimpanan dashboard penuh";
   return (err && (err.message || code)) || "kesalahan tidak dikenal";
 }

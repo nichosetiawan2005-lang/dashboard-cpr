@@ -15,28 +15,28 @@ Repo ini **tidak berisi data CPR**. Data di-upload lewat dashboard dan disimpan 
 
 ## Cara kerja
 
-1. Admin login, lalu upload **List RS PIC** dan **data CPR** (CPR_Cleaned atau CPRHistory).
-2. Dashboard membagikan setiap CPR baru ke KA dan menyimpan hasilnya di Supabase.
+1. Buka dashboard dan masukkan **kode akses** (diingat di browser).
+2. Dengan **kode admin**: upload **List RS PIC** dan **data CPR** (CPR_Cleaned atau CPRHistory).
+   Dashboard membagikan setiap CPR baru ke KA dan menyimpan hasilnya di Supabase.
 3. CPR yang sudah punya KA tidak dipindah pada upload berikutnya; hanya tanggalnya yang diperbarui.
-4. User lain cukup login untuk melihat hasil yang sama. Tanpa login hanya tampil data contoh.
+4. Dengan **kode lihat**: melihat hasil yang sama tanpa bisa mengubah. Tanpa kode hanya tampil data contoh.
 
 ## Setup (sekali)
 
 1. **Supabase**: buat project di supabase.com.
-   - Buka *SQL Editor*, tempel isi `supabase_setup.sql`, ganti email admin di baris terakhir, lalu *Run*.
-   - Buka *Authentication → Users → Add user* untuk membuat akun (email + password) setiap orang yang boleh melihat dashboard, termasuk admin.
-   - Buka *Project Settings → API*, salin **Project URL** dan **anon public key**.
-2. **index.html**: isi baris `const CONFIG = { supabaseUrl: "", supabaseKey: "" };` dengan URL dan anon key tadi.
-   Jangan pernah memakai key `service_role` di file ini.
-3. **GitHub Pages**: di repo buka *Settings → Pages*, pilih *Deploy from a branch*, branch `main`, folder `/ (root)`.
-   Beberapa menit kemudian dashboard bisa dibuka di `https://<username>.github.io/<nama-repo>/`.
+   - Buka *SQL Editor*, tempel isi `supabase_setup.sql`, **ganti dua kode di bagian 5**, lalu *Run*.
+     Jangan commit kode asli ke repo ini.
+   - Buka *Project Settings → API Keys*, salin **Project URL** dan **Publishable key**.
+2. **index.html**: isi baris `const CONFIG = { supabaseUrl: "", supabaseKey: "" };` dengan URL dan key tadi.
+   Jangan pernah memakai Secret key / `service_role` di file ini.
+3. **GitHub Pages**: *Settings → Pages*, *Deploy from a branch*, branch `main`, folder `/ (root)`.
 
 ## Keamanan
 
-- Anon key memang aman dipasang di halaman publik; yang melindungi data adalah Row Level Security di Supabase.
-- Tanpa login: tidak bisa membaca data apa pun.
-- User yang login: hanya bisa membaca.
-- Admin (email di tabel `cpr_admins`): bisa upload, menyimpan, dan menghapus.
+- Publishable key memang aman dipasang di halaman publik; yang melindungi data adalah Row Level Security di Supabase.
+- Setiap permintaan membawa kode akses (header `x-access-code`). Supabase yang memeriksa kode, bukan halaman.
+- Tanpa kode: tidak bisa membaca apa pun. Kode lihat: hanya membaca. Kode admin: membaca, menyimpan, menghapus.
+- Kalau kode tersebar, ganti kodenya dengan menjalankan ulang bagian 5 di SQL Editor.
 
 ## Rencana berikutnya
 
