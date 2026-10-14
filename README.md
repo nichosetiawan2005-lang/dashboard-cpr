@@ -21,9 +21,17 @@ Repo ini **tidak berisi data CPR**. Data di-upload lewat dashboard dan disimpan 
 3. CPR yang sudah punya KA tidak dipindah pada upload berikutnya; hanya tanggalnya yang diperbarui.
 4. Dengan **kode lihat**: melihat hasil yang sama tanpa bisa mengubah. Tanpa kode hanya tampil data contoh.
 
+## Aturan bisnis
+
+1. **CPR tidak dipindah** setelah dibagikan, kecuali belum mulai dikerjakan (belum tiba, atau review 1 belum selesai).
+2. **Pengalihan otomatis**: KA tidak hadir (cuti/sakit/dinas) pada hari review, atau beban KA melewati batas saat CPR tiba.
+3. **Pengalihan oleh SPV** dari tab Kontrol SPV, wajib dengan alasan. Semua pengalihan tercatat (kapan, dari siapa, ke siapa, alasan, oleh siapa).
+4. **CPR tertahan di approver** tidak membebani KA (beban hanya dihitung pada hari review) dan masuk daftar tindak lanjut SPV beserta tahapnya.
+5. PIC rumah sakit opsional dengan **batas adil**: PIC hanya mendapat CPR selama jumlah CPR-nya ≤ rata-rata semua KA + toleransi.
+
 ## Forecast
 
-- **Forecast 1** (CPR dibuat → tiba di KA): Linear Regression, sama seperti model terbaik di notebook, tanpa fitur kemiripan teks.
+- **Forecast 1** (CPR dibuat → tiba di KA): Linear Regression seperti di notebook, tanpa fitur kemiripan teks dan tanpa kategori capex (tidak ada di export harian).
   Model dilatih ulang di browser setiap kali pembagian dijalankan. Di data uji Jul–Sep 2026: MAE 3,33 hari, 67% CPR meleset ≤ 2 hari.
 - **Forecast 2** (KA approve → kembali ke KA): median per rumah sakit (setara dengan model notebook, MAE ±3,9 hari).
 - Upload CPR_Cleaned sebagai data riwayat agar model punya cukup data untuk belajar.

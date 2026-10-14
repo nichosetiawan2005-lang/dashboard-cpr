@@ -184,6 +184,8 @@ details.more[open] > summary::before { content: "▾ "; }
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" aria-selected="true" data-tab="distribusi" id="tab-distribusi">Pembagian CPR</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="ka" id="tab-ka">Kinerja KA</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="spv" id="tab-spv">Kontrol SPV</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="bukti" id="tab-bukti">Bukti &amp; Akurasi</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="kualitas" id="tab-kualitas">Data</button>
     </div>
   </div>
@@ -219,7 +221,8 @@ details.more[open] > summary::before { content: "▾ "; }
         <div class="field"><label for="sTo">sampai</label><input type="date" id="sTo"></div>
         <div class="field"><label for="sVendor">Bobot vendor sama</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
         <div class="field"><label for="sMax">Batas beban/hari</label><input type="number" id="sMax" min="1" step="0.5" placeholder="otomatis"></div>
-        <input type="checkbox" id="sPic" hidden>
+        <label class="check" title="PIC rumah sakit hanya mendapat CPR selama jumlah CPR-nya tidak melebihi rata-rata semua KA + toleransi"><input type="checkbox" id="sPic"> Prioritaskan PIC (batas adil)</label>
+        <div class="field"><label for="sPicTol">Toleransi PIC (%)</label><input type="number" id="sPicTol" min="0" max="200" step="5" value="10"></div>
         <button class="btn" id="sRun" type="button">Jalankan pembagian</button>
         <button class="btn ghost" id="sReset" type="button" hidden>Bagikan ulang semua</button>
       </div>
@@ -264,6 +267,67 @@ details.more[open] > summary::before { content: "▾ "; }
       <div class="tbl-wrap heat-wrap"><table class="heat" id="tblHeat"></table></div>
       <div class="scale"><span>Sepi</span><span class="bar"></span><span>Sibuk</span><span style="margin-left:14px" id="overLegend"></span></div>
     </details>
+  </section>
+
+  <!-- KONTROL SPV -->
+  <section class="panel" id="panel-spv" role="tabpanel" aria-labelledby="tab-spv">
+    <p class="note" id="spvNote"></p>
+    <div class="tiles" id="spvTiles"></div>
+
+    <div class="section-title"><h2>CPR perlu tindakan</h2><p id="asOfNote"></p></div>
+    <div class="filters" style="margin-top:0">
+      <div class="field"><label for="actFilter">Tampilkan</label><select id="actFilter">
+        <option value="">Semua</option><option value="late">Terlambat di review 1 KA</option><option value="pre">Tertahan sebelum tiba di KA</option><option value="post">Tertahan di approver (setelah KA)</option></select></div>
+      <div class="field"><label for="actKa">KA</label><select id="actKa"></select></div>
+    </div>
+    <div class="tbl-wrap" style="max-height:460px;overflow:auto"><table id="tblAct"></table></div>
+    <p class="note">Aturan: CPR boleh dialihkan hanya bila belum mulai dikerjakan (belum tiba, atau sudah tiba tapi review 1 belum selesai). CPR yang tertahan di approver tidak dialihkan; tindak lanjuti ke approver pada tahap yang tertulis.</p>
+
+    <div class="card" id="trCard" hidden style="margin-top:12px;border-color:var(--accent)">
+      <h3>Alihkan CPR</h3>
+      <div class="filters" style="border:0;padding:0;margin:8px 0 0">
+        <div class="field"><label for="trCpr">Nomor CPR</label><input type="text" id="trCpr" placeholder="cpr-…" style="min-width:210px"></div>
+        <div class="field"><label>KA sekarang</label><div id="trFrom" style="padding:7px 0;font-weight:600">–</div></div>
+        <div class="field"><label for="trTo">Alihkan ke</label><select id="trTo"></select></div>
+        <div class="field"><label for="trReason">Alasan</label><select id="trReason">
+          <option>Beban KA berlebih</option><option>KA tidak hadir (cuti/sakit/dinas)</option><option>Review terlambat</option><option>Permintaan SPV</option><option>Lainnya</option></select></div>
+        <div class="field" style="flex:1;min-width:200px"><label for="trNote">Catatan</label><input type="text" id="trNote" placeholder="opsional"></div>
+        <button class="btn" type="button" id="trSave">Simpan pengalihan</button>
+        <button class="btn ghost" type="button" id="trCancel">Batal</button>
+      </div>
+      <p class="note" id="trMsg"></p>
+    </div>
+    <div style="margin-top:10px"><button class="btn ghost" type="button" id="trOpen">Alihkan CPR lain (ketik nomor)</button></div>
+
+    <div class="section-title"><h2>Ketidakhadiran KA</h2><p>KA yang tidak hadir tidak menerima CPR baru, dan CPR miliknya yang belum dikerjakan otomatis dialihkan.</p></div>
+    <div class="card">
+      <div class="filters" style="border:0;padding:0;margin:0" id="absForm">
+        <div class="field"><label for="absKa">KA</label><select id="absKa"></select></div>
+        <div class="field"><label for="absFrom">Dari</label><input type="date" id="absFrom"></div>
+        <div class="field"><label for="absTo">Sampai</label><input type="date" id="absTo"></div>
+        <div class="field"><label for="absReason">Alasan</label><select id="absReason"><option>Cuti</option><option>Sakit</option><option>Dinas</option><option>Lainnya</option></select></div>
+        <button class="btn" type="button" id="absAdd">Tambah</button>
+      </div>
+      <div class="tbl-wrap" style="margin-top:10px"><table id="tblAbs"></table></div>
+    </div>
+
+    <div class="section-title"><h2>Riwayat pengalihan</h2><p>Setiap pengalihan dicatat: kapan, CPR mana, dari siapa, ke siapa, alasan, dan oleh siapa.</p></div>
+    <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="tblTr"></table></div>
+  </section>
+
+  <!-- BUKTI -->
+  <section class="panel" id="panel-bukti" role="tabpanel" aria-labelledby="tab-bukti">
+    <p class="note" id="bkNote"></p>
+    <div class="section-title"><h2>1. Apakah forecast tepat?</h2><p>Setiap CPR yang sudah benar-benar tiba di KA dibandingkan dengan perkiraannya. Perkiraan dibuat hanya dari data sebelum periode, jadi ini uji yang jujur.</p></div>
+    <div class="tiles" id="bkFcTiles"></div>
+    <div class="card" style="margin-top:12px"><h3>Rata-rata selisih perkiraan per minggu</h3><div class="sub">Makin rendah makin tepat. Dibandingkan dengan cara sederhana (median per rumah sakit).</div><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
+    <div class="section-title"><h2>2. Apakah beban KA lebih merata?</h2><p id="bkLoadDesc"></p></div>
+    <div class="tbl-wrap"><table id="tblBkLoad"></table></div>
+    <div class="section-title"><h2>3. Apakah CPR lebih cepat jadi PO?</h2><p id="bkPoDesc"></p></div>
+    <div class="tiles" id="bkPoTiles"></div>
+    <div class="card" style="margin-top:12px"><h3>Median hari per bulan PO dibuat</h3><div class="sub" id="bkPoSub"></div><div class="legend" id="lgPo"></div><div class="chart" id="chPo"></div></div>
+    <div class="section-title"><h2>4. Apakah kerja SPV lebih ringan?</h2><p>Berapa CPR yang dibagikan otomatis dibanding yang masih harus diurus manual.</p></div>
+    <div class="tiles" id="bkSpvTiles"></div>
   </section>
 
   <!-- DATA -->
@@ -518,12 +582,29 @@ function renderTable(table, columns, rows, state = {}) {
 const pill = (text, kind) => el("span", { class: "pill " + kind }, text);
 
 /* ---------- Data loading ---------- */
+// approval stages in CPR_Cleaned, in process order: [name, received column, approved column]
+const STAGES = ["SME", "Accounting HU HO", "Purchasing Head HU", "Key Account HO", "DV GroupHead", "FCUnit/FCHO", "CEO Unit", "CEOHO",
+  "FC Archetype", "CEO Archetype", "Budget Controller", "PurchasingHO", "Purchasing Head HO", "PurchDir"]
+  .map((n) => [n, "Date Received CPR by " + n, n === "Purchasing Head HU" ? "Date_Approved_CPR_by_Purchasing_Head_HU" : "Date Approved CPR by " + n]);
+// the stage a CPR is waiting at: the last stage that received it but has not approved it yet
+function stageOf(row) {
+  let st = null, since = null;
+  for (const [name, rc, ac] of STAGES) { const rd = toDay(row[rc]); if (rd !== null && toDay(row[ac]) === null) { st = name; since = rd; } }
+  return [st, since];
+}
+// hours between two "YYYY-MM-DD HH:MM" stamps (null when a time is missing)
+function hoursBetween(a, b) {
+  if (!a || !b || a.length < 16 || b.length < 16) return null;
+  const t = (x) => Date.UTC(+x.slice(0, 4), +x.slice(5, 7) - 1, +x.slice(8, 10), +x.slice(11, 13), +x.slice(14, 16));
+  const h = (t(b) - t(a)) / 3.6e6; return h >= 0 ? h : null;
+}
 // derived values of one CPR (durations in days, negatives become empty)
 function finishRec(rec) {
   rec.isNew = META.hasKa ? !!rec.ka : true; // without a KA column every CPR is treated as the current process
   rec.f1 = diff(rec.kaIn, rec.create); rec.rev1 = diff(rec.kaOut, rec.kaIn);
   rec.f2 = diff(rec.back, rec.kaOut); rec.rev2 = diff(rec.backOut, rec.back);
   rec.ph = diff(rec.phOut, rec.phIn);
+  rec.rev1h = hoursBetween(rec.kaInAt, rec.kaOutAt); rec.rev2h = hoursBetween(rec.backAt, rec.backOutAt);
   return rec;
 }
 function buildRecords(rows, columns) {
@@ -546,8 +627,10 @@ function buildRecords(rows, columns) {
       create: toDay(r[COL.create]), phIn: toDay(r[COL.phIn]), phOut: toDay(r[COL.phOut]),
       kaIn: toDay(r[COL.kaIn]), kaOut: toDay(r[COL.kaOut]), back: toDay(r[COL.back]), backOut: toDay(r[COL.backOut]),
       capex: r[COL.capex] ? String(r[COL.capex]) : null,
-      createAt: toStamp(r[COL.create]), submitAt: toStamp(r[COL.submit])
+      createAt: toStamp(r[COL.create]), submitAt: toStamp(r[COL.submit]),
+      kaInAt: toStamp(r[COL.kaIn]), kaOutAt: toStamp(r[COL.kaOut]), backAt: toStamp(r[COL.back]), backOutAt: toStamp(r[COL.backOut])
     };
+    [rec.stage, rec.stageSince] = stageOf(r);
     finishRec(rec);
     recs.push(rec);
   }
@@ -720,6 +803,10 @@ function pivotHistory(rows, roleKa, roleBack) {
     const code = String(id).split("-")[1] || String(last[HCOL.unit]);
     const assetUnit = String(last[HCOL.asset] ?? "").split(".")[0].trim();
     const kaUser = kaRows.length ? String(kaRows[kaRows.length - 1][HCOL.user] ?? "").trim() || null : null;
+    const stamps = (a, col) => a.map((x) => toStamp(x[col])).filter(Boolean).sort();
+    // waiting stage: the last approval step that has a submit date but no approval yet
+    const pending = list.filter((x) => toDay(x[HCOL.submit]) !== null && toDay(x[HCOL.approve]) === null && normRole(x[HCOL.role]) !== "requester");
+    const waitRow = pending[pending.length - 1];
     recs.push(finishRec({
       cpr: String(id), unit: known[code] || assetUnit || String(last[HCOL.unit]), vendor: "(kosong)", vendorName: String(last[HCOL.subject] ?? "").slice(0, 60),
       ka: kaUser, kaName: kaUser,
@@ -727,7 +814,10 @@ function pivotHistory(rows, roleKa, roleBack) {
       kaIn: minDay(kaRows, HCOL.submit), kaOut: maxDay(kaRows, HCOL.approve),
       back: minDay(backRows, HCOL.submit), backOut: maxDay(backRows, HCOL.approve),
       capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
-      createAt: (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null, submitAt: null
+      createAt: (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null, submitAt: null,
+      kaInAt: stamps(kaRows, HCOL.submit)[0] || null, kaOutAt: stamps(kaRows, HCOL.approve).slice(-1)[0] || null,
+      backAt: stamps(backRows, HCOL.submit)[0] || null, backOutAt: stamps(backRows, HCOL.approve).slice(-1)[0] || null,
+      stage: waitRow ? String(waitRow[HCOL.role] ?? "").trim() || null : null, stageSince: waitRow ? toDay(waitRow[HCOL.submit]) : null
     }));
   }
   return { recs, dropped, cprs: byCpr.size };
@@ -870,7 +960,7 @@ if (SB) {
 
 let DB = null, DB_READY = false, LOCKED = new Map(), SAVED_AT = null;
 const CHUNK = 1000;
-const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt"];
+const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince"];
 const useLocks = () => !!DB && !IS_SAMPLE && !META.hasKa;
 const canSave = () => !!DB && (!SB || IS_ADMIN);
 const monthKey = (d) => dayToIso(d).slice(0, 7);
@@ -888,10 +978,10 @@ async function initDb() {
     const meta = await DB.doc("cpr/meta").get();
     const pic = await DB.doc("settings/pic").get();
     const params = await DB.doc("settings/params").get();
-    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; }
+    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = !!p.usePic; $("sPicTol").value = p.picTol ?? 10; }
     if (pic.exists) PIC_LIST = pic.data().list || null;
     try { await loadPo(); } catch {}
-    await loadLog(); renderLog();
+    await loadLog(); renderLog(); await loadSpv();
     if (!meta.exists) { renderSavedInfo(); renderQuality(); renderKa(); return; }
     setStatus("Memuat data tersimpan …");
     const m = meta.data();
@@ -932,7 +1022,7 @@ async function saveData() {
 }
 async function saveParams() {
   if (!DB || IS_SAMPLE) return;
-  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: false });
+  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: $("sPic").checked, picTol: parseFloat($("sPicTol").value) || 0 });
   const meta = await DB.doc("cpr/meta").get();
   if (meta.exists) await DB.doc("cpr/meta").update({ simFrom: $("sFrom").value, simTo: $("sTo").value });
 }
@@ -969,6 +1059,19 @@ function renderSaveBadge() {
   else { text = PIC_LIST ? "List RS PIC tersimpan · data CPR belum ada" : "Belum ada data tersimpan"; kind = "muted"; }
   b.className = "pill " + kind; b.textContent = text;
 }
+// ---------- SPV data: transfers ("spv/transfers") and KA absences ("spv/absences") ----------
+let TRANSFERS = [], ABSENCES = [];
+async function loadSpv() {
+  if (!DB) return;
+  try { const t = await DB.doc("spv/transfers").get(); TRANSFERS = t.exists ? t.data().items || [] : []; } catch { TRANSFERS = []; }
+  try { const a = await DB.doc("spv/absences").get(); ABSENCES = a.exists ? a.data().items || [] : []; } catch { ABSENCES = []; }
+}
+async function saveTransfers() { await DB.doc("spv/transfers").set({ items: TRANSFERS.slice(-1500) }); }
+async function saveAbsences() { await DB.doc("spv/absences").set({ items: ABSENCES }); }
+function lastTransfers() { const m = new Map(); for (const t of TRANSFERS) m.set(t.cpr, t); return m; }
+function isAbsent(ka, day) { return ABSENCES.some((a) => a.ka === ka && day >= a.from && day <= a.to); }
+function absenceFor(ka, d1, d2) { return ABSENCES.find((a) => a.ka === ka && a.from <= d2 && a.to >= d1) || null; }
+
 // ---------- upload history: one document "log/uploads" with the latest 500 events ----------
 let UPLOAD_LOG = [];
 async function loadLog() {
@@ -985,7 +1088,7 @@ async function logEvent(entry) {
 }
 function renderLog() {
   const t = $("tblLog"); if (!t) return;
-  const kind = { "Data CPR": "info", "CPR jadi PO": "good", "List RS PIC": "muted", "Pembagian": "warn" };
+  const kind = { "Data CPR": "info", "CPR jadi PO": "good", "List RS PIC": "muted", "Pembagian": "warn", "Pengalihan": "serious", "Ketidakhadiran": "muted" };
   renderTable(t, [
     { key: "at", label: "Waktu", sortable: false, render: (r) => fmtStamp(r.at) },
     { key: "type", label: "Jenis", sortable: false, render: (r) => pill(r.type, kind[r.type] || "muted") },
@@ -1033,7 +1136,7 @@ $("btnClearSaved").addEventListener("click", async () => {
     await DB.doc("cpr/meta").delete(); await DB.doc("settings/pic").delete(); await DB.doc("settings/params").delete();
     const pm = await DB.doc("po/meta").get(); const pn = pm.exists ? pm.data().chunks || 0 : 0;
     for (let i = 0; i < pn; i++) await DB.doc("po/chunk-" + i).delete();
-    await DB.doc("po/meta").delete(); await DB.doc("log/uploads").delete();
+    await DB.doc("po/meta").delete(); await DB.doc("log/uploads").delete(); await DB.doc("spv/transfers").delete(); await DB.doc("spv/absences").delete();
     await clearAlloc();
     location.reload();
   } catch (err) { setStatus("Gagal menghapus: " + (err.message || err.code)); }
@@ -1083,13 +1186,14 @@ function loadView() {
 // Key Account role row (CPRHistory). The DSS plan is never used here, because a plan is not proof of who worked.
 /* ---------- Performance data: CPRs that already became PO ----------
    Saved separately (po/meta, po/chunk-N) so it never replaces the main CPR data. */
-const PO_FIELDS = ["cpr", "unit", "ka", "kaName", "create", "kaIn", "kaOut", "back", "backOut", "po", "poStatus"];
+const PO_FIELDS = ["cpr", "unit", "ka", "kaName", "create", "kaIn", "kaOut", "back", "backOut", "po", "poStatus", "kaInAt", "kaOutAt", "backAt", "backOutAt"];
 const PO_COL = { po: "CREATEDDATETIME PO by PurchasingHO", poNo: "Nomor PO", poStatus: "PO Status" };
 let PO_RECS = [], PO_META = null;
 function poRecFromArray(a) { const r = {}; PO_FIELDS.forEach((k, i) => { r[k] = a[i]; }); return finishPoRec(r); }
 function finishPoRec(r) {
   r.rev1 = diff(r.kaOut, r.kaIn); r.rev2 = diff(r.backOut, r.back);
   r.toPo = diff(r.po, r.create); r.kaToPo = diff(r.po, r.kaIn);
+  r.rev1h = hoursBetween(r.kaInAt, r.kaOutAt); r.rev2h = hoursBetween(r.backAt, r.backOutAt);
   return r;
 }
 function buildPoRecords(rows) {
@@ -1103,7 +1207,8 @@ function buildPoRecords(rows) {
       cpr: String(cpr), unit: r[COL.unit] ? String(r[COL.unit]).trim() : "(kosong)",
       ka: r[COL.ka] ? String(r[COL.ka]).trim() : null, kaName: r[COL.kaName] ? String(r[COL.kaName]).trim() : null,
       create: toDay(r[COL.create]), kaIn: toDay(r[COL.kaIn]), kaOut: toDay(r[COL.kaOut]), back: toDay(r[COL.back]), backOut: toDay(r[COL.backOut]),
-      po, poStatus: r[PO_COL.poStatus] ? String(r[PO_COL.poStatus]) : null
+      po, poStatus: r[PO_COL.poStatus] ? String(r[PO_COL.poStatus]) : null,
+      kaInAt: toStamp(r[COL.kaIn]), kaOutAt: toStamp(r[COL.kaOut]), backAt: toStamp(r[COL.back]), backOutAt: toStamp(r[COL.backOut])
     }));
   }
   return out;
@@ -1186,7 +1291,7 @@ function renderKa() {
     const lv = view && view.perKa[ka];
     return {
       ka, name: kaLabel(ka), n: list.length, units: new Set(list.map((r) => r.unit)).size,
-      r1avg: mean(r1), r1med: median(r1), r2avg: mean(r2), r2med: median(r2), totAvg: mean(tot),
+      r1avg: mean(r1), r1med: median(r1), r2avg: mean(r2), r2med: median(r2), totAvg: mean(tot), ...workStats(list),
       slow: list.length ? (list.filter((r) => (r.rev1 ?? 0) > 3 || (r.rev2 ?? 0) > 3).length / list.length) * 100 : null,
       loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null, loadOver: lv ? lv.over : null
     };
@@ -1202,10 +1307,21 @@ function renderKa() {
     { key: "r1avg", label: "Review 1 (hari)", num: true, render: (r) => fmtNum(r.r1avg) },
     { key: "r2avg", label: "Review 2 (hari)", num: true, render: (r) => fmtNum(r.r2avg) },
     { key: "totAvg", label: "Total (hari)", num: true, render: (r) => fmtNum(r.totAvg) },
+    { key: "perDay", label: "Selesai/hari (rata²)", num: true, render: (r) => fmtNum(r.perDay) },
+    { key: "perDayP90", label: "Hari tersibuk (P90)", num: true, render: (r) => fmtNum(r.perDayP90, 0) },
+    { key: "r1h", label: "Review 1 (jam, median)", num: true, render: (r) => fmtNum(r.r1h) },
+    { key: "r2h", label: "Review 2 (jam, median)", num: true, render: (r) => fmtNum(r.r2h) },
     { key: "loadAvg", label: "Beban rata-rata/hari", num: true, render: (r) => fmtNum(r.loadAvg) },
     { key: "loadPeak", label: "Beban tertinggi", num: true, render: (r) => fmtNum(r.loadPeak) }
   ], rows, kaSort);
   renderLoadTable(view);
+}
+// CPR reviews finished per working day (review 1 approvals + review 2 approvals) and hours per review
+function workStats(list) {
+  const perDay = new Map();
+  for (const r of list) for (const d of [r.kaOut, r.backOut]) if (d !== null && d !== undefined && weekday(d) < 5) perDay.set(d, (perDay.get(d) || 0) + 1);
+  const v = [...perDay.values()];
+  return { perDay: mean(v), perDayP90: quantile(v, 0.9), r1h: median(list.map((r) => r.rev1h ?? null)), r2h: median(list.map((r) => r.rev2h ?? null)) };
 }
 function renderKaFromPo(view) {
   const from = isoToDay($("poFrom").value), to = isoToDay($("poTo").value);
@@ -1226,7 +1342,7 @@ function renderKaFromPo(view) {
     return {
       ka, name: kaLabel(ka), n: list.length,
       r1avg: mean(list.map((r) => r.rev1)), r2avg: mean(list.map((r) => r.rev2)), totAvg: mean(tot),
-      kaToPo: mean(list.map((r) => r.kaToPo)), toPo: mean(list.map((r) => r.toPo)),
+      kaToPo: mean(list.map((r) => r.kaToPo)), toPo: mean(list.map((r) => r.toPo)), ...workStats(list),
       loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null
     };
   }).sort((a, b) => (b.totAvg ?? 0) - (a.totAvg ?? 0));
@@ -1243,6 +1359,10 @@ function renderKaFromPo(view) {
     { key: "totAvg", label: "Total review (hari)", num: true, render: (r) => fmtNum(r.totAvg) },
     { key: "kaToPo", label: "Tiba di KA → PO (hari)", num: true, render: (r) => fmtNum(r.kaToPo) },
     { key: "toPo", label: "CPR dibuat → PO (hari)", num: true, render: (r) => fmtNum(r.toPo) },
+    { key: "perDay", label: "Selesai/hari (rata²)", num: true, render: (r) => fmtNum(r.perDay) },
+    { key: "perDayP90", label: "Hari tersibuk (P90)", num: true, render: (r) => fmtNum(r.perDayP90, 0) },
+    { key: "r1h", label: "Review 1 (jam, median)", num: true, render: (r) => fmtNum(r.r1h) },
+    { key: "r2h", label: "Review 2 (jam, median)", num: true, render: (r) => fmtNum(r.r2h) },
     { key: "loadAvg", label: "Beban rata-rata/hari", num: true, render: (r) => fmtNum(r.loadAvg) }
   ], rows, kaSort);
   renderLoadTable(view);
@@ -1306,27 +1426,43 @@ function fitF1Model(train) {
   const allMed = median(train.map((r) => r.f1)), allMean = mean(train.map((r) => r.f1));
   const unitMedAll = toMap(group((r) => r.unit), median), unitMeanAll = toMap(group((r) => r.unit), mean);
   const unitMedNew = toMap(group((r) => (r.create >= NEW_PROCESS_FROM ? r.unit : null)), median);
-  const capexMed = toMap(group((r) => r.capex || "Kosong"), median);
+  // capex category is left out: the daily CPRHistory export has no such column (test MAE 3.38 vs 3.33 days with it)
   const features = (r) => {
     const medAll = unitMedAll.get(r.unit) ?? allMed;
     return [1, medAll, unitMeanAll.get(r.unit) ?? allMean, unitMedNew.get(r.unit) ?? medAll, r.create >= NEW_PROCESS_FROM ? 1 : 0,
-      weekday(r.create), dayToDate(r.create).getUTCMonth() + 1, capexMed.get(r.capex || "Kosong") ?? allMed, r.capex ? 1 : 0];
+      weekday(r.create), dayToDate(r.create).getUTCMonth() + 1];
   };
   // ordinary least squares: (X'X) b = X'y
-  const k = 9, XtX = Array.from({ length: k }, () => new Array(k).fill(0)), Xty = new Array(k).fill(0);
+  const k = 7, XtX = Array.from({ length: k }, () => new Array(k).fill(0)), Xty = new Array(k).fill(0);
   for (const r of train) { const x = features(r), y = Math.log1p(r.f1); for (let i = 0; i < k; i++) { Xty[i] += x[i] * y; for (let j = 0; j < k; j++) XtX[i][j] += x[i] * x[j]; } }
   const coef = solveLinear(XtX, Xty);
-  return { n: train.length, predict: (r) => Math.max(0, Math.expm1(features(r).reduce((s, v, i) => s + v * coef[i], 0))) };
+  const predLog = (r) => features(r).reduce((s, v, i) => s + v * coef[i], 0);
+  // spread of past errors (in log days) gives a P20-P80 range around each forecast
+  const res = train.map((r) => Math.log1p(r.f1) - predLog(r));
+  const q20 = quantile(res, 0.2), q80 = quantile(res, 0.8);
+  return {
+    n: train.length,
+    predict: (r) => Math.max(0, Math.expm1(predLog(r))),
+    range: (r) => [Math.max(0, Math.expm1(predLog(r) + q20)), Math.max(0, Math.expm1(predLog(r) + q80))]
+  };
 }
 
 /* ---------- Simulation (DSS allocation) ---------- */
 async function runSimulation(opts = {}) {
   const btn = $("sRun"); btn.disabled = true; btn.textContent = "Menghitung …";
   await new Promise((r) => setTimeout(r, 20));
-  try { SIM = simulate(); syncLoadDates(); } catch (err) { SIM = null; SIM_KA = new Map(); }
+  const t0 = performance.now();
+  try { SIM = simulate(); SIM.ms = performance.now() - t0; syncLoadDates(); } catch (err) { SIM = null; SIM_KA = new Map(); }
   btn.disabled = false; btn.textContent = "Jalankan pembagian";
   if (SIM && opts.save !== false && canSave() && !IS_SAMPLE) {
-    try { await saveParams(); const n = await saveNewAssignments(); await logEvent({ type: "Pembagian", file: "", rows: null, cpr: SIM.n, baru: useLocks() ? n : null, lama: useLocks() ? SIM.n - n : null, note: `CPR dibuat ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)}, batas ${fmtNum(SIM.maxPerDay)}/hari` }); if (useLocks()) setStatus(`${fmtInt(n)} CPR baru dibagikan dan disimpan; ${fmtInt(SIM.n - n)} CPR tetap di KA sebelumnya.`); }
+    try {
+      await saveParams(); const n = await saveNewAssignments();
+      if (useLocks() && SIM.autoTransfers.length) {
+        const at = new Date().toISOString();
+        for (const t of SIM.autoTransfers) TRANSFERS.push({ at, ...t, note: "" });
+        await saveTransfers();
+        await logEvent({ type: "Pengalihan", cpr: SIM.autoTransfers.length, note: `${SIM.autoTransfers.length} CPR dialihkan otomatis` });
+      } await logEvent({ type: "Pembagian", file: "", rows: null, cpr: SIM.n, baru: useLocks() ? n : null, lama: useLocks() ? SIM.n - n : null, note: `CPR dibuat ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)}, batas ${fmtNum(SIM.maxPerDay)}/hari` }); if (useLocks()) setStatus(`${fmtInt(n)} CPR baru dibagikan dan disimpan; ${fmtInt(SIM.n - n)} CPR tetap di KA sebelumnya.`); }
     catch (err) { setStatus("Hasil pembagian tidak tersimpan: " + saveErrorText(err)); }
   }
   renderAll();
@@ -1358,7 +1494,8 @@ function syncLoadDates() {
 function simulate() {
   const start = isoToDay($("sFrom").value), end = isoToDay($("sTo").value);
   const vf = Math.max(0, Math.min(1, parseFloat($("sVendor").value) || 0.5));
-  const usePic = false; // PIC rule removed: it piled CPRs onto the PIC instead of spreading them
+  // PIC rule is optional: the PIC only gets the CPR while his CPR count stays within the fair share (+ tolerance)
+  const usePic = $("sPic").checked, picTol = Math.max(0, parseFloat($("sPicTol").value) || 0);
   const userMax = parseFloat($("sMax").value);
   // Validation mode: only CPRs with complete dates, so the real KA load can be compared.
   // Operational mode: every CPR created in the period, finished or still in progress.
@@ -1379,6 +1516,9 @@ function simulate() {
   const f1Train = RECS.filter((r) => r.create !== null && r.create < start && r.f1 !== null);
   const f1Model = f1Train.length >= 100 ? fitF1Model(f1Train) : null;
   const f1Pred = (r) => Math.round(f1Model ? f1Model.predict(r) : f1Unit[r.unit] ?? f1All);
+  const f1Range = (r) => (f1Model ? f1Model.range(r).map(Math.round) : [null, null]);
+  // P80 of "KA approve -> back to KA": beyond this a CPR counts as stuck at the approvers
+  const f2P80 = quantile(baseF2.map((r) => r.f2), 0.8) ?? 7;
   const w1 = Math.max(1, Math.round(median(base.map((r) => r.rev1)) ?? 1));
   const w2 = Math.max(1, Math.round(median(baseF2.map((r) => r.rev2)) ?? 2));
   // KA list and PIC per unit
@@ -1436,13 +1576,45 @@ function simulate() {
   }
   const maxPerDay = userMax > 0 ? userMax : autoMax;
   // DSS: assign once at creation using forecast dates, then move to real dates as they happen
-  const L = newLoad(), byVendor = new Map(), assigned = [];
+  const L = newLoad(), byVendor = new Map(), assigned = [], cnt = {}, autoTransfers = [];
+  const transferMap = useLocks() ? lastTransfers() : new Map();
+  const absent = (ka, offs) => offs.some((o) => isAbsent(ka, o + minDay));
+  const review1Offs = (c) => { const out = []; for (let i = 0; i < c.w1; i++) out.push(off(c.s1 + i)); return out; };
+  const notStarted = (c) => c.r.kaOut === null && c.r.back === null; // review 1 not done and not in review 2
+  // best KA for a CPR: lowest peak load among KAs that are present on its review days
+  const bestKa = (c, days, exclude) => {
+    let best = null, bestPeak = Infinity;
+    for (const k of kaList) { if (k === exclude || absent(k, days)) continue; const pk = peak(L, k, days, c.weight || 1); if (pk < bestPeak) { bestPeak = pk; best = k; } }
+    return { best, bestPeak };
+  };
+  const moveTo = (c, to, reason) => {
+    add(L, c, -1); cnt[c.ka] = (cnt[c.ka] || 1) - 1;
+    const from = c.ka; c.ka = to; add(L, c, 1); cnt[to] = (cnt[to] || 0) + 1;
+    c.rule = "Dialihkan"; c.moved = { from, to, reason, by: "Otomatis" };
+    const prev = transferMap.get(c.r.cpr);
+    if (!prev || prev.to !== to) autoTransfers.push({ cpr: c.r.cpr, unit: c.unit, from, to, reason, by: "Otomatis" });
+  };
+  // automatic rule 1: the KA is absent on the review-1 days of a CPR that has not been started
+  const D = dataDate();
+  // review-1 window of a CPR not yet started: planned review days, or - if it already sits at the KA - until the data date
+  const pendingOffs = (c) => { const end = Math.max(c.s1 + c.w1 - 1, c.r.kaIn !== null && D !== null ? D : -Infinity); const out = []; for (let d = c.s1; d <= end; d++) out.push(off(d)); return out.filter((x) => x >= 0 && x < nDays); };
+  const checkAbsence = (c) => {
+    if (!notStarted(c) || !ABSENCES.length || !absent(c.ka, pendingOffs(c))) return;
+    const a = absenceFor(c.ka, c.s1, Math.max(c.s1 + c.w1 - 1, D ?? 0));
+    const { best } = bestKa(c, activeDays(c), c.ka);
+    if (best) moveTo(c, best, `${kaLabel(c.ka)} tidak hadir${a ? ` (${a.reason} ${fmtShort(a.from)}–${fmtShort(a.to)})` : ""}`);
+  };
   const byCreate = new Map(), byArrive = new Map(), byKaOut = new Map(), byBack = new Map();
   const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
   for (const r of test) {
-    const lock = useLocks() ? LOCKED.get(r.cpr) : null;
+    const tr = transferMap.get(r.cpr);
+    const saved = useLocks() ? LOCKED.get(r.cpr) : null;
+    // a transfer (by SPV or automatic) overrides the original assignment
+    const lock = tr ? { ka: tr.to, rule: "Dialihkan", weight: 1 } : saved;
+    const [lo, hi] = f1Range(r);
     const c = {
-      r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2,
+      r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2, transfer: tr || null,
+      f1Lo: lo, f1Hi: hi, f1Base: Math.round(f1Unit[r.unit] ?? f1All), f2P80,
       f1: f1Pred(r), f2: Math.round(f2Unit[r.unit] ?? f2All), // forecasts always use the latest model; only the KA is locked
       lock: lock && kaList.includes(lock.ka) ? lock : null
     };
@@ -1450,31 +1622,44 @@ function simulate() {
     push(byCreate, r.create, c); if (r.kaIn !== null) push(byArrive, r.kaIn, c); if (r.kaOut !== null) push(byKaOut, r.kaOut, c); if (r.back !== null) push(byBack, r.back, c);
   }
   const vendorHolder = (vendor, day) => { if (!hasVendor(vendor)) return null; for (const x of byVendor.get(vendor) || []) if (holding(x, day)) return x.ka; return null; };
-  const rules = { "Vendor sama": 0, "Beban terendah": 0, "Exception": 0 };
+  const rules = { "Vendor sama": 0, "PIC unit": 0, "Beban terendah": 0, "Dialihkan": 0, "Exception": 0 };
   for (let day = minDay; day <= maxActual + 60; day++) {
     for (const c of byCreate.get(day) || []) {
       const days = activeDays(c);
       let ka = null, weight = 1, rule;
       if (c.lock) {
         // already assigned in an earlier upload: the KA never changes
-        c.ka = c.lock.ka; c.weight = c.lock.weight; c.rule = c.lock.rule; c.locked = true; rules[c.rule] = (rules[c.rule] || 0) + 1;
-        add(L, c, 1); assigned.push(c);
+        c.ka = c.lock.ka; c.weight = c.lock.weight; c.rule = c.lock.rule; c.locked = true;
+        add(L, c, 1); assigned.push(c); cnt[c.ka] = (cnt[c.ka] || 0) + 1;
         if (!byVendor.has(c.vendor)) byVendor.set(c.vendor, []); byVendor.get(c.vendor).push(c);
+        checkAbsence(c); rules[c.rule] = (rules[c.rule] || 0) + 1;
         continue;
       }
       const hv = vendorHolder(c.vendor, c.s1);
-      if (hv && peak(L, hv, days, vf) <= maxPerDay) { ka = hv; weight = vf; rule = "Vendor sama"; }
-      if (!ka && usePic) { const p = pic[c.unit]; if (p && kaIdx.has(p) && peak(L, p, days, 1) <= maxPerDay) { ka = p; rule = "PIC unit"; } }
+      if (hv && !absent(hv, days) && peak(L, hv, days, vf) <= maxPerDay) { ka = hv; weight = vf; rule = "Vendor sama"; }
+      if (!ka && usePic) {
+        const p = pic[c.unit];
+        const fair = (assigned.length / kaList.length) * (1 + picTol / 100) + 1; // fair share so far + tolerance
+        if (p && kaIdx.has(p) && !absent(p, days) && (cnt[p] || 0) <= fair && peak(L, p, days, 1) <= maxPerDay) { ka = p; rule = "PIC unit"; }
+      }
       if (!ka) {
-        let best = null, bestPeak = Infinity;
-        for (const k of kaList) { const pk = peak(L, k, days, 1); if (pk < bestPeak) { bestPeak = pk; best = k; } }
+        let { best, bestPeak } = bestKa({ weight: 1 }, days, null);
+        if (!best) { for (const k of kaList) { const pk = peak(L, k, days, 1); if (pk < bestPeak) { bestPeak = pk; best = k; } } } // everyone absent
         ka = best; rule = bestPeak <= maxPerDay ? "Beban terendah" : "Exception";
       }
       c.ka = ka; c.weight = weight; c.rule = rule; rules[rule]++;
-      add(L, c, 1); assigned.push(c);
+      add(L, c, 1); assigned.push(c); cnt[ka] = (cnt[ka] || 0) + 1;
       if (!byVendor.has(c.vendor)) byVendor.set(c.vendor, []); byVendor.get(c.vendor).push(c);
     }
-    for (const c of byArrive.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s1 = day; c.s2 = day + c.w1 + c.f2; add(L, c, 1); }
+    for (const c of byArrive.get(day) || []) {
+      if (!c.ka) continue; add(L, c, -1); c.s1 = day; c.s2 = day + c.w1 + c.f2; add(L, c, 1);
+      checkAbsence(c);
+      // automatic rule 2: on arrival (before work starts) the KA is over the limit and another present KA still has room
+      if (!(c.transfer && c.transfer.by === "SPV") && notStarted(c) && peak(L, c.ka, review1Offs(c), 0) > maxPerDay) {
+        const { best, bestPeak } = bestKa(c, activeDays(c), c.ka);
+        if (best && bestPeak <= maxPerDay) moveTo(c, best, `Beban ${kaLabel(c.ka)} melewati batas ${fmtNum(maxPerDay)} CPR/hari saat CPR tiba`);
+      }
+    }
     for (const c of byKaOut.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s2 = day + c.f2; add(L, c, 1); }
     for (const c of byBack.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s2 = day; add(L, c, 1); }
   }
@@ -1487,12 +1672,14 @@ function simulate() {
     return { gap: mean(gaps), std: mean(tbl.map(stdev)), over: tbl.filter((row) => Math.max(...row) > maxPerDay).length, highest: Math.max(...tbl.flat()), gaps };
   };
   const dssCount = {}; for (const c of assigned) dssCount[c.ka] = (dssCount[c.ka] || 0) + 1;
+  for (const k of Object.keys(rules)) rules[k] = 0;
+  for (const c of assigned) rules[c.rule] = (rules[c.rule] || 0) + 1;
   SIM_KA = new Map(assigned.map((c) => [c.r.cpr, c.ka]));
   return {
     start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, histCount: f1Train.length, f1Method: f1Model ? "Linear Regression" : "median per rumah sakit",
     kaList, workDays, actual: actualTbl ? summarize(actualTbl) : null, dss: summarize(dssTbl), rules, assigned, actualCount, dssCount,
     same: META.hasKa ? assigned.filter((c) => c.ka === c.r.ka).length / assigned.length : null, load: L, actualLoad: actualL, minDay, nDays, n: test.length,
-    open: assigned.filter((c) => c.r.backOut === null).length
+    open: assigned.filter((c) => c.r.backOut === null).length, autoTransfers, f2P80
   };
 }
 
@@ -1554,7 +1741,7 @@ function incRows() {
   return SIM.assigned.filter((c) => !q || [c.r.cpr, c.unit, c.vendor, c.r.vendorName, kaLabel(c.ka), kaLabel(c.r.ka)].join(" ").toLowerCase().includes(q))
     .sort((a, b) => a.r.create - b.r.create || a.r.cpr.localeCompare(b.r.cpr));
 }
-const ruleKind = { "Vendor sama": "info", "PIC unit": "good", "Beban terendah": "warn", "Exception": "bad" };
+const ruleKind = { "Vendor sama": "info", "PIC unit": "good", "Beban terendah": "warn", "Dialihkan": "serious", "Exception": "bad" };
 function renderIncoming() {
   if (!SIM) return;
   const rows = incRows(), per = 50, pages = Math.max(1, Math.ceil(rows.length / per));
@@ -1625,8 +1812,214 @@ function makeSample() {
   return rows;
 }
 
+/* ---------- Kontrol SPV ---------- */
+function dataDate() { // the latest date seen in the data = "today" for the action list
+  let m = null; for (const r of RECS) for (const k of ["create", "kaIn", "kaOut", "back", "backOut"]) if (r[k] !== null && r[k] !== undefined && (m === null || r[k] > m)) m = r[k];
+  return m;
+}
+function actionItems() {
+  if (!SIM) return [];
+  const D = dataDate(), out = [];
+  for (const c of SIM.assigned) {
+    const r = c.r; if (r.backOut !== null) continue;
+    const where = r.stage ? `${r.stage}${r.stageSince !== null && r.stageSince !== undefined ? " sejak " + fmtShort(r.stageSince) : ""}` : "–";
+    if (r.kaIn !== null && r.kaOut === null) {
+      const d = D - r.kaIn; if (d > 3) out.push({ c, type: "late", days: d, status: `Review 1 belum selesai ${d} hari`, where: "Key Account HO", canMove: true });
+    } else if (r.kaIn === null) {
+      const due = r.create + (c.f1Hi ?? c.f1); const d = D - due;
+      if (d > 0) out.push({ c, type: "pre", days: d, status: `Belum tiba di KA, lewat ${d} hari dari batas perkiraan`, where, canMove: true });
+    } else if (r.kaOut !== null && r.back === null) {
+      const d = D - r.kaOut; if (d > c.f2P80) out.push({ c, type: "post", days: d, status: `Menunggu approver ${d} hari (normalnya ≤ ${fmtNum(c.f2P80, 0)})`, where, canMove: false });
+    }
+  }
+  return out.sort((a, b) => b.days - a.days);
+}
+const actKind = { late: "bad", pre: "warn", post: "serious" };
+const actLabel = { late: "Terlambat review", pre: "Tertahan sebelum KA", post: "Tertahan di approver" };
+function kaLoadOn(ka, day) { if (!SIM) return null; const k = SIM.kaList.indexOf(ka); return k < 0 ? null : SIM.load[k][day - SIM.minDay] || 0; }
+function renderSpv() {
+  const editable = canSave() && !IS_SAMPLE;
+  $("absForm").hidden = !editable; $("trOpen").hidden = !editable;
+  const kas = SIM ? SIM.kaList : META.kaList || [];
+  const fill = (sel, withAll) => { const cur = sel.value; sel.replaceChildren(...(withAll ? [el("option", { value: "" }, "Semua KA")] : []), ...kas.map((k) => el("option", { value: k }, kaLabel(k)))); if ([...sel.options].some((o) => o.value === cur)) sel.value = cur; };
+  fill($("actKa"), true); fill($("absKa"), false);
+  const today = toDay(new Date()), D = dataDate();
+  $("spvNote").textContent = SIM ? "" : "Jalankan pembagian dulu di tab Pembagian CPR agar daftar tindakan bisa dihitung.";
+  $("asOfNote").textContent = D !== null ? `Dihitung per tanggal data terakhir: ${fmtDay(D)}. Upload data terbaru agar daftar ini mutakhir.` : "";
+  const items = actionItems();
+  const week = Date.now() - 7 * 864e5;
+  $("spvTiles").replaceChildren(
+    tile("CPR berjalan", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.backOut === null).length : 0), "", "belum selesai review 2"),
+    tile("Terlambat review 1", fmtInt(items.filter((x) => x.type === "late").length), "CPR", "lebih dari 3 hari di KA"),
+    tile("Tertahan sebelum KA", fmtInt(items.filter((x) => x.type === "pre").length), "CPR", "lewat batas perkiraan (P80)"),
+    tile("Tertahan di approver", fmtInt(items.filter((x) => x.type === "post").length), "CPR", "setelah review 1 KA"),
+    tile("KA tidak hadir hari ini", fmtInt(new Set(ABSENCES.filter((a) => today >= a.from && today <= a.to).map((a) => a.ka)).size), "orang", ""),
+    tile("Pengalihan 7 hari terakhir", fmtInt(TRANSFERS.filter((t) => Date.parse(t.at) >= week).length), "", `${fmtInt(TRANSFERS.filter((t) => t.by === "SPV").length)} oleh SPV sejak awal`)
+  );
+  const f = $("actFilter").value, fk = $("actKa").value;
+  const rows = items.filter((x) => (!f || x.type === f) && (!fk || x.c.ka === fk));
+  renderTable($("tblAct"), [
+    { key: "cpr", label: "Nomor CPR", code: true, sortable: false, render: (x) => x.c.r.cpr },
+    { key: "unit", label: "RS", sortable: false, render: (x) => x.c.unit },
+    { key: "ka", label: "KA", sortable: false, render: (x) => kaLabel(x.c.ka) },
+    { key: "type", label: "Kondisi", sortable: false, render: (x) => pill(actLabel[x.type], actKind[x.type]) },
+    { key: "status", label: "Keterangan", sortable: false, render: (x) => x.status },
+    { key: "where", label: "Posisi / tahap", sortable: false, render: (x) => x.where },
+    { key: "act", label: "", sortable: false, render: (x) => (x.canMove && editable ? Object.assign(el("button", { class: "btn ghost", type: "button", style: "padding:4px 10px" }, "Alihkan"), { onclick: () => openTransfer(x.c.r.cpr) }) : "") }
+  ], rows);
+  // absences
+  renderTable($("tblAbs"), [
+    { key: "ka", label: "KA", sortable: false, render: (a) => kaLabel(a.ka) },
+    { key: "from", label: "Dari", sortable: false, render: (a) => fmtDay(a.from) },
+    { key: "to", label: "Sampai", sortable: false, render: (a) => fmtDay(a.to) },
+    { key: "reason", label: "Alasan", sortable: false },
+    { key: "st", label: "Status", sortable: false, render: (a) => (today < a.from ? pill("Akan datang", "info") : today > a.to ? pill("Selesai", "muted") : pill("Sedang tidak hadir", "warn")) },
+    { key: "del", label: "", sortable: false, render: (a) => (editable ? Object.assign(el("button", { class: "btn ghost", type: "button", style: "padding:4px 10px" }, "Hapus"), { onclick: () => removeAbsence(a) }) : "") }
+  ], ABSENCES.slice().sort((a, b) => b.from - a.from));
+  // transfer history
+  renderTable($("tblTr"), [
+    { key: "at", label: "Waktu", sortable: false, render: (t) => fmtStamp(t.at) },
+    { key: "cpr", label: "Nomor CPR", code: true, sortable: false },
+    { key: "unit", label: "RS", sortable: false, render: (t) => t.unit || "–" },
+    { key: "from", label: "Dari", sortable: false, render: (t) => kaLabel(t.from) },
+    { key: "to", label: "Ke", sortable: false, render: (t) => kaLabel(t.to) },
+    { key: "reason", label: "Alasan", sortable: false },
+    { key: "note", label: "Catatan", sortable: false, render: (t) => t.note || "" },
+    { key: "by", label: "Oleh", sortable: false, render: (t) => pill(t.by, t.by === "SPV" ? "info" : "muted") }
+  ], TRANSFERS.slice().reverse());
+}
+function openTransfer(cpr) {
+  $("trCard").hidden = false; $("trMsg").textContent = ""; $("trNote").value = "";
+  $("trCpr").value = cpr || ""; updateTransferForm();
+  $("trCard").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function findAssigned(cpr) { return SIM ? SIM.assigned.find((c) => c.r.cpr === cpr) : null; }
+function updateTransferForm() {
+  const c = findAssigned($("trCpr").value.trim());
+  $("trFrom").textContent = c ? kaLabel(c.ka) : "–";
+  const D = dataDate();
+  const kas = SIM ? SIM.kaList : [];
+  $("trTo").replaceChildren(...kas.filter((k) => !c || k !== c.ka).map((k) => {
+    const ld = kaLoadOn(k, D), off = isAbsent(k, toDay(new Date()));
+    return el("option", { value: k }, `${kaLabel(k)} · beban ${fmtNum(ld ?? 0)}${off ? " · tidak hadir" : ""}`);
+  }));
+}
+$("trCpr").addEventListener("input", updateTransferForm);
+$("trOpen").addEventListener("click", () => openTransfer(""));
+$("trCancel").addEventListener("click", () => { $("trCard").hidden = true; });
+$("trSave").addEventListener("click", async () => {
+  const cpr = $("trCpr").value.trim(), c = findAssigned(cpr), to = $("trTo").value;
+  if (!c) { $("trMsg").textContent = "Nomor CPR tidak ditemukan di pembagian saat ini."; return; }
+  if (c.r.back !== null || c.r.kaOut !== null) { $("trMsg").textContent = "CPR ini sudah dikerjakan KA (review 1 selesai), jadi tidak dialihkan."; return; }
+  if (!to || to === c.ka) { $("trMsg").textContent = "Pilih KA tujuan yang berbeda."; return; }
+  const t = { at: new Date().toISOString(), cpr, unit: c.unit, from: c.ka, to, reason: $("trReason").value, note: $("trNote").value.trim(), by: "SPV" };
+  try {
+    TRANSFERS.push(t); await saveTransfers();
+    await logEvent({ type: "Pengalihan", cpr: 1, note: `${cpr}: ${kaLabel(t.from)} → ${kaLabel(t.to)} (${t.reason})` });
+    $("trCard").hidden = true;
+    await runSimulation();
+    setStatus(`${cpr} dialihkan dari ${kaLabel(t.from)} ke ${kaLabel(t.to)}.`);
+  } catch (err) { TRANSFERS.pop(); $("trMsg").textContent = "Tidak tersimpan: " + saveErrorText(err); }
+});
+$("absAdd").addEventListener("click", async () => {
+  const ka = $("absKa").value, from = isoToDay($("absFrom").value), to = isoToDay($("absTo").value) ?? from;
+  if (!ka || from === null) { setStatus("Isi KA dan tanggal ketidakhadiran."); return; }
+  const a = { ka, from: Math.min(from, to), to: Math.max(from, to), reason: $("absReason").value, at: new Date().toISOString() };
+  try {
+    ABSENCES.push(a); await saveAbsences();
+    await logEvent({ type: "Ketidakhadiran", note: `${kaLabel(ka)}: ${a.reason} ${fmtDay(a.from)} – ${fmtDay(a.to)}` });
+    await runSimulation();
+    setStatus(`${kaLabel(ka)} dicatat tidak hadir ${fmtDay(a.from)} – ${fmtDay(a.to)}. CPR miliknya yang belum dikerjakan dialihkan otomatis.`);
+  } catch (err) { ABSENCES.pop(); setStatus("Tidak tersimpan: " + saveErrorText(err)); }
+});
+async function removeAbsence(a) {
+  ABSENCES = ABSENCES.filter((x) => x !== a);
+  try { await saveAbsences(); await logEvent({ type: "Ketidakhadiran", note: `dihapus: ${kaLabel(a.ka)} ${fmtDay(a.from)} – ${fmtDay(a.to)}` }); await runSimulation(); } catch (err) { setStatus("Tidak tersimpan: " + saveErrorText(err)); }
+}
+for (const id of ["actFilter", "actKa"]) $(id).addEventListener("change", renderSpv);
+
+/* ---------- Bukti & Akurasi ---------- */
+function renderBukti() {
+  const clear = () => { for (const id of ["bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
+  if (!SIM) { clear(); $("bkNote").textContent = "Jalankan pembagian dulu di tab Pembagian CPR."; return; }
+  $("bkNote").textContent = `Periode: CPR dibuat ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)} (${fmtInt(SIM.n)} CPR).`;
+  // 1) forecast accuracy on CPRs that already arrived
+  const ev = SIM.assigned.filter((c) => c.r.kaIn !== null && c.r.f1 !== null);
+  const err = ev.map((c) => c.f1 - c.r.f1), errB = ev.map((c) => c.f1Base - c.r.f1);
+  const mae = mean(err.map(Math.abs)), maeB = mean(errB.map(Math.abs));
+  const within2 = ev.length ? (err.filter((e) => Math.abs(e) <= 2).length / ev.length) * 100 : null;
+  const inBand = ev.filter((c) => c.f1Lo !== null && c.r.f1 >= c.f1Lo && c.r.f1 <= c.f1Hi);
+  const coverage = ev.length && ev[0].f1Lo !== null ? (inBand.length / ev.length) * 100 : null;
+  const bias = median(err), biasMean = mean(err);
+  $("bkFcTiles").replaceChildren(
+    tile("CPR dinilai", fmtInt(ev.length), "", "sudah benar-benar tiba di KA"),
+    tile("Rata-rata selisih (MAE)", fmtNum(mae), "hari", maeB !== null ? `cara sederhana: ${fmtNum(maeB)} hari (${mae < maeB ? "model lebih tepat" : "model belum lebih tepat"})` : ""),
+    tile("Tepat ±2 hari", fmtNum(within2, 0), "%", "perkiraan meleset paling banyak 2 hari"),
+    tile("Kecenderungan (median selisih)", (bias > 0 ? "+" : "") + fmtNum(bias, 0), "hari", (Math.abs(bias ?? 0) < 0.5 ? "seimbang" : bias > 0 ? "cenderung lebih lambat dari aktual" : "cenderung lebih cepat dari aktual") + ` · rata-rata ${fmtNum(biasMean)} (ditarik CPR yang tertahan lama)`),
+    tile("Masuk rentang P20–P80", fmtNum(coverage, 0), "%", "target minimal 60%")
+  );
+  const byWeek = new Map();
+  for (let i = 0; i < ev.length; i++) { const wk = ev[i].r.kaIn - weekday(ev[i].r.kaIn); if (!byWeek.has(wk)) byWeek.set(wk, [[], []]); byWeek.get(wk)[0].push(Math.abs(err[i])); byWeek.get(wk)[1].push(Math.abs(errB[i])); }
+  const weeks = [...byWeek.keys()].sort((a, b) => a - b).filter((w) => byWeek.get(w)[0].length >= 3);
+  $("lgFc").innerHTML = '<span><i class="line" style="background:var(--s1)"></i>Model (Linear Regression)</span><span><i class="line" style="background:var(--s2)"></i>Cara sederhana (median per RS)</span>';
+  lineChart($("chFc"), weeks, [
+    { name: "Model", color: "var(--s1)", values: weeks.map((w) => mean(byWeek.get(w)[0])) },
+    { name: "Median per RS", color: "var(--s2)", values: weeks.map((w) => mean(byWeek.get(w)[1])) }
+  ], { tickLabel: fmtShort, tipLabel: (w) => "Minggu " + fmtDay(w) + " · rata-rata selisih (hari)", label: "Rata-rata selisih perkiraan per minggu" });
+  // 2) workload
+  const a = SIM.actual, d = SIM.dss, pct = (x, y) => (x ? fmtNum(((x - y) / x) * 100, 0) + "% lebih baik" : "–");
+  const counts = Object.values(SIM.dssCount), countsA = a ? Object.values(SIM.actualCount) : [];
+  $("bkLoadDesc").textContent = a ? "Sebelum = pembagian yang sebenarnya terjadi (KA asli di file). Sesudah = pembagian oleh dashboard untuk CPR yang sama." : "Data tidak punya kolom KA asli, jadi hanya hasil dashboard yang ditampilkan. Upload CPR_Cleaned untuk membandingkan dengan kondisi sebelumnya.";
+  const rowsL = [
+    ["Selisih beban KA tersibuk − tersepi (CPR/hari)", a && a.gap, d.gap],
+    ["Sebaran beban antar KA (std)", a && a.std, d.std],
+    [`Hari ada KA di atas batas ${fmtNum(SIM.maxPerDay)}`, a && a.over, d.over],
+    ["Beban tertinggi satu KA dalam sehari", a && a.highest, d.highest],
+    ["CPR per KA: paling sedikit – paling banyak", a ? `${Math.min(...countsA)}–${Math.max(...countsA)}` : null, `${Math.min(...counts)}–${Math.max(...counts)}`]
+  ];
+  renderTable($("tblBkLoad"), [
+    { key: 0, label: "Ukuran", sortable: false, render: (r) => r[0] },
+    { key: 1, label: "Sebelum", num: true, sortable: false, render: (r) => (r[1] === null || r[1] === undefined ? "–" : typeof r[1] === "number" ? fmtNum(r[1], Number.isInteger(r[1]) ? 0 : 1) : r[1]) },
+    { key: 2, label: "Sesudah (dashboard)", num: true, sortable: false, render: (r) => (typeof r[2] === "number" ? fmtNum(r[2], Number.isInteger(r[2]) ? 0 : 1) : r[2]) },
+    { key: 3, label: "Perubahan", num: true, sortable: false, render: (r) => (typeof r[1] === "number" && typeof r[2] === "number" ? pct(r[1], r[2]) : "–") }
+  ], rowsL);
+  // 3) lead time to PO, before vs after the dashboard went live (first "Pembagian" in the upload log)
+  const live = UPLOAD_LOG.filter((x) => x.type === "Pembagian").map((x) => toDay(x.at.slice(0, 10))).sort((x, y) => x - y)[0] ?? null;
+  const po = PO_RECS.filter((r) => r.po !== null);
+  if (!po.length) {
+    $("bkPoDesc").textContent = "Upload data CPR yang sudah jadi PO di tab Kinerja KA untuk mengukur ini.";
+  } else {
+    const before = live !== null ? po.filter((r) => r.create < live) : po, after = live !== null ? po.filter((r) => r.create >= live) : [];
+    const med = (l, k) => median(l.map((r) => r[k]));
+    $("bkPoDesc").textContent = live !== null ? `Dashboard mulai dipakai ${fmtDay(live)} (pembagian pertama). Sebelum = CPR dibuat sebelum tanggal itu, sesudah = CPR dibuat sejak tanggal itu.` : "Belum ada pembagian yang tersimpan, jadi semua data dihitung sebagai kondisi sebelum dashboard.";
+    $("bkPoTiles").replaceChildren(
+      tile("CPR dibuat → PO, sebelum", fmtNum(med(before, "toPo")), "hari", `median dari ${fmtInt(before.length)} CPR`),
+      tile("CPR dibuat → PO, sesudah", after.length >= 20 ? fmtNum(med(after, "toPo")) : "–", after.length >= 20 ? "hari" : "", after.length >= 20 ? `median dari ${fmtInt(after.length)} CPR` : `baru ${fmtInt(after.length)} CPR jadi PO sejak dipakai; tunggu minimal 20`),
+      tile("Tiba di KA → PO, sebelum", fmtNum(med(before, "kaToPo")), "hari", "median"),
+      tile("Tiba di KA → PO, sesudah", after.length >= 20 ? fmtNum(med(after, "kaToPo")) : "–", after.length >= 20 ? "hari" : "", "median")
+    );
+    const byM = new Map(); for (const r of po) { const x = dayToDate(r.po), k = x.getUTCFullYear() * 12 + x.getUTCMonth(); if (!byM.has(k)) byM.set(k, []); byM.get(k).push(r); }
+    const months = [...byM.keys()].sort((x, y) => x - y).slice(-18);
+    $("bkPoSub").textContent = "18 bulan terakhir." + (live !== null ? ` Dashboard mulai dipakai ${fmtDay(live)}.` : "");
+    $("lgPo").innerHTML = '<span><i class="line" style="background:var(--s1)"></i>CPR dibuat → PO</span><span><i class="line" style="background:var(--s3)"></i>Tiba di KA → PO</span>';
+    lineChart($("chPo"), months, [
+      { name: "CPR dibuat → PO", color: "var(--s1)", values: months.map((k) => median(byM.get(k).map((r) => r.toPo))) },
+      { name: "Tiba di KA → PO", color: "var(--s3)", values: months.map((k) => median(byM.get(k).map((r) => r.kaToPo))) }
+    ], { tickLabel: (k) => `${MONTHS[k % 12]} ${String(Math.floor(k / 12)).slice(2)}`, tipLabel: (k) => `${MONTHS[k % 12]} ${Math.floor(k / 12)} · median hari`, label: "Median hari ke PO per bulan" });
+  }
+  // 4) SPV effort
+  const inPeriod = new Set(SIM.assigned.map((c) => c.r.cpr));
+  const spvMoves = TRANSFERS.filter((t) => t.by === "SPV" && inPeriod.has(t.cpr)).length, autoMoves = SIM.assigned.filter((c) => c.moved || (c.transfer && c.transfer.by === "Otomatis")).length;
+  $("bkSpvTiles").replaceChildren(
+    tile("Dibagikan otomatis", fmtNum(((SIM.n - spvMoves) / SIM.n) * 100, 0), "%", `${fmtInt(SIM.n - spvMoves)} dari ${fmtInt(SIM.n)} CPR tanpa campur tangan SPV`),
+    tile("Pengalihan otomatis", fmtInt(autoMoves), "CPR", "karena KA tidak hadir atau beban berlebih"),
+    tile("Pengalihan oleh SPV", fmtInt(spvMoves), "CPR", "keputusan manual, tercatat dengan alasan"),
+    tile("Waktu hitung pembagian", fmtNum((SIM.ms || 0) / 1000, 1), "detik", `untuk ${fmtInt(SIM.n)} CPR`)
+  );
+}
+
 /* ---------- Tabs and boot ---------- */
-const renderers = { distribusi: renderSim, ka: renderKa, kualitas: renderQuality };
+const renderers = { distribusi: renderSim, ka: renderKa, spv: renderSpv, bukti: renderBukti, kualitas: renderQuality };
 let currentTab = "distribusi";
 function showTab(name) {
   currentTab = name;
@@ -1636,7 +2029,7 @@ function showTab(name) {
   try { localStorage.setItem("cprTab", name); } catch {}
 }
 document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
-function renderAll() { renderKa(); renderQuality(); renderSim(); }
+function renderAll() { renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
 let resizeTimer; window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => renderers[currentTab](), 150); });
 
 (function boot() {
