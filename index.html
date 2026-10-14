@@ -1,0 +1,1384 @@
+<title>Dashboard Alokasi CPR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: sticky header with upload + tabs; one working panel per tab; filters in one row above charts */
+:root {
+  --bg: #f4f6f8; --panel: #ffffff; --fg: #141820; --muted: #566070; --faint: #8b93a0;
+  --line: #e2e6eb; --line-strong: #c9cfd7; --accent: #2a78d6; --accent-ink: #1c5cab;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --good: #0ca30c; --warn: #b77a00; --serious: #c4592e; --bad: #d03b3b;
+  --good-bg: #e6f5e6; --warn-bg: #fff4d6; --serious-bg: #fde9df; --bad-bg: #fbe6e6; --info-bg: #e7f0fb;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1013; --panel: #171a1f; --fg: #eef0f3; --muted: #b3bac5; --faint: #7f8794;
+  --line: #2a2f37; --line-strong: #3a414b; --accent: #3987e5; --accent-ink: #86b6ef;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --good: #3cc23c; --warn: #f2b53a; --serious: #ec835a; --bad: #e66767;
+  --good-bg: #16301a; --warn-bg: #33290f; --serious-bg: #35201a; --bad-bg: #371b1b; --info-bg: #15263d;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0e1013; --panel: #171a1f; --fg: #eef0f3; --muted: #b3bac5; --faint: #7f8794;
+  --line: #2a2f37; --line-strong: #3a414b; --accent: #3987e5; --accent-ink: #86b6ef;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --good: #3cc23c; --warn: #f2b53a; --serious: #ec835a; --bad: #e66767;
+  --good-bg: #16301a; --warn-bg: #33290f; --serious-bg: #35201a; --bad-bg: #371b1b; --info-bg: #15263d;
+  color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px; line-height: 1.45; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-inline: 16px; padding-block: 0 40px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--bg); border-bottom: 1px solid var(--line); }
+.top-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-block: 14px 10px; }
+.brand { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
+.brand h1 { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+.brand span { color: var(--muted); font-size: 12.5px; }
+.uploads { display: flex; flex-wrap: wrap; gap: 8px; }
+.file-btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--panel); cursor: pointer; font-weight: 500; font-size: 13px; }
+.file-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.file-btn:hover { filter: brightness(0.97); }
+.file-btn input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.file-btn svg { width: 16px; height: 16px; }
+.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.tab { padding: 9px 14px; border: 0; background: none; cursor: pointer; color: var(--muted); font-weight: 500; border-bottom: 2px solid transparent; white-space: nowrap; }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.tab:hover { color: var(--fg); }
+
+.banner { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: var(--radius); margin-top: 16px; font-size: 13px; }
+.banner.info { background: var(--info-bg); }
+.banner.warn { background: var(--warn-bg); }
+[hidden] { display: none !important; }
+.banner b { font-weight: 600; }
+.status-line { color: var(--muted); font-size: 12.5px; margin-top: 8px; min-height: 18px; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin-top: 16px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 11.5px; color: var(--muted); letter-spacing: 0.03em; text-transform: uppercase; font-weight: 500; }
+.field input, .field select { padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--bg); min-width: 0; }
+.field input[type="number"] { width: 110px; }
+.check { display: flex; align-items: center; gap: 7px; font-size: 13px; padding-bottom: 8px; }
+.btn { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--accent-ink); border-color: var(--line-strong); font-weight: 500; }
+.btn:disabled { opacity: 0.55; cursor: progress; }
+
+.panel { display: none; }
+.panel.active { display: block; }
+.section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 26px 0 10px; }
+.section-title h2 { font-size: 16px; font-weight: 600; }
+.section-title p { margin: 0; color: var(--muted); font-size: 12.5px; max-width: 70ch; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 16px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; min-width: 0; }
+.tile .k { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; }
+.tile .v { font-size: 26px; font-weight: 600; margin-top: 4px; letter-spacing: -0.01em; }
+.tile .v small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+.tile .d { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.tile .cmp { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin-top: 6px; font-size: 13px; align-items: baseline; }
+.tile .cmp b { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .cmp span { color: var(--muted); font-size: 12px; }
+.delta { font-size: 12px; font-weight: 600; margin-top: 4px; }
+.delta.good { color: var(--good); } .delta.bad { color: var(--bad); }
+
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; min-width: 0; }
+.card h3 { font-size: 14px; font-weight: 600; }
+.card .sub { font-size: 12px; color: var(--muted); margin: 2px 0 8px; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.legend i.line { height: 2px; border-radius: 1px; width: 14px; vertical-align: 3px; }
+.axis text, .lbl { fill: var(--faint); font-size: 11px; font-family: var(--font-ui); }
+.vlbl { fill: var(--muted); font-size: 11px; font-family: var(--font-ui); font-variant-numeric: tabular-nums; }
+.grid line { stroke: var(--line); }
+.base { stroke: var(--line-strong); }
+.empty { color: var(--faint); font-size: 13px; padding: 24px 0; text-align: center; }
+
+.tip { position: fixed; z-index: 50; pointer-events: none; background: var(--panel); color: var(--fg); border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.14); min-width: 120px; max-width: 280px; }
+.tip .t { color: var(--muted); margin-bottom: 4px; }
+.tip .r { display: flex; align-items: center; gap: 7px; }
+.tip .r b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.tip .r i { width: 12px; height: 2px; border-radius: 1px; display: inline-block; }
+
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 11.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; background: var(--panel); position: sticky; top: 0; }
+th.sort { cursor: pointer; user-select: none; }
+th.sort:hover { color: var(--fg); }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+td.code { font-family: var(--font-data); font-size: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 99px; font-size: 12px; font-weight: 500; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.good { background: var(--good-bg); color: var(--good); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); }
+.pill.serious { background: var(--serious-bg); color: var(--serious); }
+.pill.bad { background: var(--bad-bg); color: var(--bad); }
+.pill.info { background: var(--info-bg); color: var(--accent-ink); }
+.pill.muted { background: color-mix(in srgb, var(--faint) 15%, transparent); color: var(--muted); }
+.tbl-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.tbl-tools input { padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--panel); min-width: 0; width: 260px; max-width: 100%; }
+.pager { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.pager button { padding: 4px 10px; border: 1px solid var(--line-strong); background: var(--panel); border-radius: 6px; cursor: pointer; }
+
+.heat td.cell { text-align: center; font-variant-numeric: tabular-nums; font-size: 12px; min-width: 38px; padding: 6px 4px; }
+.heat th { text-align: center; }
+.heat td:first-child, .heat th:first-child { text-align: left; position: sticky; left: 0; background: var(--panel); z-index: 1; }
+.heat-wrap { max-height: 540px; overflow: auto; }
+.heat td.cell.over { box-shadow: inset 0 0 0 2px var(--bad); font-weight: 700; }
+.heat td.gapcol { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.heat thead th { z-index: 2; }
+.heat thead th:first-child { z-index: 3; }
+.btn.danger { color: var(--bad); border-color: var(--bad); }
+details.more { margin-top: 14px; }
+details.more > summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--accent-ink); padding: 6px 0; list-style: none; }
+details.more > summary::before { content: "▸ "; }
+details.more[open] > summary::before { content: "▾ "; }
+.scale { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+.scale .bar { width: 140px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 6%, var(--panel)), var(--accent)); }
+
+.strip { display: flex; width: 100%; height: 34px; border-radius: 8px; overflow: hidden; gap: 2px; background: var(--panel); }
+.strip div { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 600; min-width: 4px; }
+.strip-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+.strip-legend div { font-size: 12.5px; }
+.strip-legend b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.strip-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+.note { font-size: 12.5px; color: var(--muted); margin-top: 8px; max-width: 90ch; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.dq li { margin-bottom: 4px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (max-width: 560px) { .tile .v { font-size: 22px; } .brand h1 { font-size: 17px; } }
+</style>
+
+<div class="top">
+  <div class="wrap">
+    <div class="top-row">
+      <div class="brand">
+        <h1>Dashboard Alokasi CPR</h1>
+        <span id="dataLabel">Key Account HO · Forecast &amp; pembagian worklot</span> <span class="pill muted" id="saveBadge">Memeriksa penyimpanan …</span>
+      </div>
+      <div class="uploads">
+        <span id="authBox" hidden><span class="note" id="authUser" style="margin:0 6px 0 0"></span><button class="file-btn" type="button" id="btnLogin">Login</button></span>
+        <label class="file-btn primary" for="fileCpr" id="lblCpr">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
+          Upload data CPR (.xlsx)
+          <input type="file" id="fileCpr" accept=".xlsx,.xls,.csv">
+        </label>
+        <label class="file-btn" for="filePic" id="lblPic">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
+          List RS PIC
+          <input type="file" id="filePic" accept=".xlsx,.xls,.csv">
+        </label>
+      </div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-tab="distribusi" id="tab-distribusi">Pembagian CPR</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="ka" id="tab-ka">Kinerja KA</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="kualitas" id="tab-kualitas">Data</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="banner info" id="sampleBanner">
+    <div><b>Ini data contoh.</b> Upload file CPR (.xlsx) dan List RS PIC untuk memakai data asli. Data yang di-upload disimpan di dashboard ini.</div>
+  </div>
+  <div class="card" id="loginCard" hidden style="margin-top:16px;max-width:420px">
+    <h3>Login</h3><div class="sub">Pakai email dan password yang dibuat admin di Supabase.</div>
+    <form id="loginForm" class="filters" style="border:0;padding:0;margin:8px 0 0">
+      <div class="field"><label for="loginEmail">Email</label><input type="email" id="loginEmail" autocomplete="username" required></div>
+      <div class="field"><label for="loginPass">Password</label><input type="password" id="loginPass" autocomplete="current-password" required></div>
+      <button class="btn" type="submit">Masuk</button>
+    </form>
+    <p class="note" id="loginMsg"></p>
+  </div>
+  <div class="banner warn" id="modeBanner" hidden></div>
+  <div class="status-line" id="status"></div>
+
+  <!-- hidden filters: kept for the calculations, not shown in the simple version -->
+  <div hidden id="globalFilters">
+    <input type="date" id="fFrom"><input type="date" id="fTo"><select id="fKa"></select><select id="fUnit"></select>
+    <span id="fNewWrap"><input type="checkbox" id="fNew" checked></span><button id="fReset" type="button"></button>
+  </div>
+
+  <!-- PEMBAGIAN CPR -->
+  <section class="panel active" id="panel-distribusi" role="tabpanel" aria-labelledby="tab-distribusi">
+    <div class="tiles" id="simTiles"></div>
+    <p class="note" id="simCompare"></p>
+    <div class="card" style="margin-top:12px"><h3>Jumlah CPR per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
+    <div class="section-title"><h2>Daftar CPR dan KA-nya</h2><p>Urutan aturan: vendor sama → PIC rumah sakit → beban paling ringan.</p></div>
+    <div class="tbl-tools"><input type="search" id="incSearch" placeholder="Cari CPR, rumah sakit, vendor, KA"><div class="pager"><button type="button" id="incCopy">Salin tabel</button><button type="button" id="incPrev" aria-label="Halaman sebelumnya">‹</button><span id="incPage"></span><button type="button" id="incNext" aria-label="Halaman berikutnya">›</button></div></div>
+    <div class="tbl-wrap"><table id="tblInc"></table></div>
+    <details class="more">
+      <summary>Pengaturan pembagian</summary>
+      <div class="filters">
+        <div class="field"><label for="sFrom">CPR dibuat dari</label><input type="date" id="sFrom"></div>
+        <div class="field"><label for="sTo">sampai</label><input type="date" id="sTo"></div>
+        <div class="field"><label for="sVendor">Bobot vendor sama</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
+        <div class="field"><label for="sMax">Batas beban/hari</label><input type="number" id="sMax" min="1" step="0.5" placeholder="otomatis"></div>
+        <label class="check"><input type="checkbox" id="sPic" checked> Prioritaskan PIC unit</label>
+        <button class="btn" id="sRun" type="button">Bagikan</button>
+      </div>
+      <p class="note" id="simNote"></p>
+    </details>
+  </section>
+
+  <!-- KINERJA KA -->
+  <section class="panel" id="panel-ka" role="tabpanel" aria-labelledby="tab-ka">
+    <p class="note" id="kaNote"></p>
+    <div class="section-title"><h2>Rata-rata lama KA mengerjakan CPR</h2><p>Review 1 = CPR diterima KA sampai di-approve. Review 2 = CPR kembali ke KA sampai di-approve. Waktu menunggu approver lain tidak dihitung.</p></div>
+    <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Review 1</span><span><i style="background:var(--s2)"></i>Review 2</span></div><div class="chart" id="chKa"></div></div>
+    <div class="section-title"><h2>Per KA</h2><p>Beban = jumlah CPR yang sedang di-review dalam satu hari kerja.</p></div>
+    <div class="tbl-wrap"><table id="tblKa"></table></div>
+    <details class="more">
+      <summary>Lihat beban per hari</summary>
+      <p class="note" id="loadDesc"></p>
+      <div class="filters" id="loadTools">
+        <div class="field" id="loadSrcWrap"><label for="loadSrc">Sumber beban</label><select id="loadSrc"><option value="dss">Hasil pembagian DSS</option><option value="actual">Pembagian aktual (validasi)</option></select></div>
+        <div class="field"><label for="loadFrom">Hari dari</label><input type="date" id="loadFrom"></div>
+        <div class="field"><label for="loadTo">sampai</label><input type="date" id="loadTo"></div>
+      </div>
+      <div class="tbl-wrap heat-wrap"><table class="heat" id="tblHeat"></table></div>
+      <div class="scale"><span>Sepi</span><span class="bar"></span><span>Sibuk</span><span style="margin-left:14px" id="overLegend"></span></div>
+    </details>
+  </section>
+
+  <!-- DATA -->
+  <section class="panel" id="panel-kualitas" role="tabpanel" aria-labelledby="tab-kualitas">
+    <div class="section-title"><h2>Data tersimpan</h2></div>
+    <div class="card" id="savedCard"><p class="note" id="savedInfo" style="margin:0">Memeriksa data tersimpan …</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn ghost" type="button" id="btnResetAlloc">Bagikan ulang semua CPR</button>
+        <button class="btn ghost" type="button" id="btnClearSaved">Hapus semua data tersimpan</button>
+      </div>
+    </div>
+    <div class="tiles" id="dqTiles"></div>
+    <div id="histCard" hidden>
+      <div class="section-title"><h2>File riwayat approval (CPRHistory)</h2><p>Satu baris per langkah approval, disusun jadi satu baris per CPR.</p></div>
+      <div class="card">
+        <div class="filters" style="margin:0 0 10px;border:0;padding:0">
+          <div class="field"><label for="roleKa">Role untuk Key Account HO (review 1)</label><select id="roleKa"></select></div>
+          <div class="field"><label for="roleBack">Role untuk PurchasingHO (review 2)</label><select id="roleBack"></select></div>
+        </div>
+        <p class="note" id="histNote" style="margin:0 0 8px"></p>
+        <div class="tbl-wrap"><table id="tblRoles"></table></div>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+"use strict";
+/* ---------- Column names in the CGP Flow export ---------- */
+const COL = {
+  cpr: "Nomor CPR", unit: "Hospital", vendor: "Vendor ID", vendorName: "Vendor Name", ka: "Username Key Account Ho", kaName: "User KA",
+  create: "CPR Create Date", phIn: "Date Received CPR by Purchasing Head HU", phOut: "Date_Approved_CPR_by_Purchasing_Head_HU",
+  kaIn: "Date Received CPR by Key Account HO", kaOut: "Date Approved CPR by Key Account HO",
+  back: "Date Received CPR by PurchasingHO", backOut: "Date Approved CPR by PurchasingHO", capex: "Capex Category"
+};
+const REQUIRED = ["cpr", "unit", "vendor", "create", "kaIn", "kaOut", "back", "backOut"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+
+/* ---------- State ---------- */
+let RECS = [], META = {}, PIC_LIST = null, SIM = null, IS_SAMPLE = true, SIM_KA = new Map();
+// KA of a CPR: the real KA when the file has the KA column, otherwise the KA chosen by the DSS
+const hasVendor = (v) => !!v && v !== "(kosong)";
+const kaOf = (r) => (META.hasKa ? r.ka : SIM_KA.get(r.cpr) || null);
+const $ = (id) => document.getElementById(id);
+
+/* ---------- Small helpers ---------- */
+function toDay(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (v instanceof Date) return isNaN(v) ? null : Math.floor(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate()) / 864e5);
+  if (typeof v === "number") return isFinite(v) ? Math.floor(v) - 25569 : null;
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return Math.floor(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 864e5);
+  m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+  if (m) return Math.floor(Date.UTC(+m[3], +m[2] - 1, +m[1]) / 864e5);
+  const t = Date.parse(s);
+  return isNaN(t) ? null : Math.floor(t / 864e5);
+}
+const dayToDate = (d) => new Date(d * 864e5);
+function fmtDay(d) { if (d === null || d === undefined) return "–"; const x = dayToDate(d); return `${x.getUTCDate()} ${MONTHS[x.getUTCMonth()]} ${x.getUTCFullYear()}`; }
+function fmtShort(d) { const x = dayToDate(d); return `${x.getUTCDate()} ${MONTHS[x.getUTCMonth()]}`; }
+function dayToIso(d) { return dayToDate(d).toISOString().slice(0, 10); }
+function isoToDay(s) { return s ? toDay(s) : null; }
+const weekday = (d) => (dayToDate(d).getUTCDay() + 6) % 7; // 0 = Monday
+function fmtNum(n, dec = 1) { if (n === null || n === undefined || isNaN(n)) return "–"; return n.toLocaleString("id-ID", { minimumFractionDigits: dec, maximumFractionDigits: dec }); }
+function fmtInt(n) { return (n === null || n === undefined || isNaN(n)) ? "–" : Math.round(n).toLocaleString("id-ID"); }
+function quantile(arr, q) {
+  const a = arr.filter((x) => x !== null && !isNaN(x)).sort((x, y) => x - y);
+  if (!a.length) return null;
+  const pos = (a.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
+  return a[lo] + (a[hi] - a[lo]) * (pos - lo);
+}
+const median = (a) => quantile(a, 0.5);
+function mean(arr) { const a = arr.filter((x) => x !== null && !isNaN(x)); return a.length ? a.reduce((s, x) => s + x, 0) / a.length : null; }
+function stdev(a) { if (a.length < 2) return 0; const m = mean(a); return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length - 1)); }
+function mode(arr) { const c = new Map(); let best = null, n = 0; for (const x of arr) { if (x === null || x === undefined) continue; const k = (c.get(x) || 0) + 1; c.set(x, k); if (k > n) { n = k; best = x; } } return best; }
+function diff(a, b) { if (a === null || b === null) return null; const d = a - b; return d < 0 ? null : d; }
+function el(tag, attrs = {}, text) { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === "class") e.className = v; else if (k === "style") e.style.cssText = v; else e.setAttribute(k, v); } if (text !== undefined) e.textContent = text; return e; }
+function svgEl(tag, attrs = {}) { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; }
+function setStatus(msg) { $("status").textContent = msg || ""; }
+
+/* ---------- Tooltip ---------- */
+const tip = $("tip");
+function showTip(evt, title, rows) {
+  tip.replaceChildren();
+  tip.append(el("div", { class: "t" }, title));
+  for (const r of rows) {
+    const row = el("div", { class: "r" });
+    if (r.color) row.append(el("i", { style: `background:${r.color}` }));
+    row.append(el("b", {}, r.value), el("span", {}, r.label));
+    tip.append(row);
+  }
+  tip.hidden = false;
+  const pad = 12, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  if (x + w > window.innerWidth - 8) x = evt.clientX - w - pad;
+  if (y + h > window.innerHeight - 8) y = evt.clientY - h - pad;
+  tip.style.left = Math.max(8, x) + "px"; tip.style.top = Math.max(8, y) + "px";
+}
+const hideTip = () => { tip.hidden = true; };
+
+/* ---------- Charts (hand-drawn SVG) ---------- */
+function niceStep(v) { if (!v || v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; }
+function niceMax(v) { if (!v || v <= 0) return 1; const s = niceStep(v / 5); return Math.ceil(v / s - 1e-9) * s; }
+function ticks(max) { const s = niceStep(max / 5), out = []; for (let t = 0; t <= max + 1e-9; t += s) out.push(+t.toFixed(6)); return out; }
+
+function columnChart(container, cats, values, opts = {}) {
+  container.replaceChildren();
+  if (!cats.length) { container.append(el("div", { class: "empty" }, "Tidak ada data untuk filter ini.")); return; }
+  const W = Math.max(320, container.clientWidth || 600), H = opts.height || 220, m = { t: 10, r: 8, b: 26, l: 34 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b, max = niceMax(Math.max(...values));
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": opts.label || "" });
+  const g = svgEl("g", { class: "grid" });
+  for (const t of ticks(max)) { const y = m.t + ih - (t / max) * ih; g.append(svgEl("line", { x1: m.l, x2: W - m.r, y1: y, y2: y })); const tx = svgEl("text", { x: m.l - 6, y: y + 4, "text-anchor": "end", class: "lbl" }); tx.textContent = fmtInt(t); svg.append(tx); }
+  svg.prepend(g);
+  const step = iw / cats.length, bw = Math.max(2, Math.min(28, step - 2));
+  const every = Math.ceil(cats.length / Math.max(1, Math.floor(iw / 70)));
+  cats.forEach((c, i) => {
+    const v = values[i], h = (v / max) * ih, x = m.l + i * step + (step - bw) / 2, y = m.t + ih - h;
+    const r = Math.min(4, bw / 2, h);
+    const path = h > 0 ? `M${x},${y + ih * 0 + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + bw - r}Q${x + bw},${y} ${x + bw},${y + r}V${y + h}Z` : "";
+    if (path) svg.append(svgEl("path", { d: path, fill: opts.color || "var(--s1)" }));
+    const hit = svgEl("rect", { x: m.l + i * step, y: m.t, width: step, height: ih, fill: "transparent", tabindex: 0 });
+    hit.addEventListener("pointermove", (e) => showTip(e, opts.catLabel ? opts.catLabel(c) : c, [{ value: fmtInt(v), label: opts.unit || "", color: opts.color || "var(--s1)" }]));
+    hit.addEventListener("pointerleave", hideTip);
+    svg.append(hit);
+    if (i % every === 0) { const t = svgEl("text", { x: m.l + i * step + step / 2, y: H - 8, "text-anchor": "middle", class: "lbl" }); t.textContent = opts.tickLabel ? opts.tickLabel(c) : c; svg.append(t); }
+  });
+  svg.append(svgEl("line", { x1: m.l, x2: W - m.r, y1: m.t + ih, y2: m.t + ih, class: "base" }));
+  container.append(svg);
+}
+
+function lineChart(container, xs, series, opts = {}) {
+  container.replaceChildren();
+  const all = series.flatMap((s) => s.values).filter((v) => v !== null && !isNaN(v));
+  if (!xs.length || !all.length) { container.append(el("div", { class: "empty" }, "Tidak ada data untuk filter ini.")); return; }
+  const W = Math.max(320, container.clientWidth || 600), H = opts.height || 220, m = { t: 12, r: 12, b: 26, l: 34 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b, max = niceMax(Math.max(...all));
+  const X = (i) => m.l + (xs.length === 1 ? iw / 2 : (i / (xs.length - 1)) * iw), Y = (v) => m.t + ih - (v / max) * ih;
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": opts.label || "" });
+  const g = svgEl("g", { class: "grid" });
+  for (const t of ticks(max)) { g.append(svgEl("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t) })); const tx = svgEl("text", { x: m.l - 6, y: Y(t) + 4, "text-anchor": "end", class: "lbl" }); tx.textContent = fmtNum(t, Number.isInteger(t) ? 0 : 1); svg.append(tx); }
+  svg.append(g);
+  const every = Math.ceil(xs.length / Math.max(1, Math.floor(iw / 80)));
+  xs.forEach((x, i) => { if (i % every === 0) { const t = svgEl("text", { x: X(i), y: H - 8, "text-anchor": "middle", class: "lbl" }); t.textContent = opts.tickLabel ? opts.tickLabel(x) : x; svg.append(t); } });
+  svg.append(svgEl("line", { x1: m.l, x2: W - m.r, y1: m.t + ih, y2: m.t + ih, class: "base" }));
+  for (const s of series) {
+    let d = "", pen = false;
+    s.values.forEach((v, i) => { if (v === null || isNaN(v)) { pen = false; return; } d += (pen ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1); pen = true; });
+    svg.append(svgEl("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    if (xs.length <= 16) s.values.forEach((v, i) => { if (v !== null && !isNaN(v)) svg.append(svgEl("circle", { cx: X(i), cy: Y(v), r: 3.5, fill: s.color, stroke: "var(--panel)", "stroke-width": 2 })); });
+  }
+  const cross = svgEl("line", { y1: m.t, y2: m.t + ih, stroke: "var(--line-strong)", "stroke-width": 1, visibility: "hidden" });
+  svg.append(cross);
+  const hit = svgEl("rect", { x: m.l, y: m.t, width: iw, height: ih, fill: "transparent" });
+  hit.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), px = (e.clientX - r.left) * (W / r.width);
+    const i = Math.max(0, Math.min(xs.length - 1, Math.round(((px - m.l) / iw) * (xs.length - 1))));
+    cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("visibility", "visible");
+    showTip(e, opts.tipLabel ? opts.tipLabel(xs[i]) : xs[i], series.map((s) => ({ value: fmtNum(s.values[i], opts.dec ?? 1), label: s.name, color: s.color })));
+  });
+  hit.addEventListener("pointerleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
+  svg.append(hit);
+  container.append(svg);
+}
+
+/* Horizontal bars: grouped (side by side) or stacked */
+function barChartH(container, cats, series, opts = {}) {
+  container.replaceChildren();
+  if (!cats.length) { container.append(el("div", { class: "empty" }, "Tidak ada data.")); return; }
+  const stacked = !!opts.stacked, n = series.length;
+  const rowH = stacked ? 26 : 12 * n + 10, labelW = opts.labelW || 130;
+  const W = Math.max(320, container.clientWidth || 600), m = { t: 4, r: 52, b: 22, l: labelW };
+  const H = m.t + m.b + cats.length * rowH, iw = W - m.l - m.r;
+  const totals = cats.map((_, i) => stacked ? series.reduce((s, se) => s + (se.values[i] || 0), 0) : Math.max(...series.map((se) => se.values[i] || 0)));
+  const max = niceMax(Math.max(...totals));
+  const X = (v) => (v / max) * iw;
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": opts.label || "" });
+  const g = svgEl("g", { class: "grid" });
+  for (const t of ticks(max)) { g.append(svgEl("line", { x1: m.l + X(t), x2: m.l + X(t), y1: m.t, y2: H - m.b })); const tx = svgEl("text", { x: m.l + X(t), y: H - 6, "text-anchor": "middle", class: "lbl" }); tx.textContent = fmtNum(t, Number.isInteger(t) ? 0 : 1); svg.append(tx); }
+  svg.append(g);
+  cats.forEach((c, i) => {
+    const y0 = m.t + i * rowH;
+    const lab = svgEl("text", { x: m.l - 8, y: y0 + rowH / 2 + 4, "text-anchor": "end", class: "vlbl" }); lab.textContent = c; svg.append(lab);
+    let acc = 0;
+    series.forEach((s, k) => {
+      const v = s.values[i] || 0, w = X(v);
+      const bh = stacked ? rowH - 8 : 10, y = stacked ? y0 + 4 : y0 + 5 + k * 12;
+      const x = m.l + (stacked ? X(acc) : 0);
+      if (w > 0) svg.append(svgEl("rect", { x: x + (stacked && k > 0 ? 1 : 0), y, width: Math.max(1, w - (stacked && k > 0 ? 1 : 0)), height: bh, rx: 3, fill: s.color }));
+      if (!stacked) { const t = svgEl("text", { x: m.l + w + 5, y: y + 9, class: "vlbl" }); t.textContent = fmtNum(v, opts.dec ?? 0); svg.append(t); }
+      acc += v;
+    });
+    if (stacked) { const t = svgEl("text", { x: m.l + X(acc) + 6, y: y0 + rowH / 2 + 4, class: "vlbl" }); t.textContent = fmtNum(acc, opts.dec ?? 1); svg.append(t); }
+    const hit = svgEl("rect", { x: 0, y: y0, width: W, height: rowH, fill: "transparent", tabindex: 0 });
+    hit.addEventListener("pointermove", (e) => showTip(e, c, series.map((s) => ({ value: fmtNum(s.values[i], opts.dec ?? 1), label: s.name, color: s.color }))));
+    hit.addEventListener("pointerleave", hideTip);
+    svg.append(hit);
+  });
+  svg.append(svgEl("line", { x1: m.l, x2: m.l, y1: m.t, y2: H - m.b, class: "base" }));
+  container.append(svg);
+}
+
+/* ---------- Sortable table ---------- */
+function renderTable(table, columns, rows, state = {}) {
+  const sortKey = state.sortKey, dir = state.dir || -1;
+  let data = rows.slice();
+  if (sortKey) { const col = columns.find((c) => c.key === sortKey); const val = col.sortVal || ((r) => r[sortKey]); data.sort((a, b) => { const x = val(a), y = val(b); if (x === y) return 0; if (x === null || x === undefined) return 1; if (y === null || y === undefined) return -1; return (x > y ? 1 : -1) * dir; }); }
+  const thead = el("thead"), tr = el("tr");
+  for (const c of columns) {
+    const th = el("th", { class: (c.num ? "num " : "") + (c.sortable === false ? "" : "sort"), scope: "col" }, c.label + (sortKey === c.key ? (dir > 0 ? " ▲" : " ▼") : ""));
+    if (c.sortable !== false) th.addEventListener("click", () => renderTable(table, columns, rows, { sortKey: c.key, dir: sortKey === c.key ? -dir : (c.num ? -1 : 1) }));
+    tr.append(th);
+  }
+  thead.append(tr);
+  const tbody = el("tbody");
+  const limit = state.limit || data.length;
+  for (const r of data.slice(0, limit)) {
+    const row = el("tr");
+    for (const c of columns) {
+      const td = el("td", { class: (c.num ? "num " : "") + (c.code ? "code" : "") });
+      const out = c.render ? c.render(r) : r[c.key];
+      if (out instanceof Node) td.append(out); else td.textContent = out === null || out === undefined ? "–" : out;
+      row.append(td);
+    }
+    tbody.append(row);
+  }
+  if (!data.length) { const row = el("tr"); const td = el("td", { colspan: columns.length, class: "empty" }, "Tidak ada data."); row.append(td); tbody.append(row); }
+  table.replaceChildren(thead, tbody);
+}
+const pill = (text, kind) => el("span", { class: "pill " + kind }, text);
+
+/* ---------- Data loading ---------- */
+// derived values of one CPR (durations in days, negatives become empty)
+function finishRec(rec) {
+  rec.isNew = META.hasKa ? !!rec.ka : true; // without a KA column every CPR is treated as the current process
+  rec.f1 = diff(rec.kaIn, rec.create); rec.rev1 = diff(rec.kaOut, rec.kaIn);
+  rec.f2 = diff(rec.back, rec.kaOut); rec.rev2 = diff(rec.backOut, rec.back);
+  rec.ph = diff(rec.phOut, rec.phIn);
+  return rec;
+}
+function buildRecords(rows, columns) {
+  META.columnsFound = {};
+  for (const [k, name] of Object.entries(COL)) META.columnsFound[k] = columns.includes(name);
+  META.hasKa = columns.includes(COL.ka) && rows.some((r) => r[COL.ka] !== null && r[COL.ka] !== undefined && String(r[COL.ka]).trim() !== "");
+  const seen = new Set(), recs = [];
+  META.rawRows = rows.length; META.duplicates = 0;
+  for (const r of rows) {
+    const cpr = r[COL.cpr];
+    if (cpr === null || cpr === undefined || cpr === "") continue;
+    if (seen.has(cpr)) { META.duplicates++; continue; }
+    seen.add(cpr);
+    const kaUser = r[COL.ka] ? String(r[COL.ka]).trim() : null;
+    const rec = {
+      cpr: String(cpr), unit: r[COL.unit] ? String(r[COL.unit]).trim() : "(kosong)",
+      vendor: r[COL.vendor] !== null && r[COL.vendor] !== undefined ? String(r[COL.vendor]).replace(/\.0$/, "") : "(kosong)",
+      vendorName: r[COL.vendorName] ? String(r[COL.vendorName]) : "",
+      ka: kaUser, kaName: r[COL.kaName] ? String(r[COL.kaName]).trim() : null,
+      create: toDay(r[COL.create]), phIn: toDay(r[COL.phIn]), phOut: toDay(r[COL.phOut]),
+      kaIn: toDay(r[COL.kaIn]), kaOut: toDay(r[COL.kaOut]), back: toDay(r[COL.back]), backOut: toDay(r[COL.backOut]),
+      capex: r[COL.capex] ? String(r[COL.capex]) : null
+    };
+    finishRec(rec);
+    recs.push(rec);
+  }
+  META.negatives = 0;
+  for (const r of recs) for (const [a, b] of [["kaIn", "create"], ["kaOut", "kaIn"], ["back", "kaOut"], ["backOut", "back"]]) if (r[a] !== null && r[b] !== null && r[a] < r[b]) META.negatives++;
+  return recs;
+}
+
+function deriveMeta() {
+  const kaRecs = RECS.filter((r) => r.isNew);
+  META.kaLabel = {}; META.nameToUser = {};
+  if (META.hasKa) {
+    // display name per username = most common "User KA" value
+    const byUser = new Map();
+    for (const r of kaRecs) { if (!byUser.has(r.ka)) byUser.set(r.ka, []); byUser.get(r.ka).push(r.kaName); }
+    for (const [u, names] of byUser) META.kaLabel[u] = mode(names) || u;
+    META.kaList = [...byUser.keys()].sort((a, b) => (META.kaLabel[a] || a).localeCompare(META.kaLabel[b] || b));
+    // name ("Sandri") -> username ("sandri.purnama")
+    const byName = new Map();
+    for (const r of kaRecs) { if (!r.kaName) continue; if (!byName.has(r.kaName)) byName.set(r.kaName, []); byName.get(r.kaName).push(r.ka); }
+    for (const [n, users] of byName) META.nameToUser[n.toLowerCase()] = mode(users);
+  } else {
+    // no KA column: the KA list comes from List RS PIC
+    const names = PIC_LIST ? [...new Set(Object.values(PIC_LIST))].sort() : [];
+    for (const n of names) { META.kaLabel[n] = n; META.nameToUser[n.toLowerCase()] = n; }
+    META.kaList = names;
+  }
+  META.units = [...new Set(RECS.map((r) => r.unit))].sort();
+  const created = kaRecs.map((r) => r.create).filter((d) => d !== null);
+  META.minCreate = created.length ? Math.min(...created) : null;
+  META.maxCreate = created.length ? Math.max(...created) : null;
+}
+function updateModeBanner() {
+  const b = $("modeBanner");
+  b.hidden = IS_SAMPLE || META.hasKa || !!PIC_LIST;
+  b.replaceChildren(el("div"));
+  b.firstChild.innerHTML = "<b>Upload List RS PIC.</b> File ini tidak punya kolom KA, jadi daftar KA diambil dari List RS PIC.";
+}
+const kaLabel = (u) => (META.kaLabel && META.kaLabel[u]) || u || "–";
+
+function populateControls() {
+  updateModeBanner();
+  const fKa = $("fKa"), fUnit = $("fUnit");
+  fKa.replaceChildren(el("option", { value: "" }, "Semua KA"));
+  for (const u of META.kaList) fKa.append(el("option", { value: u }, kaLabel(u)));
+  fUnit.replaceChildren(el("option", { value: "" }, "Semua rumah sakit"));
+  for (const u of META.units) fUnit.append(el("option", { value: u }, u));
+  if (META.minCreate !== null) { $("fFrom").value = dayToIso(META.minCreate); $("fTo").value = dayToIso(META.maxCreate); }
+  // default test window: last ~3 months of CPR creation
+  if (META.maxCreate !== null) {
+    const end = META.maxCreate, d = dayToDate(end);
+    const start = toDay(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 2, 1)).toISOString());
+    $("sFrom").value = dayToIso(Math.max(start, META.minCreate)); $("sTo").value = dayToIso(end);
+  }
+  $("fNew").checked = true;
+}
+
+async function readWorkbook(file) {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array", cellDates: false }) // dates stay Excel serial numbers: exact day, no time-zone shift;
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: true });
+  const header = XLSX.utils.sheet_to_json(ws, { header: 1, range: 0 })[0] || [];
+  return { rows, columns: header.map((h) => String(h).trim()) };
+}
+
+$("fileCpr").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  setStatus(`Membaca ${file.name} …`);
+  await new Promise((r) => setTimeout(r, 30));
+  try {
+    const { rows, columns } = await readWorkbook(file);
+    let fmtNote = "";
+    if (isHistory(columns)) {
+      const missingH = HREQUIRED.filter((k) => !columns.includes(HCOL[k]));
+      if (missingH.length) { setStatus(`File riwayat approval tidak lengkap: kolom ${missingH.map((k) => `"${HCOL[k]}"`).join(", ")} tidak ditemukan.`); return; }
+      const wasSample = IS_SAMPLE;
+      BASE_BEFORE_HIST = IS_SAMPLE ? [] : RECS.slice();
+      const res = await applyHistory(rows, file.name);
+      IS_SAMPLE = false; META.fileName = file.name; SAVED_AT = null;
+      META.rawRows = rows.length; META.duplicates = 0; META.negatives = 0;
+      META.format = "history"; META.columnsFound = Object.fromEntries(Object.keys(HCOL).map((k) => [k, columns.includes(HCOL[k])]));
+      fmtNote = ` Format riwayat approval: ${fmtInt(rows.length)} baris jadi ${fmtInt(res.cprs)} CPR${wasSample ? "" : ", digabung dengan data tersimpan"}. Cek pemetaan role di tab Data.`;
+    } else {
+      const missing = REQUIRED.filter((k) => !columns.includes(COL[k]));
+      if (missing.length) { setStatus(`File tidak bisa dipakai: kolom ${missing.map((k) => `"${COL[k]}"`).join(", ")} tidak ditemukan. Pastikan file berasal dari export CPR_Cleaned atau CPRHistory.`); return; }
+      RECS = buildRecords(rows, columns); IS_SAMPLE = false; META.fileName = file.name; META.format = "cleaned"; HIST = null; SAVED_AT = null;
+    }
+    if (DB) await loadLocks();
+    deriveMeta(); populateControls();
+    $("sampleBanner").hidden = true; updateModeBanner();
+    $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPR`;
+    setStatus(`${fmtInt(RECS.length)} CPR terbaca dari ${file.name}. Membagikan CPR …`);
+    renderAll(); await runSimulation({ save: false });
+    let saved = "";
+    if (DB) {
+      setStatus(`${fmtInt(RECS.length)} CPR terbaca. Menyimpan …`);
+      try {
+        await saveData(); const n = await saveNewAssignments();
+        $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPR · tersimpan ${fmtStamp(SAVED_AT)}`;
+        saved = ` Data tersimpan${useLocks() ? `; ${fmtInt(n)} CPR baru dibagikan, ${fmtInt((SIM ? SIM.n : 0) - n)} CPR tetap di KA sebelumnya` : ""}.`;
+        renderAll();
+      } catch (err) { saved = ` Data tidak tersimpan: ${saveErrorText(err)}.`; }
+    }
+    setStatus(`${fmtInt(RECS.length)} CPR terbaca dari ${file.name}.${saved}${fmtNote}`);
+  } catch (err) { setStatus(`File tidak bisa dibaca: ${err.message}. Coba simpan ulang sebagai .xlsx lalu upload lagi.`); }
+  e.target.value = "";
+});
+
+$("filePic").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    const { rows } = await readWorkbook(file);
+    const list = {};
+    for (const r of rows) { const rs = r.RS ?? r.rs ?? r["Rumah Sakit"]; const pic = r.PIC ?? r.pic; if (rs && pic) list[String(rs).trim()] = String(pic).trim(); }
+    if (!Object.keys(list).length) { setStatus("List RS PIC tidak terbaca: file harus punya kolom RS dan PIC."); return; }
+    PIC_LIST = list;
+    if (!META.hasKa && !IS_SAMPLE) { deriveMeta(); populateControls(); }
+    setStatus(`List RS PIC terbaca: ${Object.keys(list).length} rumah sakit. Membagikan ulang …`);
+    let saved = "";
+    if (DB) { try { await DB.doc("settings/pic").set({ list }); saved = " Tersimpan."; } catch (err) { saved = ` Tidak tersimpan: ${saveErrorText(err)}.`; } }
+    await runSimulation(); renderQuality();
+    setStatus(`List RS PIC terbaca: ${Object.keys(list).length} rumah sakit.${saved}`);
+  } catch (err) { setStatus(`List RS PIC tidak bisa dibaca: ${err.message}.`); }
+  e.target.value = "";
+});
+
+/* ---------- File format 2: approval history (SHG_CPRHistory export) ----------
+   One row per approval step: Unit, Capital Req ID, Role, Username, Submit Date, Approval Date, Document Status ...
+   It is turned into one record per CPR:
+     create  = first Submit Date of the requester
+     kaIn    = first Submit Date of the Key Account role,   kaOut   = last Approval Date of that role
+     back    = first Submit Date of the PurchasingHO role,  backOut = last Approval Date of that role
+     ka      = Username on the Key Account role row (when present)
+   CPRs whose last status is rejected / cancelled are dropped. */
+const HCOL = { cpr: "Capital Req ID", unit: "Unit", role: "Role", user: "Username", submit: "Submit Date", approve: "Approval Date", status: "Document Status", seq: "Sequence", asset: "Asset Code", category: "Category Type", subject: "Subject", amount: "Total Amount" };
+const HREQUIRED = ["cpr", "unit", "role", "submit", "approve"];
+let HIST = null; // { rows, fileName } of the last history upload, kept in memory for role re-mapping
+const isHistory = (columns) => columns.includes(HCOL.cpr) && columns.includes(HCOL.role);
+const normRole = (x) => String(x ?? "").trim().toLowerCase();
+function guessRole(roles, kind) {
+  const clean = (r) => r.replace(/[^a-z]/g, "");
+  if (kind === "ka") return roles.find((r) => clean(r).includes("keyaccount")) || "";
+  return roles.find((r) => clean(r).includes("purchasingho") && !clean(r).includes("head")) || "";
+}
+// unit code ("2003") -> hospital ("SHLC"): learned from data already loaded, else from Asset Code ("SHLC.26.52.PR14 : ...")
+function unitMapFromRecs() {
+  const g = new Map();
+  for (const r of RECS) { const code = String(r.cpr).split("-")[1]; if (!code || !r.unit || r.unit === "(kosong)") continue; if (!g.has(code)) g.set(code, []); g.get(code).push(r.unit); }
+  const out = {}; for (const [k, a] of g) out[k] = mode(a); return out;
+}
+function pivotHistory(rows, roleKa, roleBack) {
+  const known = IS_SAMPLE ? {} : unitMapFromRecs();
+  const byCpr = new Map();
+  for (const r of rows) { const id = r[HCOL.cpr]; if (!id) continue; if (!byCpr.has(id)) byCpr.set(id, []); byCpr.get(id).push(r); }
+  const recs = []; let dropped = 0;
+  for (const [id, list] of byCpr) {
+    const last = list[list.length - 1];
+    if (/reject|cancel|batal|tolak/i.test(String(last[HCOL.status] ?? ""))) { dropped++; continue; }
+    const pick = (role) => list.filter((x) => normRole(x[HCOL.role]) === role);
+    const minDay = (a, col) => { const v = a.map((x) => toDay(x[col])).filter((d) => d !== null); return v.length ? Math.min(...v) : null; };
+    const maxDay = (a, col) => { const v = a.map((x) => toDay(x[col])).filter((d) => d !== null); return v.length ? Math.max(...v) : null; };
+    const req = list.filter((x) => normRole(x[HCOL.role]) === "requester" || Number(x[HCOL.seq]) === 0);
+    const kaRows = roleKa ? pick(roleKa) : [], backRows = roleBack ? pick(roleBack) : [];
+    const code = String(id).split("-")[1] || String(last[HCOL.unit]);
+    const assetUnit = String(last[HCOL.asset] ?? "").split(".")[0].trim();
+    const kaUser = kaRows.length ? String(kaRows[kaRows.length - 1][HCOL.user] ?? "").trim() || null : null;
+    recs.push(finishRec({
+      cpr: String(id), unit: known[code] || assetUnit || String(last[HCOL.unit]), vendor: "(kosong)", vendorName: String(last[HCOL.subject] ?? "").slice(0, 60),
+      ka: kaUser, kaName: kaUser,
+      create: minDay(req.length ? req : list, HCOL.submit), phIn: null, phOut: null,
+      kaIn: minDay(kaRows, HCOL.submit), kaOut: maxDay(kaRows, HCOL.approve),
+      back: minDay(backRows, HCOL.submit), backOut: maxDay(backRows, HCOL.approve),
+      capex: last[HCOL.category] ? String(last[HCOL.category]) : null
+    }));
+  }
+  return { recs, dropped, cprs: byCpr.size };
+}
+// put new records over the saved ones: same CPR number -> filled values replace old ones
+function mergeRecs(base, fresh) {
+  const map = new Map(base.map((r) => [r.cpr, r]));
+  for (const r of fresh) {
+    const old = map.get(r.cpr);
+    if (!old) { map.set(r.cpr, r); continue; }
+    const m = { ...old };
+    for (const k of FIELDS) if (r[k] !== null && r[k] !== undefined && !(k === "vendor" && r[k] === "(kosong)")) m[k] = r[k];
+    map.set(r.cpr, m);
+  }
+  return [...map.values()];
+}
+function renderHistInfo() {
+  const card = $("histCard"); if (!card) return;
+  card.hidden = !HIST;
+  if (!HIST) return;
+  const counts = new Map(); for (const r of HIST.rows) { const k = normRole(r[HCOL.role]); counts.set(k, (counts.get(k) || 0) + 1); }
+  const roles = [...counts.keys()].sort();
+  for (const [id, cur] of [["roleKa", HIST.roleKa], ["roleBack", HIST.roleBack]]) {
+    const sel = $(id); sel.replaceChildren(el("option", { value: "" }, "— tidak ada di file —"));
+    for (const r of roles) sel.append(el("option", { value: r }, r));
+    sel.value = cur || "";
+  }
+  const res = HIST.result;
+  $("histNote").textContent = `${fmtInt(HIST.rows.length)} baris → ${fmtInt(res.cprs)} CPR (${fmtInt(res.dropped)} rejected/batal dibuang). `
+    + (!HIST.roleKa ? "Role Key Account tidak ditemukan, jadi tanggal tiba di KA masih kosong untuk CPR dari file ini. " : "")
+    + (!HIST.roleBack ? "Role PurchasingHO tidak ditemukan, jadi tanggal kembali ke KA masih kosong. " : "")
+    + "File ini tidak punya Vendor ID, jadi aturan vendor sama tidak dipakai untuk CPR dari file ini.";
+  renderTable($("tblRoles"), [
+    { key: "role", label: "Role di file", sortable: false },
+    { key: "n", label: "Baris", num: true, sortable: false },
+    { key: "use", label: "Dipakai sebagai", sortable: false, render: (r) => r.role === HIST.roleKa ? pill("Key Account HO", "info") : r.role === HIST.roleBack ? pill("PurchasingHO", "info") : r.role === "requester" ? pill("CPR dibuat", "muted") : "–" }
+  ], roles.map((role) => ({ role, n: counts.get(role) })));
+}
+async function applyHistory(rows, fileName, roleKa, roleBack) {
+  const roles = [...new Set(rows.map((r) => normRole(r[HCOL.role])))];
+  roleKa = roleKa ?? guessRole(roles, "ka"); roleBack = roleBack ?? guessRole(roles, "back");
+  const result = pivotHistory(rows, roleKa, roleBack);
+  HIST = { rows, fileName, roleKa, roleBack, result };
+  const feedHasKa = result.recs.some((r) => r.ka);
+  const base = IS_SAMPLE ? [] : RECS;
+  META.hasKa = (!IS_SAMPLE && META.hasKa && feedHasKa) || (IS_SAMPLE && feedHasKa);
+  RECS = mergeRecs(base, result.recs).map(finishRec);
+  return result;
+}
+
+for (const id of ["roleKa", "roleBack"]) $(id).addEventListener("change", async () => {
+  if (!HIST) return;
+  // undo the previous merge is not possible, so re-merge over the saved base
+  const base = BASE_BEFORE_HIST;
+  RECS = base; IS_SAMPLE = !base.length; if (IS_SAMPLE) RECS = [];
+  await applyHistory(HIST.rows, HIST.fileName, $("roleKa").value, $("roleBack").value);
+  IS_SAMPLE = false; deriveMeta(); populateControls(); updateModeBanner();
+  await runSimulation({ save: false });
+  if (DB) { try { await saveData(); await saveNewAssignments(); } catch (err) { setStatus("Tidak tersimpan: " + saveErrorText(err)); } }
+  renderQuality();
+});
+let BASE_BEFORE_HIST = [];
+
+/* ---------- Saved data (artifact database) ----------
+   cpr/meta          file name, save time, number of chunks, column check
+   cpr/chunk-0..N    the CPR rows, 1000 per document (only the 14 columns the dashboard uses)
+   settings/pic      List RS PIC
+   settings/params   vendor weight, max load, PIC rule on/off
+   alloc/<YYYY-MM>   DSS result per CPR, grouped by create month:
+                     { items: { "<Nomor CPR>": [ka, rule, weight, f1, f2, assignedOn] } }
+   A CPR found in alloc keeps its KA on every later upload (operational mode). */
+/* ---------- Supabase (used when the page runs outside Claude, e.g. GitHub Pages) ----------
+   Fill these two values in config to switch the storage to Supabase. The anon key is meant to be public;
+   the data itself is protected by Row Level Security: only logged-in users read, only admins write. */
+const CONFIG = { supabaseUrl: "", supabaseKey: "" };
+const SB = !!(CONFIG.supabaseUrl && CONFIG.supabaseKey);
+let SESSION = null, IS_ADMIN = false;
+function loadSession() { try { SESSION = JSON.parse(localStorage.getItem("cprSession") || "null"); } catch { SESSION = null; } }
+function storeSession(s) { SESSION = s; try { s ? localStorage.setItem("cprSession", JSON.stringify(s)) : localStorage.removeItem("cprSession"); } catch {} }
+async function authCall(grant, body) {
+  const res = await fetch(`${CONFIG.supabaseUrl}/auth/v1/token?grant_type=${grant}`, { method: "POST", headers: { apikey: CONFIG.supabaseKey, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error_description || j.msg || "login gagal");
+  return { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: j.user && j.user.email };
+}
+async function validToken() {
+  if (!SESSION) return null;
+  if (Date.now() < SESSION.expires_at - 60000) return SESSION.access_token;
+  try { storeSession(await authCall("refresh_token", { refresh_token: SESSION.refresh_token })); return SESSION.access_token; }
+  catch { storeSession(null); return null; }
+}
+// same shape as the Claude db: doc(path).get/set/update/delete and collection(path).get
+function makeSupabaseDb() {
+  const base = `${CONFIG.supabaseUrl}/rest/v1/cpr_store`;
+  const call = async (url, opts = {}) => {
+    const token = await validToken();
+    const res = await fetch(url, { ...opts, headers: { apikey: CONFIG.supabaseKey, Authorization: `Bearer ${token || CONFIG.supabaseKey}`, "Content-Type": "application/json", ...(opts.headers || {}) } });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw { code: res.status === 401 || res.status === 403 ? "invalid_argument" : res.status === 413 ? "quota_exceeded" : "unavailable", message: j.message || res.statusText };
+    }
+    return res.status === 204 ? null : res.json().catch(() => null);
+  };
+  const snap = (id, data) => ({ id, exists: data !== undefined, data: () => data });
+  const doc = (path) => ({
+    id: path.split("/").pop(), path,
+    get: async () => { const rows = await call(`${base}?path=eq.${encodeURIComponent(path)}&select=data`); return snap(path.split("/").pop(), rows && rows.length ? rows[0].data : undefined); },
+    set: async (data) => { await call(base, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ path, data, updated_at: new Date().toISOString() }) }); },
+    update: async (data) => { const cur = await doc(path).get(); if (!cur.exists) throw { code: "invalid_argument", message: "dokumen belum ada" }; await doc(path).set({ ...cur.data(), ...data }); },
+    delete: async () => { await call(`${base}?path=eq.${encodeURIComponent(path)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } }); }
+  });
+  return {
+    doc,
+    collection: (cp) => ({
+      doc: (id) => doc(cp + "/" + id),
+      get: async () => { const rows = await call(`${base}?path=like.${encodeURIComponent(cp + "/*")}&select=path,data&order=path`); const docs = (rows || []).filter((r) => r.path.split("/").length === cp.split("/").length + 1).map((r) => snap(r.path.split("/").pop(), r.data)); return { docs, size: docs.length, empty: !docs.length }; }
+    })
+  };
+}
+async function checkAdmin() {
+  IS_ADMIN = false;
+  const token = await validToken(); if (!token) return;
+  try {
+    const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/cpr_admins?select=email`, { headers: { apikey: CONFIG.supabaseKey, Authorization: `Bearer ${token}` } });
+    IS_ADMIN = res.ok && (await res.json()).length > 0;
+  } catch { IS_ADMIN = false; }
+}
+function renderAuth() {
+  if (!SB) return;
+  $("authBox").hidden = false;
+  $("authUser").textContent = SESSION ? SESSION.email + (IS_ADMIN ? " · admin" : "") : "";
+  $("btnLogin").textContent = SESSION ? "Keluar" : "Login";
+  // only admins upload
+  $("lblCpr").hidden = !IS_ADMIN; $("lblPic").hidden = !IS_ADMIN;
+}
+if (SB) {
+  $("btnLogin").addEventListener("click", () => {
+    if (SESSION) { storeSession(null); location.reload(); return; }
+    $("loginCard").hidden = !$("loginCard").hidden;
+  });
+  $("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault(); $("loginMsg").textContent = "Masuk …";
+    try {
+      storeSession(await authCall("password", { email: $("loginEmail").value.trim(), password: $("loginPass").value }));
+      location.reload();
+    } catch (err) { $("loginMsg").textContent = "Login gagal: " + err.message; }
+  });
+}
+
+let DB = null, DB_READY = false, LOCKED = new Map(), SAVED_AT = null;
+const CHUNK = 1000;
+const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex"];
+const useLocks = () => !!DB && !IS_SAMPLE && !META.hasKa;
+const canSave = () => !!DB && (!SB || IS_ADMIN);
+const monthKey = (d) => dayToIso(d).slice(0, 7);
+
+async function initDb() {
+  if (SB) {
+    loadSession(); await validToken(); await checkAdmin();
+    DB = makeSupabaseDb(); renderAuth();
+  } else {
+    try { DB = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch { DB = null; }
+  }
+  DB_READY = true;
+  if (!DB) { renderSavedInfo(); return; }
+  try {
+    const meta = await DB.doc("cpr/meta").get();
+    const pic = await DB.doc("settings/pic").get();
+    const params = await DB.doc("settings/params").get();
+    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = p.usePic !== false; }
+    if (pic.exists) PIC_LIST = pic.data().list || null;
+    if (!meta.exists) { renderSavedInfo(); renderQuality(); return; }
+    setStatus("Memuat data tersimpan …");
+    const m = meta.data();
+    const chunks = await Promise.all(Array.from({ length: m.chunks }, (_, i) => DB.doc("cpr/chunk-" + i).get()));
+    const rows = chunks.flatMap((c) => (c.exists ? c.data().rows : []));
+    META = { hasKa: m.hasKa, format: m.format, fileName: m.fileName, rawRows: m.rawRows, duplicates: m.duplicates, negatives: m.negatives, columnsFound: m.columnsFound };
+    RECS = rows.map((a) => { const r = {}; FIELDS.forEach((k, i) => { r[k] = a[i]; }); return finishRec(r); });
+    SAVED_AT = m.savedAt; IS_SAMPLE = false;
+    await loadLocks();
+    deriveMeta(); populateControls();
+    if (m.simFrom) { $("sFrom").value = m.simFrom; $("sTo").value = m.simTo; }
+    $("sampleBanner").hidden = true; updateModeBanner();
+    $("dataLabel").textContent = `${m.fileName} · ${fmtInt(RECS.length)} CPR · tersimpan ${fmtStamp(m.savedAt)}`;
+    await runSimulation({ save: false });
+    setStatus(`Data tersimpan dimuat: ${fmtInt(RECS.length)} CPR dari ${m.fileName}.`);
+  } catch (err) { setStatus("Data tersimpan tidak bisa dimuat: " + (err.message || err.code)); renderSavedInfo(); }
+}
+function fmtStamp(iso) { if (!iso) return "–"; const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; }
+async function loadLocks() {
+  LOCKED = new Map();
+  if (!DB) return;
+  const snap = await DB.collection("alloc").get();
+  for (const d of snap.docs) for (const [cpr, a] of Object.entries(d.data().items || {})) LOCKED.set(cpr, { ka: a[0], rule: a[1], weight: a[2], f1: a[3], f2: a[4], on: a[5] });
+}
+async function saveData() {
+  if (!DB) return;
+  const rows = RECS.map((r) => FIELDS.map((k) => (k === "vendorName" && r[k] ? String(r[k]).slice(0, 60) : r[k] ?? null)));
+  const n = Math.ceil(rows.length / CHUNK);
+  const old = await DB.doc("cpr/meta").get();
+  const oldN = old.exists ? old.data().chunks || 0 : 0;
+  for (let i = 0; i < n; i++) await DB.doc("cpr/chunk-" + i).set({ rows: rows.slice(i * CHUNK, (i + 1) * CHUNK) });
+  for (let i = n; i < oldN; i++) await DB.doc("cpr/chunk-" + i).delete();
+  if (PIC_LIST) await DB.doc("settings/pic").set({ list: PIC_LIST });
+  SAVED_AT = new Date().toISOString();
+  await DB.doc("cpr/meta").set({ fileName: META.fileName, format: META.format || "cleaned", savedAt: SAVED_AT, chunks: n, count: rows.length, hasKa: !!META.hasKa,
+    rawRows: META.rawRows || 0, duplicates: META.duplicates || 0, negatives: META.negatives || 0, columnsFound: META.columnsFound || {},
+    simFrom: $("sFrom").value, simTo: $("sTo").value });
+}
+async function saveParams() {
+  if (!DB || IS_SAMPLE) return;
+  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: $("sPic").checked });
+  const meta = await DB.doc("cpr/meta").get();
+  if (meta.exists) await DB.doc("cpr/meta").update({ simFrom: $("sFrom").value, simTo: $("sTo").value });
+}
+// write the KA of CPRs that were assigned for the first time in this run
+async function saveNewAssignments() {
+  if (!useLocks() || !SIM || !canSave()) return 0;
+  const fresh = SIM.assigned.filter((c) => !c.locked);
+  if (!fresh.length) return 0;
+  const today = toDay(new Date());
+  const byMonth = new Map();
+  for (const c of fresh) { const k = monthKey(c.r.create); if (!byMonth.has(k)) byMonth.set(k, []); byMonth.get(k).push(c); }
+  for (const [k, list] of byMonth) {
+    const ref = DB.doc("alloc/" + k);
+    const cur = await ref.get();
+    const items = { ...(cur.exists ? cur.data().items || {} : {}) };
+    for (const c of list) { items[c.r.cpr] = [c.ka, c.rule, c.weight, c.f1, c.f2, today]; LOCKED.set(c.r.cpr, { ka: c.ka, rule: c.rule, weight: c.weight, f1: c.f1, f2: c.f2, on: today }); c.locked = true; c.isNewAssign = true; }
+    await ref.set({ items });
+  }
+  return fresh.length;
+}
+async function clearAlloc() {
+  const snap = await DB.collection("alloc").get();
+  for (const d of snap.docs) await DB.doc("alloc/" + d.id).delete();
+  LOCKED = new Map();
+}
+function renderSaveBadge() {
+  const b = $("saveBadge"); if (!b) return;
+  let text, kind;
+  if (!DB_READY) { text = "Memeriksa penyimpanan …"; kind = "muted"; }
+  else if (!DB) { text = "Penyimpanan tidak aktif: data hilang saat refresh"; kind = "bad"; }
+  else if (SB && !SESSION) { text = "Belum login: data asli tidak ditampilkan"; kind = "warn"; }
+  else if (!IS_SAMPLE && SAVED_AT) { text = "Tersimpan " + fmtStamp(SAVED_AT); kind = "good"; }
+  else if (!IS_SAMPLE) { text = "Belum tersimpan"; kind = "warn"; }
+  else { text = PIC_LIST ? "List RS PIC tersimpan · data CPR belum ada" : "Belum ada data tersimpan"; kind = "muted"; }
+  b.className = "pill " + kind; b.textContent = text;
+}
+function renderSavedInfo() {
+  renderSaveBadge();
+  const info = $("savedInfo"); if (!info) return;
+  const canWrite = canSave() && !IS_SAMPLE;
+  $("btnResetAlloc").hidden = !canWrite || META.hasKa; $("btnClearSaved").hidden = !canWrite;
+  if (!DB_READY) { info.textContent = "Memeriksa data tersimpan …"; return; }
+  if (!DB) { info.textContent = "Penyimpanan tidak tersedia di tampilan ini (misalnya saat belum masuk ke akun). Data hanya diproses di browser dan hilang saat halaman ditutup."; return; }
+  if (IS_SAMPLE) { info.textContent = (PIC_LIST ? `List RS PIC tersimpan (${fmtInt(Object.keys(PIC_LIST).length)} RS). ` : "") + "Data CPR belum ada. Upload file CPR untuk mulai menyimpan."; return; }
+  info.textContent = `File: ${META.fileName || "–"} · ${fmtInt(RECS.length)} CPR · disimpan ${fmtStamp(SAVED_AT)} · List RS PIC: ${PIC_LIST ? fmtInt(Object.keys(PIC_LIST).length) + " RS" : "belum ada"} · `
+    + (META.hasKa ? "Mode validasi: hasil pembagian dihitung ulang setiap kali, tidak dikunci." : `${fmtInt(LOCKED.size)} CPR sudah punya KA tetap dari pembagian sebelumnya.`);
+}
+// destructive buttons need a second click within 5 seconds
+function confirmTwice(btn, text) {
+  if (btn.dataset.armed === "1") { btn.dataset.armed = ""; btn.textContent = btn.dataset.label; btn.classList.remove("danger"); return true; }
+  btn.dataset.label = btn.textContent; btn.dataset.armed = "1"; btn.textContent = text; btn.classList.add("danger");
+  setTimeout(() => { if (btn.dataset.armed === "1") { btn.dataset.armed = ""; btn.textContent = btn.dataset.label; btn.classList.remove("danger"); } }, 5000);
+  return false;
+}
+$("btnResetAlloc").addEventListener("click", async () => {
+  if (!DB || !confirmTwice($("btnResetAlloc"), "Klik lagi: KA lama dihapus, semua CPR dibagikan ulang")) return;
+  try { setStatus("Menghapus pembagian lama …"); await clearAlloc(); await runSimulation(); } catch (err) { setStatus("Gagal: " + (err.message || err.code)); }
+});
+$("btnClearSaved").addEventListener("click", async () => {
+  if (!DB || !confirmTwice($("btnClearSaved"), "Klik lagi untuk menghapus semua data tersimpan")) return;
+  try {
+    setStatus("Menghapus data tersimpan …");
+    const meta = await DB.doc("cpr/meta").get();
+    const n = meta.exists ? meta.data().chunks || 0 : 0;
+    for (let i = 0; i < n; i++) await DB.doc("cpr/chunk-" + i).delete();
+    await DB.doc("cpr/meta").delete(); await DB.doc("settings/pic").delete(); await DB.doc("settings/params").delete();
+    await clearAlloc();
+    location.reload();
+  } catch (err) { setStatus("Gagal menghapus: " + (err.message || err.code)); }
+});
+function saveErrorText(err) {
+  const code = err && err.code;
+  if (code === "invalid_argument") return SB ? "akun ini tidak punya akses menyimpan (hanya admin)" : "kamu tidak punya akses untuk menyimpan (hanya pemilik atau Editor dashboard)";
+  if (code === "quota_exceeded") return "ruang penyimpanan dashboard penuh";
+  return (err && (err.message || code)) || "kesalahan tidak dikenal";
+}
+
+/* ---------- Filters ---------- */
+function filtered() {
+  const from = isoToDay($("fFrom").value), to = isoToDay($("fTo").value), ka = $("fKa").value, unit = $("fUnit").value, onlyNew = $("fNew").checked;
+  return RECS.filter((r) => (!onlyNew || r.isNew) && r.create !== null && (from === null || r.create >= from) && (to === null || r.create <= to) && (!ka || kaOf(r) === ka) && (!unit || r.unit === unit));
+}
+for (const id of ["fFrom", "fTo", "fKa", "fUnit", "fNew"]) $(id).addEventListener("change", renderAll);
+$("fReset").addEventListener("click", () => { populateControls(); renderAll(); });
+
+function tile(k, v, unit, d) {
+  const t = el("div", { class: "tile" });
+  t.append(el("div", { class: "k" }, k));
+  const val = el("div", { class: "v" }, v); if (unit) val.append(el("small", {}, unit)); t.append(val);
+  if (d) t.append(el("div", { class: "d" }, d));
+  return t;
+}
+
+/* ---------- Kinerja KA ---------- */
+let kaSort = { sortKey: "totAvg", dir: -1 };
+// Daily load per KA from the last simulation run. Same definition as the DSS:
+// a CPR counts on its review-1 days and review-2 days, a CPR with the same vendor counts 0.5.
+function loadView() {
+  if (!SIM) return null;
+  const useActual = META.hasKa && $("loadSrc").value === "actual" && SIM.actualLoad;
+  const L = useActual ? SIM.actualLoad : SIM.load;
+  let from = isoToDay($("loadFrom").value), to = isoToDay($("loadTo").value);
+  const days = SIM.workDays.filter((d) => (from === null || d >= from) && (to === null || d <= to));
+  const at = (k, d) => L[k][d - SIM.minDay] || 0;
+  const perKa = {};
+  SIM.kaList.forEach((ka, k) => {
+    const v = days.map((d) => at(k, d));
+    perKa[ka] = { avg: mean(v), peak: v.length ? Math.max(...v) : null, over: v.filter((x) => x > SIM.maxPerDay).length };
+  });
+  return { useActual, days, at, perKa };
+}
+// The KA who really did the work: "Username Key Account Ho" (CPR_Cleaned) or the Username on the
+// Key Account role row (CPRHistory). The DSS plan is never used here, because a plan is not proof of who worked.
+function realKa(r) {
+  if (!r.ka) return null;
+  if (META.hasKa) return r.ka;
+  // operational mode: match the username to a PIC name ("samuel.duka" -> "Samuel"), else keep the username
+  const u = r.ka.toLowerCase();
+  return (META.kaList || []).find((n) => u.includes(n.toLowerCase())) || r.ka;
+}
+function renderKa() {
+  const view = loadView();
+  const data = filtered().filter((r) => realKa(r) && (r.rev1 !== null || r.rev2 !== null));
+  $("kaNote").textContent = META.hasKa ? "" : data.length
+    ? `Lama kerja dihitung dari ${fmtInt(data.length)} CPR yang di file tercatat siapa KA-nya (Username pada role Key Account). CPR tanpa catatan itu tidak dihitung.`
+    : "Belum bisa dihitung: di data ini tidak ada CPR yang tercatat siapa KA yang mengerjakannya (Username pada role Key Account). Cek pemetaan role di tab Data. Kolom beban di bawah tetap dari hasil pembagian DSS.";
+  const groups = new Map();
+  for (const r of data) { const ka = realKa(r); if (!groups.has(ka)) groups.set(ka, []); groups.get(ka).push(r); }
+  // KAs with a DSS load but no recorded work still get a row (with empty review columns)
+  if (view) for (const ka of SIM.kaList) if (!groups.has(ka)) groups.set(ka, []);
+  const rows = [...groups.entries()].map(([ka, list]) => {
+    const r1 = list.map((r) => r.rev1), r2 = list.map((r) => r.rev2);
+    const tot = list.map((r) => (r.rev1 !== null && r.rev2 !== null ? r.rev1 + r.rev2 : null));
+    const lv = view && view.perKa[ka];
+    return {
+      ka, name: kaLabel(ka), n: list.length, units: new Set(list.map((r) => r.unit)).size,
+      r1avg: mean(r1), r1med: median(r1), r2avg: mean(r2), r2med: median(r2), totAvg: mean(tot),
+      slow: list.length ? (list.filter((r) => (r.rev1 ?? 0) > 3 || (r.rev2 ?? 0) > 3).length / list.length) * 100 : null,
+      loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null, loadOver: lv ? lv.over : null
+    };
+  }).sort((a, b) => (b.totAvg ?? 0) - (a.totAvg ?? 0));
+  const withWork = rows.filter((r) => r.n > 0);
+  barChartH($("chKa"), withWork.map((r) => `${r.name} (${r.n})`), [
+    { name: "Rata-rata review 1 (hari)", color: "var(--s1)", values: withWork.map((r) => r.r1avg) },
+    { name: "Rata-rata review 2 (hari)", color: "var(--s2)", values: withWork.map((r) => r.r2avg) }
+  ], { stacked: true, dec: 1, label: "Rata-rata lama review per KA" });
+  renderTable($("tblKa"), [
+    { key: "name", label: "Key Account" },
+    { key: "n", label: "CPR dikerjakan", num: true, render: (r) => fmtInt(r.n) },
+    { key: "r1avg", label: "Review 1 (hari)", num: true, render: (r) => fmtNum(r.r1avg) },
+    { key: "r2avg", label: "Review 2 (hari)", num: true, render: (r) => fmtNum(r.r2avg) },
+    { key: "totAvg", label: "Total (hari)", num: true, render: (r) => fmtNum(r.totAvg) },
+    { key: "loadAvg", label: "Beban rata-rata/hari", num: true, render: (r) => fmtNum(r.loadAvg) },
+    { key: "loadPeak", label: "Beban tertinggi", num: true, render: (r) => fmtNum(r.loadPeak) }
+  ], rows, kaSort);
+  renderLoadTable(view);
+}
+function renderLoadTable(view) {
+  const table = $("tblHeat");
+  $("loadSrcWrap").hidden = !META.hasKa;
+  if (!view) { $("loadDesc").textContent = "Beban harian dihitung dari hasil pembagian DSS. Upload data dan List RS PIC terlebih dahulu."; table.replaceChildren(); $("overLegend").textContent = ""; return; }
+  $("loadDesc").textContent = (view.useActual
+    ? "Pembagian aktual: KA asli dan tanggal asli. Dipakai hanya untuk validasi, karena data operasional nanti tidak punya kolom KA. "
+    : "Hasil pembagian DSS: CPR diberikan ke KA saat dibuat; tanggal perkiraan diganti tanggal aktual begitu CPR benar-benar tiba atau kembali. ")
+    + `Angka = jumlah CPR yang sedang di-review KA pada hari kerja itu (review 1 = ${SIM.w1} hari, review 2 = ${SIM.w2} hari), CPR dengan vendor yang sama dihitung ${fmtNum(SIM.vf)}.`;
+  $("overLegend").textContent = `Kotak bergaris merah = di atas batas ${fmtNum(SIM.maxPerDay)} CPR per hari`;
+  const kas = SIM.kaList.map((ka, k) => ({ ka, k })).sort((a, b) => kaLabel(a.ka).localeCompare(kaLabel(b.ka)));
+  if (!view.days.length) { table.replaceChildren(el("tbody")); return; }
+  let max = 1; for (const d of view.days) for (const { k } of kas) max = Math.max(max, view.at(k, d));
+  const thead = el("thead"), tr = el("tr");
+  tr.append(el("th", {}, "Tanggal"));
+  for (const { ka } of kas) tr.append(el("th", {}, kaLabel(ka)));
+  tr.append(el("th", { class: "num" }, "Selisih"));
+  thead.append(tr);
+  const tbody = el("tbody");
+  for (const d of view.days) {
+    const row = el("tr"); row.append(el("td", {}, fmtDay(d)));
+    const vals = kas.map(({ k }) => view.at(k, d));
+    kas.forEach(({ ka }, i) => {
+      const v = vals[i], pct = Math.round(4 + (v / max) * 90), over = v > SIM.maxPerDay;
+      const td = el("td", { class: "cell" + (over ? " over" : ""), style: `background:color-mix(in srgb, var(--accent) ${pct}%, var(--panel));color:${pct > 55 ? "#fff" : "var(--fg)"}` }, fmtNum(v, Number.isInteger(v) ? 0 : 1));
+      td.addEventListener("pointermove", (e) => showTip(e, `${kaLabel(ka)} · ${fmtDay(d)}`, [{ value: fmtNum(v), label: "CPR sedang di-review", color: "var(--accent)" }, { value: fmtNum(SIM.maxPerDay), label: over ? "batas (terlewati)" : "batas" }]));
+      td.addEventListener("pointerleave", hideTip);
+      row.append(td);
+    });
+    row.append(el("td", { class: "gapcol" }, fmtNum(Math.max(...vals) - Math.min(...vals))));
+    tbody.append(row);
+  }
+  table.replaceChildren(thead, tbody);
+}
+for (const id of ["loadSrc", "loadFrom", "loadTo"]) $(id).addEventListener("change", renderKa);
+
+/* ---------- Simulation (DSS allocation) ---------- */
+async function runSimulation(opts = {}) {
+  const btn = $("sRun"); btn.disabled = true; btn.textContent = "Menghitung …";
+  await new Promise((r) => setTimeout(r, 20));
+  try { SIM = simulate(); syncLoadDates(); } catch (err) { SIM = null; SIM_KA = new Map(); }
+  btn.disabled = false; btn.textContent = "Jalankan simulasi";
+  if (SIM && opts.save !== false && canSave() && !IS_SAMPLE) {
+    try { await saveParams(); const n = await saveNewAssignments(); if (useLocks()) setStatus(`${fmtInt(n)} CPR baru dibagikan dan disimpan; ${fmtInt(SIM.n - n)} CPR tetap di KA sebelumnya.`); }
+    catch (err) { setStatus("Hasil pembagian tidak tersimpan: " + saveErrorText(err)); }
+  }
+  renderAll();
+  if (!SIM) $("simNote").textContent = "Pembagian belum bisa dijalankan: " + simError();
+}
+$("sRun").addEventListener("click", runSimulation);
+function simError() { try { simulate(); return ""; } catch (e) { return e.message; } }
+function syncLoadDates() {
+  if (!SIM) return;
+  $("loadFrom").value = dayToIso(SIM.workDays[0]); $("loadTo").value = dayToIso(SIM.workDays[SIM.workDays.length - 1]);
+}
+
+function simulate() {
+  const start = isoToDay($("sFrom").value), end = isoToDay($("sTo").value);
+  const vf = Math.max(0, Math.min(1, parseFloat($("sVendor").value) || 0.5));
+  const usePic = $("sPic").checked;
+  const userMax = parseFloat($("sMax").value);
+  // Validation mode: only CPRs with complete dates, so the real KA load can be compared.
+  // Operational mode: every CPR created in the period, finished or still in progress.
+  const test = RECS.filter((r) => r.isNew && r.create !== null && r.create >= start && r.create <= end && (!META.hasKa || (r.kaIn !== null && r.back !== null && r.kaOut !== null)));
+  if (!test.length) throw new Error(META.hasKa ? "tidak ada CPR proses KA dengan tanggal lengkap pada periode ini" : "tidak ada CPR yang dibuat pada periode ini");
+  if (!META.hasKa && !PIC_LIST) throw new Error("upload List RS PIC terlebih dahulu, karena data tidak punya kolom KA");
+  // Forecast inputs: medians from 2026-process CPRs before the test period
+  // history window: up to 1 year before the period
+  const hist = RECS.filter((r) => r.isNew && r.create !== null && r.create < start && r.create >= start - 365);
+  const histF2 = RECS.filter((r) => r.isNew && r.kaOut !== null && r.kaOut < start && r.kaOut >= start - 365);
+  const base = hist.length >= 30 ? hist : RECS.filter((r) => r.isNew);
+  const baseF2 = histF2.length >= 30 ? histF2 : RECS.filter((r) => r.isNew);
+  const unitMed = (list, key) => { const g = new Map(); for (const r of list) { if (r[key] === null) continue; if (!g.has(r.unit)) g.set(r.unit, []); g.get(r.unit).push(r[key]); } const out = {}; for (const [u, a] of g) out[u] = median(a); return out; };
+  const f1Unit = unitMed(base, "f1"), f2Unit = unitMed(baseF2, "f2");
+  const f1All = median(base.map((r) => r.f1)) ?? 2, f2All = median(baseF2.map((r) => r.f2)) ?? 4;
+  const w1 = Math.max(1, Math.round(median(base.map((r) => r.rev1)) ?? 1));
+  const w2 = Math.max(1, Math.round(median(baseF2.map((r) => r.rev2)) ?? 2));
+  // KA list and PIC per unit
+  const kaList = META.hasKa ? [...new Set(test.map((r) => r.ka))].sort() : META.kaList.slice();
+  if (!kaList.length) throw new Error("daftar KA kosong");
+  const kaIdx = new Map(kaList.map((k, i) => [k, i]));
+  const pic = {};
+  let picSource;
+  if (PIC_LIST) {
+    picSource = "List RS PIC";
+    for (const [rs, name] of Object.entries(PIC_LIST)) { const u = META.nameToUser[name.toLowerCase()]; if (u) pic[rs] = u; }
+  } else {
+    picSource = "KA yang paling sering menangani unit tersebut sebelum periode uji";
+    const g = new Map(); for (const r of (hist.length ? hist : RECS.filter((x) => x.isNew))) { if (!g.has(r.unit)) g.set(r.unit, []); g.get(r.unit).push(r.ka); }
+    for (const [u, a] of g) pic[u] = mode(a);
+  }
+  // Day grid (covers real dates and forecast dates)
+  const minDay = Math.min(...test.map((r) => r.create));
+  const lastPred = (r) => r.create + Math.round(f1Unit[r.unit] ?? f1All) + w1 + Math.round(f2Unit[r.unit] ?? f2All) + w2;
+  const maxActual = Math.max(...test.map((r) => Math.max(lastPred(r), ...[r.kaIn, r.kaOut, r.back].filter((x) => x !== null).map((x) => x + w1 + w2 + 30))));
+  const nDays = maxActual - minDay + 120;
+  const newLoad = () => kaList.map(() => new Float64Array(nDays));
+  const off = (d) => d - minDay;
+  const activeDays = (c) => { const out = []; for (let i = 0; i < c.w1; i++) out.push(off(c.s1 + i)); for (let i = 0; i < c.w2; i++) out.push(off(c.s2 + i)); return out.filter((x) => x >= 0 && x < nDays); };
+  const add = (L, c, sign) => { const a = L[kaIdx.get(c.ka)]; for (const d of activeDays(c)) a[d] += sign * c.weight; };
+  const lastDay = (c) => c.s2 + c.w2 - 1;
+  const holding = (c, day) => c.s1 <= day && day <= lastDay(c);
+  const peak = (L, ka, days, w) => { const a = L[kaIdx.get(ka)]; let p = 0; for (const d of days) p = Math.max(p, a[d] + w); return p; };
+
+  // ACTUAL (validation mode only): real KA and real dates
+  let actualL = null, actualTbl = null;
+  const actualCount = {};
+  if (META.hasKa) {
+    actualL = newLoad(); const actualByVendor = new Map();
+    for (const r of test.slice().sort((a, b) => a.kaIn - b.kaIn)) {
+      const c = { ka: r.ka, vendor: r.vendor, s1: r.kaIn, s2: r.back, w1, w2 };
+      const same = hasVendor(r.vendor) && (actualByVendor.get(r.vendor) || []).some((x) => x.ka === r.ka && holding(x, r.kaIn));
+      c.weight = same ? vf : 1;
+      add(actualL, c, 1);
+      if (!actualByVendor.has(r.vendor)) actualByVendor.set(r.vendor, []);
+      actualByVendor.get(r.vendor).push(c);
+      actualCount[r.ka] = (actualCount[r.ka] || 0) + 1;
+    }
+  }
+  const table = (L, days) => days.map((d) => kaList.map((_, k) => L[k][off(d)] || 0));
+  const workDaysUntil = (last) => { const out = []; for (let d = start; d <= last; d++) if (weekday(d) < 5) out.push(d); return out; };
+  let autoMax;
+  if (META.hasKa) {
+    actualTbl = table(actualL, workDaysUntil(Math.max(end, ...test.map((r) => r.back))));
+    autoMax = Math.round((quantile(actualTbl.flat(), 0.9) || 5) * 10) / 10;
+  } else {
+    // no real load to learn from: twice the average load per KA per working day
+    const nWork = workDaysUntil(end).length || 1;
+    autoMax = Math.max(2, Math.round(((test.length * (w1 + w2)) / (nWork * kaList.length)) * 2 * 10) / 10);
+  }
+  const maxPerDay = userMax > 0 ? userMax : autoMax;
+  // DSS: assign once at creation using forecast dates, then move to real dates as they happen
+  const L = newLoad(), byVendor = new Map(), assigned = [];
+  const byCreate = new Map(), byArrive = new Map(), byKaOut = new Map(), byBack = new Map();
+  const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+  for (const r of test) {
+    const lock = useLocks() ? LOCKED.get(r.cpr) : null;
+    const c = {
+      r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2,
+      f1: lock ? lock.f1 : Math.round(f1Unit[r.unit] ?? f1All), f2: lock ? lock.f2 : Math.round(f2Unit[r.unit] ?? f2All),
+      lock: lock && kaList.includes(lock.ka) ? lock : null
+    };
+    c.predArrival = r.create + c.f1; c.s1 = c.predArrival; c.s2 = c.s1 + w1 + c.f2;
+    push(byCreate, r.create, c); if (r.kaIn !== null) push(byArrive, r.kaIn, c); if (r.kaOut !== null) push(byKaOut, r.kaOut, c); if (r.back !== null) push(byBack, r.back, c);
+  }
+  const vendorHolder = (vendor, day) => { if (!hasVendor(vendor)) return null; for (const x of byVendor.get(vendor) || []) if (holding(x, day)) return x.ka; return null; };
+  const rules = { "Vendor sama": 0, "PIC unit": 0, "Beban terendah": 0, "Exception": 0 };
+  for (let day = minDay; day <= maxActual + 60; day++) {
+    for (const c of byCreate.get(day) || []) {
+      const days = activeDays(c);
+      let ka = null, weight = 1, rule;
+      if (c.lock) {
+        // already assigned in an earlier upload: the KA never changes
+        c.ka = c.lock.ka; c.weight = c.lock.weight; c.rule = c.lock.rule; c.locked = true; rules[c.rule] = (rules[c.rule] || 0) + 1;
+        add(L, c, 1); assigned.push(c);
+        if (!byVendor.has(c.vendor)) byVendor.set(c.vendor, []); byVendor.get(c.vendor).push(c);
+        continue;
+      }
+      const hv = vendorHolder(c.vendor, c.s1);
+      if (hv && peak(L, hv, days, vf) <= maxPerDay) { ka = hv; weight = vf; rule = "Vendor sama"; }
+      if (!ka && usePic) { const p = pic[c.unit]; if (p && kaIdx.has(p) && peak(L, p, days, 1) <= maxPerDay) { ka = p; rule = "PIC unit"; } }
+      if (!ka) {
+        let best = null, bestPeak = Infinity;
+        for (const k of kaList) { const pk = peak(L, k, days, 1); if (pk < bestPeak) { bestPeak = pk; best = k; } }
+        ka = best; rule = bestPeak <= maxPerDay ? "Beban terendah" : "Exception";
+      }
+      c.ka = ka; c.weight = weight; c.rule = rule; rules[rule]++;
+      add(L, c, 1); assigned.push(c);
+      if (!byVendor.has(c.vendor)) byVendor.set(c.vendor, []); byVendor.get(c.vendor).push(c);
+    }
+    for (const c of byArrive.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s1 = day; c.s2 = day + c.w1 + c.f2; add(L, c, 1); }
+    for (const c of byKaOut.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s2 = day + c.f2; add(L, c, 1); }
+    for (const c of byBack.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s2 = day; add(L, c, 1); }
+  }
+  const lastDay2 = Math.max(end, ...assigned.map((c) => (META.hasKa ? c.r.back : lastDay(c))));
+  const workDays = workDaysUntil(lastDay2);
+  const dssTbl = table(L, workDays);
+  if (META.hasKa) actualTbl = table(actualL, workDays);
+  const summarize = (tbl) => {
+    const gaps = tbl.map((row) => Math.max(...row) - Math.min(...row));
+    return { gap: mean(gaps), std: mean(tbl.map(stdev)), over: tbl.filter((row) => Math.max(...row) > maxPerDay).length, highest: Math.max(...tbl.flat()), gaps };
+  };
+  const dssCount = {}; for (const c of assigned) dssCount[c.ka] = (dssCount[c.ka] || 0) + 1;
+  SIM_KA = new Map(assigned.map((c) => [c.r.cpr, c.ka]));
+  return {
+    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All,
+    kaList, workDays, actual: actualTbl ? summarize(actualTbl) : null, dss: summarize(dssTbl), rules, assigned, actualCount, dssCount,
+    same: META.hasKa ? assigned.filter((c) => c.ka === c.r.ka).length / assigned.length : null, load: L, actualLoad: actualL, minDay, nDays, n: test.length,
+    open: assigned.filter((c) => c.r.backOut === null).length
+  };
+}
+
+function cmpTile(k, a, b, unit, lowerIsBetter = true, dec = 1) {
+  const t = el("div", { class: "tile" }); t.append(el("div", { class: "k" }, k));
+  const cmp = el("div", { class: "cmp" });
+  cmp.append(el("span", {}, "Aktual"), el("b", {}, fmtNum(a, dec) + (unit || "")), el("span", {}, "DSS"), el("b", {}, fmtNum(b, dec) + (unit || "")));
+  t.append(cmp);
+  if (a) { const ch = ((b - a) / a) * 100, good = lowerIsBetter ? ch < 0 : ch > 0; t.append(el("div", { class: "delta " + (Math.abs(ch) < 0.5 ? "" : good ? "good" : "bad") }, (ch > 0 ? "▲ " : ch < 0 ? "▼ " : "") + fmtNum(Math.abs(ch), 0) + "% " + (good ? "lebih baik" : Math.abs(ch) < 0.5 ? "sama" : "lebih buruk"))); }
+  return t;
+}
+let incState = { page: 0, q: "" };
+function renderSim() {
+  const s = SIM;
+  if (!s) {
+    $("simTiles").replaceChildren(); $("chKaCount").replaceChildren(); $("lgKaCount").replaceChildren(); $("tblInc").replaceChildren(); $("simCompare").textContent = "";
+    $("subKaCount").textContent = "";
+    return;
+  }
+  const fresh = s.assigned.filter((c) => c.isNewAssign).length;
+  $("simTiles").replaceChildren(
+    tile("CPR dibagikan", fmtInt(s.n), "", `dibuat ${fmtDay(s.start)} – ${fmtDay(s.end)}`),
+    tile("KA", fmtInt(s.kaList.length), "orang", `rata-rata ${fmtNum(s.n / s.kaList.length, 0)} CPR per KA`),
+    useLocks() ? tile("CPR baru dibagikan", fmtInt(fresh), "", "pada upload terakhir; CPR lain tetap di KA-nya") : tile("Beban tertinggi", fmtNum(s.dss.highest), "CPR", `satu KA dalam sehari · batas ${fmtNum(s.maxPerDay)}`),
+    tile("Perlu keputusan SPV", fmtInt(s.rules.Exception), "CPR", s.rules.Exception ? "Tidak ada KA yang bebannya muat" : "Semua CPR muat di bawah batas beban")
+  );
+  $("simCompare").textContent = s.actual
+    ? `Dibanding pembagian yang sebenarnya terjadi, selisih beban KA tersibuk dan tersepi turun dari ${fmtNum(s.actual.gap)} ke ${fmtNum(s.dss.gap)} CPR per hari (${fmtNum(((s.actual.gap - s.dss.gap) / s.actual.gap) * 100, 0)}% lebih merata).`
+    : "";
+  const lg = (items) => items.map(([name, c]) => `<span><i style="background:${c}"></i>${name}</span>`).join("");
+  const kas = s.kaList.slice().sort((a, b) => (s.dssCount[b] || 0) - (s.dssCount[a] || 0));
+  $("subKaCount").textContent = s.actual ? "Hasil DSS dibanding pembagian aktual" : "Hasil pembagian DSS";
+  $("lgKaCount").innerHTML = s.actual ? lg([["DSS", "var(--s1)"], ["Aktual", "var(--s2)"]]) : "";
+  barChartH($("chKaCount"), kas.map(kaLabel), s.actual ? [
+    { name: "DSS", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) },
+    { name: "Aktual", color: "var(--s2)", values: kas.map((k) => s.actualCount[k] || 0) }
+  ] : [{ name: "CPR", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) }], { dec: 0, label: "Jumlah CPR per KA" });
+  $("simNote").textContent = `Perkiraan tiba di KA memakai median per rumah sakit. Lama review dihitung ${s.w1} hari (review 1) dan ${s.w2} hari (review 2). Batas beban ${fmtNum(s.maxPerDay)} CPR per KA per hari${s.userMax ? " (diisi manual)" : " (otomatis)"}.`;
+  incState.page = 0; renderIncoming();
+}
+function incRows() {
+  const q = incState.q.trim().toLowerCase();
+  return SIM.assigned.filter((c) => !q || [c.r.cpr, c.unit, c.vendor, c.r.vendorName, kaLabel(c.ka), kaLabel(c.r.ka)].join(" ").toLowerCase().includes(q))
+    .sort((a, b) => a.r.create - b.r.create || a.r.cpr.localeCompare(b.r.cpr));
+}
+const ruleKind = { "Vendor sama": "info", "PIC unit": "good", "Beban terendah": "warn", "Exception": "bad" };
+function renderIncoming() {
+  if (!SIM) return;
+  const rows = incRows(), per = 50, pages = Math.max(1, Math.ceil(rows.length / per));
+  incState.page = Math.min(incState.page, pages - 1);
+  $("incPage").textContent = `${incState.page + 1} / ${pages} · ${fmtInt(rows.length)} CPR`;
+  renderTable($("tblInc"), [
+    { key: "cpr", label: "Nomor CPR", code: true, sortable: false, render: (c) => c.r.cpr },
+    { key: "unit", label: "RS", sortable: false },
+    { key: "vendor", label: "Vendor", sortable: false, render: (c) => c.r.vendorName ? c.r.vendorName.slice(0, 32) : c.vendor },
+    { key: "create", label: "Dibuat", sortable: false, render: (c) => fmtDay(c.r.create) },
+    { key: "pred", label: "Tiba di KA", sortable: false, render: (c) => (c.r.kaIn !== null ? fmtDay(c.r.kaIn) : fmtDay(c.predArrival) + " (perkiraan)") },
+    { key: "ka", label: "KA", sortable: false, render: (c) => kaLabel(c.ka) },
+    { key: "rule", label: "Aturan", sortable: false, render: (c) => pill(c.rule, ruleKind[c.rule]) },
+    ...(useLocks() ? [{ key: "lk", label: "Pembagian", sortable: false, render: (c) => (c.isNewAssign ? pill("Baru", "info") : c.locked ? pill("Tetap", "muted") : pill("Belum disimpan", "warn")) }] : []),
+  ], rows.slice(incState.page * per, incState.page * per + per));
+}
+$("incSearch").addEventListener("input", (e) => { incState.q = e.target.value; incState.page = 0; renderIncoming(); });
+$("incPrev").addEventListener("click", () => { incState.page = Math.max(0, incState.page - 1); renderIncoming(); });
+$("incNext").addEventListener("click", () => { incState.page++; renderIncoming(); });
+$("incCopy").addEventListener("click", async () => {
+  if (!SIM) return;
+  const lines = [["Nomor CPR", "RS", "Vendor ID", "Dibuat", "Perkiraan tiba KA", "Aktual tiba KA", "KA DSS", "Aturan", ...(META.hasKa ? ["KA aktual"] : [])].join("\t")];
+  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.vendor, dayToIso(c.r.create), dayToIso(c.predArrival), c.r.kaIn !== null ? dayToIso(c.r.kaIn) : "", kaLabel(c.ka), c.rule, ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
+  const text = lines.join("\n");
+  try { await navigator.clipboard.writeText(text); setStatus(`${fmtInt(lines.length - 1)} baris disalin. Tempel ke Excel dengan Ctrl+V.`); }
+  catch { const ta = el("textarea", { style: "position:fixed;left:-9999px" }); ta.value = text; document.body.append(ta); ta.select(); const ok = document.execCommand && document.execCommand("copy"); ta.remove(); setStatus(ok ? `${fmtInt(lines.length - 1)} baris disalin.` : "Browser menolak menyalin otomatis. Pilih tabel lalu salin manual."); }
+});
+
+/* ---------- Kualitas data ---------- */
+function renderQuality() {
+  renderSavedInfo(); renderHistInfo();
+  const ka = RECS.filter((r) => r.isNew);
+  const complete = ka.filter((r) => r.kaIn !== null && r.kaOut !== null && r.back !== null && r.backOut !== null).length;
+  const unknownPic = PIC_LIST ? Object.values(PIC_LIST).filter((n) => !META.nameToUser[n.toLowerCase()]) : [];
+  const unitsNoPic = PIC_LIST ? META.units.filter((u) => !PIC_LIST[u] && RECS.some((r) => r.unit === u && r.isNew)) : [];
+  if (!META.hasKa) unknownPic.length = 0;
+  $("dqTiles").replaceChildren(
+    tile("Baris di file terakhir", fmtInt(META.rawRows), "", META.format === "history" ? `${fmtInt(RECS.length)} CPR setelah digabung dengan data tersimpan` : `${fmtInt(META.duplicates || 0)} duplikat nomor CPR dilewati`),
+    META.hasKa ? tile("CPR proses KA", fmtInt(ka.length), "", `${fmtInt(RECS.length - ka.length)} CPR proses lama`) : tile("Kolom KA", "Tidak ada", "", "Mode operasional: KA ditentukan oleh DSS"),
+    tile("Tanggal lengkap", fmtNum((complete / Math.max(1, ka.length)) * 100, 0), "%", "CPR dengan 4 tanggal KA terisi"),
+    tile("List RS PIC", PIC_LIST ? fmtInt(Object.keys(PIC_LIST).length) : "–", PIC_LIST ? "RS" : "", PIC_LIST ? (unknownPic.length ? `PIC tidak dikenali: ${unknownPic.join(", ")}` : unitsNoPic.length ? `RS tanpa PIC: ${unitsNoPic.join(", ")}` : "Semua PIC cocok dengan data") : "Belum di-upload")
+  );
+}
+
+/* ---------- Example data (synthetic, shown before an upload) ---------- */
+function makeSample() {
+  let seed = 7; const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const logn = (med, spread) => Math.max(0, Math.round(med * Math.exp((rnd() + rnd() + rnd() - 1.5) * spread)));
+  const kas = [["Ayu", "ayu.pratiwi"], ["Bima", "bima.santoso"], ["Citra", "citra.lestari"], ["Dimas", "dimas.wijaya"], ["Eka", "eka.putri"], ["Fajar", "fajar.nugroho"]];
+  const units = Array.from({ length: 14 }, (_, i) => "RS " + String.fromCharCode(65 + i));
+  const speed = units.map(() => 1 + rnd() * 4);
+  const rows = []; const start = toDay("2026-01-05");
+  for (let i = 0; i < 1600; i++) {
+    const u = Math.floor(rnd() * units.length);
+    let create = start + Math.floor(rnd() * 268); if (weekday(create) > 4) create -= weekday(create) - 4;
+    const kaPick = rnd() < 0.85 ? kas[u % kas.length] : kas[Math.floor(rnd() * kas.length)];
+    const f1 = rnd() < 0.12 ? 8 + Math.floor(rnd() * 25) : logn(speed[u], 0.8);
+    const rev1 = Math.min(6, logn(1, 0.9)), f2 = rnd() < 0.15 ? 9 + Math.floor(rnd() * 20) : logn(3.5, 0.7), rev2 = Math.min(8, logn(2, 0.9));
+    const kaIn = create + f1, kaOut = kaIn + rev1, back = kaOut + f2, backOut = back + rev2;
+    const iso = (d) => dayToIso(d);
+    rows.push({ [COL.cpr]: `cpr-demo-${String(i + 1).padStart(5, "0")}`, [COL.unit]: units[u], [COL.vendor]: String(2100000 + Math.floor(rnd() * 60)), [COL.vendorName]: `Vendor Contoh ${1 + Math.floor(rnd() * 60)}`,
+      [COL.ka]: kaPick[1], [COL.kaName]: kaPick[0], [COL.create]: iso(create), [COL.phIn]: iso(create), [COL.phOut]: iso(kaIn),
+      [COL.kaIn]: iso(kaIn), [COL.kaOut]: iso(kaOut), [COL.back]: iso(back), [COL.backOut]: iso(backOut), [COL.capex]: rnd() < 0.4 ? "NR" : null });
+  }
+  return rows;
+}
+
+/* ---------- Tabs and boot ---------- */
+const renderers = { distribusi: renderSim, ka: renderKa, kualitas: renderQuality };
+let currentTab = "distribusi";
+function showTab(name) {
+  currentTab = name;
+  document.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name ? "true" : "false"));
+  document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === "panel-" + name));
+  renderers[name]();
+  try { localStorage.setItem("cprTab", name); } catch {}
+}
+document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+function renderAll() { renderKa(); renderQuality(); renderSim(); }
+let resizeTimer; window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => renderers[currentTab](), 150); });
+
+(function boot() {
+  const rows = makeSample();
+  RECS = buildRecords(rows, Object.values(COL)); IS_SAMPLE = true;
+  deriveMeta(); populateControls();
+  let tab = "distribusi"; try { tab = localStorage.getItem("cprTab") || tab; } catch {}
+  if (!renderers[tab]) tab = "distribusi";
+  SIM = simulate(); syncLoadDates();
+  showTab(tab);
+  initDb();
+})();
+</script>
