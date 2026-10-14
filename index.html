@@ -142,6 +142,8 @@ details.more { margin-top: 14px; }
 details.more > summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--accent-ink); padding: 6px 0; list-style: none; }
 details.more > summary::before { content: "▸ "; }
 details.more[open] > summary::before { content: "▾ "; }
+@keyframes flashIn { from { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); } to { background: var(--panel); } }
+.flash .tile { animation: flashIn 1.2s ease-out; }
 .scale { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
 .scale .bar { width: 140px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 6%, var(--panel)), var(--accent)); }
 
@@ -210,24 +212,26 @@ details.more[open] > summary::before { content: "▾ "; }
 
   <!-- PEMBAGIAN CPR -->
   <section class="panel active" id="panel-distribusi" role="tabpanel" aria-labelledby="tab-distribusi">
+    <div class="card" style="margin-top:16px">
+      <h3>Pengaturan pembagian</h3>
+      <div class="filters" style="border:0;padding:0;margin:8px 0 0">
+        <div class="field"><label for="sFrom">CPR dibuat dari</label><input type="date" id="sFrom"></div>
+        <div class="field"><label for="sTo">sampai</label><input type="date" id="sTo"></div>
+        <div class="field"><label for="sVendor">Bobot vendor sama</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
+        <div class="field"><label for="sMax">Batas beban/hari</label><input type="number" id="sMax" min="1" step="0.5" placeholder="otomatis"></div>
+        <input type="checkbox" id="sPic" hidden>
+        <button class="btn" id="sRun" type="button">Jalankan pembagian</button>
+        <button class="btn ghost" id="sReset" type="button" hidden>Bagikan ulang semua</button>
+      </div>
+      <p class="note" id="runInfo" style="font-weight:500;color:var(--fg)"></p>
+      <p class="note" id="simNote"></p>
+    </div>
     <div class="tiles" id="simTiles"></div>
     <p class="note" id="simCompare"></p>
     <div class="card" style="margin-top:12px"><h3>Jumlah CPR per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
     <div class="section-title"><h2>Daftar CPR dan KA-nya</h2><p>Urutan aturan: vendor sama → KA dengan beban paling ringan. List RS PIC hanya dipakai sebagai daftar KA.</p></div>
     <div class="tbl-tools"><input type="search" id="incSearch" placeholder="Cari CPR, rumah sakit, vendor, KA"><div class="pager"><button type="button" id="incCopy">Salin tabel</button><button type="button" id="incPrev" aria-label="Halaman sebelumnya">‹</button><span id="incPage"></span><button type="button" id="incNext" aria-label="Halaman berikutnya">›</button></div></div>
     <div class="tbl-wrap"><table id="tblInc"></table></div>
-    <details class="more">
-      <summary>Pengaturan pembagian</summary>
-      <div class="filters">
-        <div class="field"><label for="sFrom">CPR dibuat dari</label><input type="date" id="sFrom"></div>
-        <div class="field"><label for="sTo">sampai</label><input type="date" id="sTo"></div>
-        <div class="field"><label for="sVendor">Bobot vendor sama</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
-        <div class="field"><label for="sMax">Batas beban/hari</label><input type="number" id="sMax" min="1" step="0.5" placeholder="otomatis"></div>
-        <input type="checkbox" id="sPic" hidden>
-        <button class="btn" id="sRun" type="button">Bagikan</button>
-      </div>
-      <p class="note" id="simNote"></p>
-    </details>
   </section>
 
   <!-- KINERJA KA -->
@@ -1086,15 +1090,31 @@ async function runSimulation(opts = {}) {
   const btn = $("sRun"); btn.disabled = true; btn.textContent = "Menghitung …";
   await new Promise((r) => setTimeout(r, 20));
   try { SIM = simulate(); syncLoadDates(); } catch (err) { SIM = null; SIM_KA = new Map(); }
-  btn.disabled = false; btn.textContent = "Jalankan simulasi";
+  btn.disabled = false; btn.textContent = "Jalankan pembagian";
   if (SIM && opts.save !== false && canSave() && !IS_SAMPLE) {
     try { await saveParams(); const n = await saveNewAssignments(); if (useLocks()) setStatus(`${fmtInt(n)} CPR baru dibagikan dan disimpan; ${fmtInt(SIM.n - n)} CPR tetap di KA sebelumnya.`); }
     catch (err) { setStatus("Hasil pembagian tidak tersimpan: " + saveErrorText(err)); }
   }
   renderAll();
   if (!SIM) $("simNote").textContent = "Pembagian belum bisa dijalankan: " + simError();
+  showRunInfo();
 }
-$("sRun").addEventListener("click", runSimulation);
+function showRunInfo() {
+  const info = $("runInfo");
+  $("sReset").hidden = !(useLocks() && canSave());
+  if (!SIM) { info.textContent = ""; return; }
+  const now = new Date(), t = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+  const locked = SIM.assigned.filter((c) => c.locked && !c.isNewAssign).length;
+  info.textContent = `Pembagian dijalankan pukul ${t}: ${fmtInt(SIM.n)} CPR, batas beban ${fmtNum(SIM.maxPerDay)} CPR per KA per hari.`
+    + (useLocks() && locked ? ` ${fmtInt(locked)} CPR sudah punya KA tetap dari pembagian sebelumnya, jadi pengaturan baru hanya berlaku untuk CPR baru. Klik "Bagikan ulang semua" untuk menerapkannya ke semua CPR.` : "");
+  const tiles = $("simTiles"); tiles.classList.remove("flash"); void tiles.offsetWidth; tiles.classList.add("flash");
+}
+$("sReset").addEventListener("click", async () => {
+  if (!DB || !confirmTwice($("sReset"), "Klik lagi: semua CPR dibagikan ulang")) return;
+  try { setStatus("Menghapus pembagian lama …"); await clearAlloc(); await runSimulation(); setStatus("Semua CPR sudah dibagikan ulang dengan pengaturan sekarang."); }
+  catch (err) { setStatus("Gagal: " + (err.message || err.code)); }
+});
+$("sRun").addEventListener("click", () => runSimulation());
 function simError() { try { simulate(); return ""; } catch (e) { return e.message; } }
 function syncLoadDates() {
   if (!SIM) return;
