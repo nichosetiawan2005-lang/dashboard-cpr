@@ -226,6 +226,7 @@ details.more[open] > summary::before { content: "▾ "; }
       <p class="note" id="runInfo" style="font-weight:500;color:var(--fg)"></p>
       <p class="note" id="simNote"></p>
     </div>
+    <div class="banner warn" id="histWarn" hidden></div>
     <div class="tiles" id="simTiles"></div>
     <p class="note" id="simCompare"></p>
     <div id="simResults"><div class="card" style="margin-top:12px"><h3>Jumlah CPR per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
@@ -1142,6 +1143,8 @@ function simulate() {
   const unitMed = (list, key) => { const g = new Map(); for (const r of list) { if (r[key] === null) continue; if (!g.has(r.unit)) g.set(r.unit, []); g.get(r.unit).push(r[key]); } const out = {}; for (const [u, a] of g) out[u] = median(a); return out; };
   const f1Unit = unitMed(base, "f1"), f2Unit = unitMed(baseF2, "f2");
   const f1All = median(base.map((r) => r.f1)) ?? 2, f2All = median(baseF2.map((r) => r.f2)) ?? 4;
+  // how many past CPRs the forecast learns from (CPRs with both "created" and "arrived at KA" dates)
+  const histCount = base.filter((r) => r.f1 !== null).length;
   const w1 = Math.max(1, Math.round(median(base.map((r) => r.rev1)) ?? 1));
   const w2 = Math.max(1, Math.round(median(baseF2.map((r) => r.rev2)) ?? 2));
   // KA list and PIC per unit
@@ -1252,7 +1255,7 @@ function simulate() {
   const dssCount = {}; for (const c of assigned) dssCount[c.ka] = (dssCount[c.ka] || 0) + 1;
   SIM_KA = new Map(assigned.map((c) => [c.r.cpr, c.ka]));
   return {
-    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All,
+    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, histCount,
     kaList, workDays, actual: actualTbl ? summarize(actualTbl) : null, dss: summarize(dssTbl), rules, assigned, actualCount, dssCount,
     same: META.hasKa ? assigned.filter((c) => c.ka === c.r.ka).length / assigned.length : null, load: L, actualLoad: actualL, minDay, nDays, n: test.length,
     open: assigned.filter((c) => c.r.backOut === null).length
@@ -1296,6 +1299,11 @@ function renderSim() {
   $("simCompare").textContent = s.actual
     ? `Dibanding pembagian yang sebenarnya terjadi, selisih beban KA tersibuk dan tersepi turun dari ${fmtNum(s.actual.gap)} ke ${fmtNum(s.dss.gap)} CPR per hari (${fmtNum(((s.actual.gap - s.dss.gap) / s.actual.gap) * 100, 0)}% lebih merata).`
     : "";
+  // warn when the forecast has (almost) no history to learn from
+  const warn = $("histWarn");
+  warn.hidden = s.histCount >= 100;
+  warn.replaceChildren(el("div"));
+  warn.firstChild.innerHTML = `<b>Perkiraan tiba di KA kurang bisa dipercaya.</b> Perkiraan dihitung dari riwayat CPR yang sudah pernah tiba di KA, dan saat ini hanya ada ${fmtInt(s.histCount)} CPR seperti itu sebelum ${fmtDay(s.start)}${s.histCount ? ` (median ${fmtNum(s.f1All, 0)} hari, dipakai untuk semua rumah sakit yang tidak punya riwayat)` : " (dipakai angka default 2 hari)"}. Upload <b>CPR_Cleaned</b> sebagai data riwayat terlebih dahulu, lalu file CPRHistory, kemudian jalankan pembagian lagi.`;
   const lg = (items) => items.map(([name, c]) => `<span><i style="background:${c}"></i>${name}</span>`).join("");
   const kas = s.kaList.slice().sort((a, b) => (s.dssCount[b] || 0) - (s.dssCount[a] || 0));
   $("subKaCount").textContent = s.actual ? "Hasil DSS dibanding pembagian aktual" : "Hasil pembagian DSS";
