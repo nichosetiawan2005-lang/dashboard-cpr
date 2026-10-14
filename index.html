@@ -228,10 +228,11 @@ details.more[open] > summary::before { content: "▾ "; }
     </div>
     <div class="tiles" id="simTiles"></div>
     <p class="note" id="simCompare"></p>
-    <div class="card" style="margin-top:12px"><h3>Jumlah CPR per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
+    <div id="simResults"><div class="card" style="margin-top:12px"><h3>Jumlah CPR per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
     <div class="section-title"><h2>Daftar CPR dan KA-nya</h2><p>Urutan aturan: vendor sama → KA dengan beban paling ringan. List RS PIC hanya dipakai sebagai daftar KA.</p></div>
     <div class="tbl-tools"><input type="search" id="incSearch" placeholder="Cari CPR, rumah sakit, vendor, KA"><div class="pager"><button type="button" id="incCopy">Salin tabel</button><button type="button" id="incPrev" aria-label="Halaman sebelumnya">‹</button><span id="incPage"></span><button type="button" id="incNext" aria-label="Halaman berikutnya">›</button></div></div>
     <div class="tbl-wrap"><table id="tblInc"></table></div>
+    </div>
   </section>
 
   <!-- KINERJA KA -->
@@ -608,19 +609,19 @@ $("fileCpr").addEventListener("change", async (e) => {
     deriveMeta(); populateControls();
     $("sampleBanner").hidden = true; updateModeBanner();
     $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPR`;
-    setStatus(`${fmtInt(RECS.length)} CPR terbaca dari ${file.name}. Membagikan CPR …`);
-    renderAll(); await runSimulation({ save: false });
+    SIM = null; SIM_KA = new Map(); // allocation waits for "Jalankan pembagian"
+    renderAll();
     let saved = "";
     if (DB) {
       setStatus(`${fmtInt(RECS.length)} CPR terbaca. Menyimpan …`);
       try {
-        await saveData(); const n = await saveNewAssignments();
+        await saveData();
         $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPR · tersimpan ${fmtStamp(SAVED_AT)}`;
-        saved = ` Data tersimpan${useLocks() ? `; ${fmtInt(n)} CPR baru dibagikan, ${fmtInt((SIM ? SIM.n : 0) - n)} CPR tetap di KA sebelumnya` : ""}.`;
+        saved = " Data tersimpan.";
         renderAll();
       } catch (err) { saved = ` Data tidak tersimpan: ${saveErrorText(err)}.`; }
     }
-    setStatus(`${fmtInt(RECS.length)} CPR terbaca dari ${file.name}.${saved}${fmtNote}`);
+    setStatus(`${fmtInt(RECS.length)} CPR terbaca dari ${file.name}.${saved}${fmtNote} Atur pembagian lalu klik "Jalankan pembagian".`);
   } catch (err) { setStatus(`File tidak bisa dibaca: ${err.message}. Coba simpan ulang sebagai .xlsx lalu upload lagi.`); }
   e.target.value = "";
 });
@@ -637,7 +638,7 @@ $("filePic").addEventListener("change", async (e) => {
     setStatus(`List RS PIC terbaca: ${Object.keys(list).length} rumah sakit. Membagikan ulang …`);
     let saved = "";
     if (DB) { try { await DB.doc("settings/pic").set({ list }); saved = " Tersimpan."; } catch (err) { saved = ` Tidak tersimpan: ${saveErrorText(err)}.`; } }
-    await runSimulation(); renderQuality();
+    renderAll();
     setStatus(`List RS PIC terbaca: ${Object.keys(list).length} rumah sakit.${saved}`);
   } catch (err) { setStatus(`List RS PIC tidak bisa dibaca: ${err.message}.`); }
   e.target.value = "";
@@ -747,8 +748,8 @@ for (const id of ["roleKa", "roleBack"]) $(id).addEventListener("change", async 
   RECS = base; IS_SAMPLE = !base.length; if (IS_SAMPLE) RECS = [];
   await applyHistory(HIST.rows, HIST.fileName, $("roleKa").value, $("roleBack").value);
   IS_SAMPLE = false; deriveMeta(); populateControls(); updateModeBanner();
-  await runSimulation({ save: false });
-  if (DB) { try { await saveData(); await saveNewAssignments(); } catch (err) { setStatus("Tidak tersimpan: " + saveErrorText(err)); } }
+  SIM = null; SIM_KA = new Map(); renderAll();
+  if (DB) { try { await saveData(); } catch (err) { setStatus("Tidak tersimpan: " + saveErrorText(err)); } }
   renderQuality();
 });
 let BASE_BEFORE_HIST = [];
@@ -865,7 +866,7 @@ async function initDb() {
     if (m.simFrom) { $("sFrom").value = m.simFrom; $("sTo").value = m.simTo; }
     $("sampleBanner").hidden = true; updateModeBanner();
     $("dataLabel").textContent = `${m.fileName} · ${fmtInt(RECS.length)} CPR · tersimpan ${fmtStamp(m.savedAt)}`;
-    await runSimulation({ save: false });
+    if (LOCKED.size) await runSimulation({ save: false }); else { SIM = null; SIM_KA = new Map(); renderAll(); }
     setStatus(`Data tersimpan dimuat: ${fmtInt(RECS.length)} CPR dari ${m.fileName}.`);
   } catch (err) { setStatus("Data tersimpan tidak bisa dimuat: " + (err.message || err.code)); renderSavedInfo(); }
 }
@@ -1269,10 +1270,21 @@ let incState = { page: 0, q: "" };
 function renderSim() {
   const s = SIM;
   if (!s) {
-    $("simTiles").replaceChildren(); $("chKaCount").replaceChildren(); $("lgKaCount").replaceChildren(); $("tblInc").replaceChildren(); $("simCompare").textContent = "";
+    const step = (ok, text) => el("li", { style: ok ? "color:var(--good)" : "" }, (ok ? "✓ " : "○ ") + text);
+    const list = el("ol", { class: "note", style: "list-style:none;padding:0;margin:6px 0 0;font-size:14px;line-height:1.9" });
+    list.append(
+      step(!IS_SAMPLE, IS_SAMPLE ? "Upload data CPR" : `Data CPR: ${fmtInt(RECS.length)} CPR dari ${META.fileName || "file"}`),
+      step(!!PIC_LIST || META.hasKa, PIC_LIST ? `List RS PIC: ${fmtInt(Object.keys(PIC_LIST).length)} rumah sakit` : META.hasKa ? "List RS PIC (opsional untuk data ini)" : "Upload List RS PIC (daftar KA)"),
+      step(false, "Atur periode dan batas beban di atas, lalu klik Jalankan pembagian")
+    );
+    const card = el("div", { class: "card", style: "grid-column:1/-1" });
+    card.append(el("h3", {}, "Belum ada pembagian"), list);
+    $("simTiles").replaceChildren(card); $("simResults").hidden = true; $("simNote").textContent = ""; $("runInfo").textContent = "";
+    $("chKaCount").replaceChildren(); $("lgKaCount").replaceChildren(); $("tblInc").replaceChildren(); $("simCompare").textContent = "";
     $("subKaCount").textContent = "";
     return;
   }
+  $("simResults").hidden = false;
   const fresh = s.assigned.filter((c) => c.isNewAssign).length;
   $("simTiles").replaceChildren(
     tile("CPR dibagikan", fmtInt(s.n), "", `dibuat ${fmtDay(s.start)} – ${fmtDay(s.end)}`),
