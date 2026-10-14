@@ -761,7 +761,7 @@ let BASE_BEFORE_HIST = [];
 /* ---------- Supabase (used when the page runs outside Claude, e.g. GitHub Pages) ----------
    Fill these two values in config to switch the storage to Supabase. The anon key is meant to be public;
    the data itself is protected by Row Level Security: only logged-in users read, only admins write. */
-const CONFIG = { supabaseUrl: "", supabaseKey: "" };
+const CONFIG = { supabaseUrl: "https://pdsjxriakcrmeeyfzefu.supabase.co", supabaseKey: "sb_publishable_PNDmMLXqH4ujxtj9v8cANQ_lXDXQk1P" }; // key: "anon public" (legacy) or "Publishable key" (sb_publishable_...)
 const SB = !!(CONFIG.supabaseUrl && CONFIG.supabaseKey);
 let SESSION = null, IS_ADMIN = false;
 function loadSession() { try { SESSION = JSON.parse(localStorage.getItem("cprSession") || "null"); } catch { SESSION = null; } }
@@ -783,7 +783,7 @@ function makeSupabaseDb() {
   const base = `${CONFIG.supabaseUrl}/rest/v1/cpr_store`;
   const call = async (url, opts = {}) => {
     const token = await validToken();
-    const res = await fetch(url, { ...opts, headers: { apikey: CONFIG.supabaseKey, Authorization: `Bearer ${token || CONFIG.supabaseKey}`, "Content-Type": "application/json", ...(opts.headers || {}) } });
+    const res = await fetch(url, { ...opts, headers: { apikey: CONFIG.supabaseKey, ...(token ? { Authorization: `Bearer ${token}` } : {}), "Content-Type": "application/json", ...(opts.headers || {}) } });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       throw { code: res.status === 401 || res.status === 403 ? "invalid_argument" : res.status === 413 ? "quota_exceeded" : "unavailable", message: j.message || res.statusText };
