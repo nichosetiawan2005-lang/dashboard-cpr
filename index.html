@@ -653,9 +653,10 @@ $("filePic").addEventListener("change", async (e) => {
      ka      = Username on the Key Account role row (when present)
    CPRs whose last status is rejected / cancelled are dropped. */
 const HCOL = { cpr: "Capital Req ID", unit: "Unit", role: "Role", user: "Username", submit: "Submit Date", approve: "Approval Date", status: "Document Status", seq: "Sequence", asset: "Asset Code", category: "Category Type", subject: "Subject", amount: "Total Amount" };
-const HREQUIRED = ["cpr", "unit", "role", "submit", "approve"];
+// only these two are needed: new CPRs that are still waiting have no approval yet, so "Approval Date" may be missing
+const HREQUIRED = ["cpr", "submit"];
 let HIST = null; // { rows, fileName } of the last history upload, kept in memory for role re-mapping
-const isHistory = (columns) => columns.includes(HCOL.cpr) && columns.includes(HCOL.role);
+const isHistory = (columns) => columns.includes(HCOL.cpr);
 const normRole = (x) => String(x ?? "").trim().toLowerCase();
 function guessRole(roles, kind) {
   const clean = (r) => r.replace(/[^a-z]/g, "");
