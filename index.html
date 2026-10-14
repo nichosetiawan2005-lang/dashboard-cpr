@@ -275,6 +275,8 @@ details.more[open] > summary::before { content: "▾ "; }
         <button class="btn ghost" type="button" id="btnClearSaved">Hapus semua data tersimpan</button>
       </div>
     </div>
+    <div class="section-title"><h2>Riwayat upload</h2><p>Setiap upload dan setiap pembagian dicatat di sini, terbaru di atas.</p></div>
+    <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="tblLog"></table></div>
     <div class="tiles" id="dqTiles"></div>
     <div id="histCard" hidden>
       <div class="section-title"><h2>File riwayat approval (CPRHistory)</h2><p>Satu baris per langkah approval, disusun jadi satu baris per CPR.</p></div>
@@ -618,13 +620,14 @@ $("fileCpr").addEventListener("change", async (e) => {
   await new Promise((r) => setTimeout(r, 30));
   try {
     const { rows, columns } = await readWorkbook(file);
-    let fmtNote = "";
+    const before = new Set(IS_SAMPLE ? [] : RECS.map((r) => r.cpr));
+    let fmtNote = "", inFile = 0;
     if (isHistory(columns)) {
       const missingH = HREQUIRED.filter((k) => !columns.includes(HCOL[k]));
       if (missingH.length) { setStatus(`File riwayat approval tidak lengkap: kolom ${missingH.map((k) => `"${HCOL[k]}"`).join(", ")} tidak ditemukan.`); return; }
       const wasSample = IS_SAMPLE;
       BASE_BEFORE_HIST = IS_SAMPLE ? [] : RECS.slice();
-      const res = await applyHistory(rows, file.name);
+      const res = await applyHistory(rows, file.name); inFile = res.recs.length;
       IS_SAMPLE = false; META.fileName = file.name; SAVED_AT = null;
       META.rawRows = rows.length; META.duplicates = 0; META.negatives = 0;
       META.format = "history"; META.columnsFound = Object.fromEntries(Object.keys(HCOL).map((k) => [k, columns.includes(HCOL[k])]));
@@ -632,7 +635,7 @@ $("fileCpr").addEventListener("change", async (e) => {
     } else {
       const missing = REQUIRED.filter((k) => !columns.includes(COL[k]));
       if (missing.length) { setStatus(`File tidak bisa dipakai: kolom ${missing.map((k) => `"${COL[k]}"`).join(", ")} tidak ditemukan. Pastikan file berasal dari export CPR_Cleaned atau CPRHistory.`); return; }
-      RECS = buildRecords(rows, columns); IS_SAMPLE = false; META.fileName = file.name; META.format = "cleaned"; HIST = null; SAVED_AT = null;
+      RECS = buildRecords(rows, columns); IS_SAMPLE = false; META.fileName = file.name; META.format = "cleaned"; HIST = null; SAVED_AT = null; inFile = RECS.length;
     }
     if (DB) await loadLocks();
     deriveMeta(); populateControls();
@@ -647,6 +650,9 @@ $("fileCpr").addEventListener("change", async (e) => {
         await saveData();
         $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPR · tersimpan ${fmtStamp(SAVED_AT)}`;
         saved = " Data tersimpan.";
+        const fresh = RECS.filter((r) => !before.has(r.cpr)).length;
+        const now = new Set(RECS.map((r) => r.cpr)), gone = [...before].filter((c) => !now.has(c)).length;
+        await logEvent({ type: "Data CPR", file: file.name, rows: rows.length, cpr: inFile, baru: fresh, lama: inFile - fresh, hilang: gone, total: RECS.length });
         renderAll();
       } catch (err) { saved = ` Data tidak tersimpan: ${saveErrorText(err)}.`; }
     }
@@ -666,7 +672,7 @@ $("filePic").addEventListener("change", async (e) => {
     if (!META.hasKa && !IS_SAMPLE) { deriveMeta(); populateControls(); }
     setStatus(`List RS PIC terbaca: ${Object.keys(list).length} rumah sakit. Membagikan ulang …`);
     let saved = "";
-    if (DB) { try { await DB.doc("settings/pic").set({ list }); saved = " Tersimpan."; } catch (err) { saved = ` Tidak tersimpan: ${saveErrorText(err)}.`; } }
+    if (DB) { try { await DB.doc("settings/pic").set({ list }); saved = " Tersimpan."; await logEvent({ type: "List RS PIC", file: file.name, rows: rows.length, cpr: null, note: `${Object.keys(list).length} RS, ${new Set(Object.values(list)).size} KA` }); } catch (err) { saved = ` Tidak tersimpan: ${saveErrorText(err)}.`; } }
     renderAll();
     setStatus(`List RS PIC terbaca: ${Object.keys(list).length} rumah sakit.${saved}`);
   } catch (err) { setStatus(`List RS PIC tidak bisa dibaca: ${err.message}.`); }
@@ -885,6 +891,7 @@ async function initDb() {
     if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; }
     if (pic.exists) PIC_LIST = pic.data().list || null;
     try { await loadPo(); } catch {}
+    await loadLog(); renderLog();
     if (!meta.exists) { renderSavedInfo(); renderQuality(); renderKa(); return; }
     setStatus("Memuat data tersimpan …");
     const m = meta.data();
@@ -962,7 +969,39 @@ function renderSaveBadge() {
   else { text = PIC_LIST ? "List RS PIC tersimpan · data CPR belum ada" : "Belum ada data tersimpan"; kind = "muted"; }
   b.className = "pill " + kind; b.textContent = text;
 }
+// ---------- upload history: one document "log/uploads" with the latest 500 events ----------
+let UPLOAD_LOG = [];
+async function loadLog() {
+  if (!DB) return;
+  try { const d = await DB.doc("log/uploads").get(); UPLOAD_LOG = d.exists ? d.data().items || [] : []; } catch { UPLOAD_LOG = []; }
+}
+async function logEvent(entry) {
+  if (!DB || !canSave()) return;
+  try {
+    const d = await DB.doc("log/uploads").get();
+    const items = [{ at: new Date().toISOString(), ...entry }, ...(d.exists ? d.data().items || [] : [])].slice(0, 500);
+    await DB.doc("log/uploads").set({ items }); UPLOAD_LOG = items; renderLog();
+  } catch {}
+}
+function renderLog() {
+  const t = $("tblLog"); if (!t) return;
+  const kind = { "Data CPR": "info", "CPR jadi PO": "good", "List RS PIC": "muted", "Pembagian": "warn" };
+  renderTable(t, [
+    { key: "at", label: "Waktu", sortable: false, render: (r) => fmtStamp(r.at) },
+    { key: "type", label: "Jenis", sortable: false, render: (r) => pill(r.type, kind[r.type] || "muted") },
+    { key: "file", label: "File", sortable: false, render: (r) => r.file || "–" },
+    { key: "rows", label: "Baris di file", num: true, sortable: false, render: (r) => (r.rows === null || r.rows === undefined ? "–" : fmtInt(r.rows)) },
+    { key: "cpr", label: "CPR", num: true, sortable: false, render: (r) => (r.cpr === null || r.cpr === undefined ? "–" : fmtInt(r.cpr)) },
+    { key: "baru", label: "CPR baru", num: true, sortable: false, render: (r) => (r.baru === null || r.baru === undefined ? "–" : fmtInt(r.baru)) },
+    { key: "lama", label: "Sudah ada sebelumnya", num: true, sortable: false, render: (r) => (r.lama === null || r.lama === undefined ? "–" : fmtInt(r.lama)) },
+    { key: "hilang", label: "Hilang (rejected)", num: true, sortable: false, render: (r) => (r.hilang === null || r.hilang === undefined ? "–" : fmtInt(r.hilang)) },
+    { key: "total", label: "Total tersimpan", num: true, sortable: false, render: (r) => (r.total === null || r.total === undefined ? "–" : fmtInt(r.total)) },
+    { key: "note", label: "Keterangan", sortable: false, render: (r) => r.note || "" }
+  ], UPLOAD_LOG);
+  if (!UPLOAD_LOG.length) { const tb = t.querySelector("tbody td.empty"); if (tb) tb.textContent = DB ? "Belum ada upload yang tercatat." : "Riwayat hanya tersedia bila penyimpanan aktif."; }
+}
 function renderSavedInfo() {
+  renderLog();
   renderSaveBadge();
   const info = $("savedInfo"); if (!info) return;
   const canWrite = canSave() && !IS_SAMPLE;
@@ -994,7 +1033,7 @@ $("btnClearSaved").addEventListener("click", async () => {
     await DB.doc("cpr/meta").delete(); await DB.doc("settings/pic").delete(); await DB.doc("settings/params").delete();
     const pm = await DB.doc("po/meta").get(); const pn = pm.exists ? pm.data().chunks || 0 : 0;
     for (let i = 0; i < pn; i++) await DB.doc("po/chunk-" + i).delete();
-    await DB.doc("po/meta").delete();
+    await DB.doc("po/meta").delete(); await DB.doc("log/uploads").delete();
     await clearAlloc();
     location.reload();
   } catch (err) { setStatus("Gagal menghapus: " + (err.message || err.code)); }
@@ -1114,7 +1153,7 @@ $("filePo").addEventListener("change", async (e) => {
     PO_META = { fileName: file.name, savedAt: new Date().toISOString(), chunks: Math.ceil(PO_RECS.length / CHUNK), count: PO_RECS.length, rawRows: rows.length };
     setPoDates(); renderKa();
     let saved = "";
-    if (DB && canSave()) { try { await savePo(); saved = " Tersimpan."; } catch (err) { saved = " Tidak tersimpan: " + saveErrorText(err) + "."; } }
+    if (DB && canSave()) { try { await savePo(); saved = " Tersimpan."; await logEvent({ type: "CPR jadi PO", file: file.name, rows: rows.length, cpr: PO_RECS.length, total: PO_RECS.length }); } catch (err) { saved = " Tidak tersimpan: " + saveErrorText(err) + "."; } }
     setStatus(`${fmtInt(PO_RECS.length)} CPR yang sudah jadi PO terbaca dari ${file.name} (dari ${fmtInt(rows.length)} baris).${saved}`);
   } catch (err) { setStatus("File kinerja tidak bisa dibaca: " + err.message); }
   e.target.value = "";
@@ -1287,7 +1326,7 @@ async function runSimulation(opts = {}) {
   try { SIM = simulate(); syncLoadDates(); } catch (err) { SIM = null; SIM_KA = new Map(); }
   btn.disabled = false; btn.textContent = "Jalankan pembagian";
   if (SIM && opts.save !== false && canSave() && !IS_SAMPLE) {
-    try { await saveParams(); const n = await saveNewAssignments(); if (useLocks()) setStatus(`${fmtInt(n)} CPR baru dibagikan dan disimpan; ${fmtInt(SIM.n - n)} CPR tetap di KA sebelumnya.`); }
+    try { await saveParams(); const n = await saveNewAssignments(); await logEvent({ type: "Pembagian", file: "", rows: null, cpr: SIM.n, baru: useLocks() ? n : null, lama: useLocks() ? SIM.n - n : null, note: `CPR dibuat ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)}, batas ${fmtNum(SIM.maxPerDay)}/hari` }); if (useLocks()) setStatus(`${fmtInt(n)} CPR baru dibagikan dan disimpan; ${fmtInt(SIM.n - n)} CPR tetap di KA sebelumnya.`); }
     catch (err) { setStatus("Hasil pembagian tidak tersimpan: " + saveErrorText(err)); }
   }
   renderAll();
