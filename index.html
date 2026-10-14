@@ -171,7 +171,7 @@ details.more[open] > summary::before { content: "▾ "; }
         <span id="authBox" hidden><span class="note" id="authUser" style="margin:0 6px 0 0"></span><button class="file-btn" type="button" id="btnLogin">Login</button></span>
         <label class="file-btn primary" for="fileCpr" id="lblCpr">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
-          Upload data CPR (.xlsx)
+          Upload CPRHistory (worklot)
           <input type="file" id="fileCpr" accept=".xlsx,.xls,.csv">
         </label>
         <label class="file-btn" for="filePic" id="lblPic">
@@ -193,7 +193,7 @@ details.more[open] > summary::before { content: "▾ "; }
 
 <div class="wrap">
   <div class="banner info" id="sampleBanner">
-    <div><b>Ini data contoh.</b> Upload file CPR (.xlsx) dan List RS PIC untuk memakai data asli. Data yang di-upload disimpan di dashboard ini.</div>
+    <div><b>Ini data contoh.</b> Urutan pakai: (1) CPR_Cleaned di tab Kinerja KA untuk kinerja dan riwayat forecast, (2) List RS PIC, (3) CPRHistory untuk worklot, lalu Jalankan pembagian. Data yang di-upload disimpan di dashboard ini.</div>
   </div>
   <div class="card" id="loginCard" hidden style="margin-top:16px;max-width:420px">
     <h3>Kode akses</h3><div class="sub">Minta kode ke admin dashboard. Kode diingat di browser ini.</div>
@@ -242,10 +242,10 @@ details.more[open] > summary::before { content: "▾ "; }
   <!-- KINERJA KA -->
   <section class="panel" id="panel-ka" role="tabpanel" aria-labelledby="tab-ka">
     <div class="card" style="margin-top:16px">
-      <h3>Data kinerja: CPR yang sudah jadi PO</h3>
-      <div class="sub">Upload export CPR_Cleaned terbaru. Hanya CPR yang sudah punya PO yang dihitung, jadi kinerjanya berdasarkan pekerjaan yang benar-benar selesai.</div>
+      <h3>Data kinerja: CPR_Cleaned</h3>
+      <div class="sub">CPR_Cleaned dipakai untuk dua hal: menilai kinerja KA dari CPR yang sudah jadi PO, dan sebagai riwayat untuk melatih forecast. Data ini tidak masuk ke worklot; worklot hanya dari CPRHistory.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
-        <label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload CPR yang sudah jadi PO<input type="file" id="filePo" accept=".xlsx,.xls,.csv"></label>
+        <label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload CPR_Cleaned (kinerja)<input type="file" id="filePo" accept=".xlsx,.xls,.csv"></label>
         <div class="field"><label for="poFrom">PO dibuat dari</label><input type="date" id="poFrom"></div>
         <div class="field"><label for="poTo">sampai</label><input type="date" id="poTo"></div>
       </div>
@@ -716,6 +716,11 @@ $("fileCpr").addEventListener("change", async (e) => {
       META.rawRows = rows.length; META.duplicates = 0; META.negatives = 0;
       META.format = "history"; META.columnsFound = Object.fromEntries(Object.keys(HCOL).map((k) => [k, columns.includes(HCOL[k])]));
       fmtNote = ` Format riwayat approval: ${fmtInt(rows.length)} baris jadi ${fmtInt(res.cprs)} CPR${wasSample ? "" : ", digabung dengan data tersimpan"}. Cek pemetaan role di tab Data.`;
+    } else if (columns.includes(COL.cpr) && columns.includes(PO_COL.po)) {
+      e.target.value = "";
+      await loadKinerjaFile(file, rows, columns);
+      setStatus($("status").textContent + " File ini CPR_Cleaned, jadi dipakai sebagai data kinerja dan riwayat forecast, bukan worklot. Data worklot di-upload dari CPRHistory.");
+      return;
     } else {
       const missing = REQUIRED.filter((k) => !columns.includes(COL[k]));
       if (missing.length) { setStatus(`File tidak bisa dipakai: kolom ${missing.map((k) => `"${COL[k]}"`).join(", ")} tidak ditemukan. Pastikan file berasal dari export CPR_Cleaned atau CPRHistory.`); return; }
@@ -789,7 +794,7 @@ function guessRole(roles, kind) {
 // unit code ("2003") -> hospital ("SHLC"): learned from data already loaded, else from Asset Code ("SHLC.26.52.PR14 : ...")
 function unitMapFromRecs() {
   const g = new Map();
-  for (const r of RECS) { const code = String(r.cpr).split("-")[1]; if (!code || !r.unit || r.unit === "(kosong)") continue; if (!g.has(code)) g.set(code, []); g.get(code).push(r.unit); }
+  for (const r of [...PO_RECS, ...RECS]) { const code = String(r.cpr).split("-")[1]; if (!code || !r.unit || r.unit === "(kosong)") continue; if (!g.has(code)) g.set(code, []); g.get(code).push(r.unit); }
   const out = {}; for (const [k, a] of g) out[k] = mode(a); return out;
 }
 function pivotHistory(rows, roleKa, roleBack) {
@@ -903,7 +908,7 @@ async function applyHistory(rows, fileName, roleKa, roleBack) {
   HIST = { rows, fileName, roleKa, roleBack, result };
   const feedHasKa = result.recs.some((r) => r.ka);
   const base = IS_SAMPLE ? [] : RECS;
-  META.hasKa = (!IS_SAMPLE && META.hasKa && feedHasKa) || (IS_SAMPLE && feedHasKa);
+  META.hasKa = false; void feedHasKa; // worklot data: the DSS assigns the KA
   RECS = mergeRecs(base, result.recs, HIST_KEYS).map(finishRec);
   return result;
 }
@@ -1235,6 +1240,7 @@ function poRecFromArray(a) { const r = {}; PO_FIELDS.forEach((k, i) => { r[k] = 
 function finishPoRec(r) {
   r.rev1 = diff(r.kaOut, r.kaIn); r.rev2 = diff(r.backOut, r.back);
   r.toPo = diff(r.po, r.create); r.kaToPo = diff(r.po, r.kaIn);
+  r.f1 = diff(r.kaIn, r.create); r.f2 = diff(r.back, r.kaOut); r.isNew = true; // used as forecast history
   r.rev1h = hoursBetween(r.kaInAt, r.kaOutAt); r.rev2h = hoursBetween(r.backAt, r.backOutAt);
   return r;
 }
@@ -1294,6 +1300,12 @@ $("filePo").addEventListener("change", async (e) => {
   setStatus(`Membaca ${file.name} …`);
   try {
     const { rows, columns } = await readWorkbook(file);
+    await loadKinerjaFile(file, rows, columns);
+  } catch (err) { setStatus("File kinerja tidak bisa dibaca: " + err.message); }
+  e.target.value = "";
+});
+async function loadKinerjaFile(file, rows, columns) {
+  {
     const need = [COL.cpr, PO_COL.po].filter((c) => !columns.includes(c));
     if (need.length) { setStatus(`File kinerja tidak bisa dipakai: kolom ${need.map((c) => `"${c}"`).join(", ")} tidak ditemukan. Pakai export CPR_Cleaned yang ada kolom PO-nya.`); return; }
     PO_RECS = buildPoRecords(rows);
@@ -1302,9 +1314,9 @@ $("filePo").addEventListener("change", async (e) => {
     let saved = "";
     if (DB && canSave()) { try { await savePo(); saved = " Tersimpan."; await logEvent({ type: "CPR jadi PO", file: file.name, rows: rows.length, cpr: PO_RECS.length, total: PO_RECS.length }); } catch (err) { saved = " Tidak tersimpan: " + saveErrorText(err) + "."; } }
     setStatus(`${fmtInt(PO_RECS.length)} CPR yang sudah jadi PO terbaca dari ${file.name} (dari ${fmtInt(rows.length)} baris).${saved}`);
-  } catch (err) { setStatus("File kinerja tidak bisa dibaca: " + err.message); }
-  e.target.value = "";
-});
+    renderAll();
+  }
+}
 for (const id of ["poFrom", "poTo"]) $(id).addEventListener("change", () => renderKa());
 
 function realKa(r) {
@@ -1533,6 +1545,11 @@ function syncLoadDates() {
   $("loadFrom").value = dayToIso(SIM.workDays[0]); $("loadTo").value = dayToIso(SIM.workDays[SIM.workDays.length - 1]);
 }
 
+function trainingPool() {
+  const m = new Map(PO_RECS.map((r) => [r.cpr, r]));
+  for (const r of RECS) if (!m.has(r.cpr) || r.f1 !== null) m.set(r.cpr, r);
+  return [...m.values()];
+}
 function simulate() {
   const start = isoToDay($("sFrom").value), end = isoToDay($("sTo").value);
   const vf = Math.max(0, Math.min(1, parseFloat($("sVendor").value) || 0.5));
@@ -1546,16 +1563,18 @@ function simulate() {
   if (!META.hasKa && !PIC_LIST) throw new Error("upload List RS PIC terlebih dahulu, karena data tidak punya kolom KA");
   // Forecast inputs: medians from 2026-process CPRs before the test period
   // history window: up to 1 year before the period
-  const hist = RECS.filter((r) => r.isNew && r.create !== null && r.create < start && r.create >= start - 365);
-  const histF2 = RECS.filter((r) => r.isNew && r.kaOut !== null && r.kaOut < start && r.kaOut >= start - 365);
-  const base = hist.length >= 30 ? hist : RECS.filter((r) => r.isNew);
-  const baseF2 = histF2.length >= 30 ? histF2 : RECS.filter((r) => r.isNew);
+  // history to learn from: CPR_Cleaned (performance data) + CPRHistory, one record per CPR
+  const POOL = trainingPool();
+  const hist = POOL.filter((r) => r.isNew && r.create !== null && r.create < start && r.create >= start - 365);
+  const histF2 = POOL.filter((r) => r.isNew && r.kaOut !== null && r.kaOut < start && r.kaOut >= start - 365);
+  const base = hist.length >= 30 ? hist : POOL.filter((r) => r.isNew);
+  const baseF2 = histF2.length >= 30 ? histF2 : POOL.filter((r) => r.isNew);
   const unitMed = (list, key) => { const g = new Map(); for (const r of list) { if (r[key] === null) continue; if (!g.has(r.unit)) g.set(r.unit, []); g.get(r.unit).push(r[key]); } const out = {}; for (const [u, a] of g) out[u] = median(a); return out; };
   const f1Unit = unitMed(base, "f1"), f2Unit = unitMed(baseF2, "f2");
   const f1All = median(base.map((r) => r.f1)) ?? 2, f2All = median(baseF2.map((r) => r.f2)) ?? 4;
   // Forecast 1 = Linear Regression fitted on every CPR created before the period (all years, like the notebook);
   // falls back to the median per hospital when there is too little history
-  const f1Train = RECS.filter((r) => r.create !== null && r.create < start && r.f1 !== null);
+  const f1Train = POOL.filter((r) => r.create !== null && r.create < start && r.f1 !== null);
   const f1Model = f1Train.length >= 100 ? fitF1Model(f1Train) : null;
   const f1Pred = (r) => Math.round(f1Model ? f1Model.predict(r) : f1Unit[r.unit] ?? f1All);
   const f1Range = (r) => (f1Model ? f1Model.range(r).map(Math.round) : [null, null]);
@@ -1740,7 +1759,8 @@ function renderSim() {
     const step = (ok, text) => el("li", { style: ok ? "color:var(--good)" : "" }, (ok ? "✓ " : "○ ") + text);
     const list = el("ol", { class: "note", style: "list-style:none;padding:0;margin:6px 0 0;font-size:14px;line-height:1.9" });
     list.append(
-      step(!IS_SAMPLE, IS_SAMPLE ? "Upload data CPR" : `Data CPR: ${fmtInt(RECS.length)} CPR dari ${META.fileName || "file"}`),
+      step(PO_RECS.length > 0, PO_RECS.length ? `CPR_Cleaned (kinerja & riwayat forecast): ${fmtInt(PO_RECS.length)} CPR` : "Upload CPR_Cleaned di tab Kinerja KA (riwayat untuk forecast)"),
+      step(!IS_SAMPLE, IS_SAMPLE ? "Upload CPRHistory (data worklot)" : `CPRHistory: ${fmtInt(RECS.length)} CPR dari ${META.fileName || "file"}`),
       step(!!PIC_LIST || META.hasKa, PIC_LIST ? `List RS PIC: ${fmtInt(Object.keys(PIC_LIST).length)} rumah sakit` : META.hasKa ? "List RS PIC (opsional untuk data ini)" : "Upload List RS PIC (daftar KA)"),
       step(false, "Atur periode dan batas beban di atas, lalu klik Jalankan pembagian")
     );
@@ -1981,6 +2001,28 @@ async function removeAbsence(a) {
 for (const id of ["actFilter", "actKa"]) $(id).addEventListener("change", renderSpv);
 
 /* ---------- Bukti & Akurasi ---------- */
+// real workload in the 3 months before the period, using the KA written in CPR_Cleaned
+function actualFromPo() {
+  if (!SIM || !PO_RECS.length) return null;
+  const fileKa = (r) => { if (!r.ka) return null; const u = r.ka.toLowerCase(), nm = (r.kaName || "").toLowerCase(); return SIM.kaList.find((n) => u.includes(String(n).toLowerCase()) || nm === String(n).toLowerCase() || r.ka === n) || null; };
+  // best: the same CPRs as this period, with the KA that really handled them (fair, like-for-like)
+  const inPeriod = new Set(SIM.assigned.map((c) => c.r.cpr));
+  const same = PO_RECS.filter((r) => inPeriod.has(r.cpr) && r.kaIn !== null && fileKa(r));
+  let list, from, to, sameCprs = false;
+  if (same.length >= SIM.n * 0.5) { list = same; from = SIM.workDays[0]; to = SIM.workDays[SIM.workDays.length - 1]; sameCprs = true; }
+  else { from = SIM.start - 91; to = SIM.start - 1; list = PO_RECS.filter((r) => r.create !== null && r.create >= from && r.create <= to && r.kaIn !== null && fileKa(r)); }
+  if (list.length < 30) return null;
+  const load = new Map(SIM.kaList.map((k) => [k, new Map()])), counts = Object.fromEntries(SIM.kaList.map((k) => [k, 0]));
+  for (const r of list) {
+    const k = fileKa(r), m = load.get(k); counts[k]++;
+    for (let i = 0; i < SIM.w1; i++) m.set(r.kaIn + i, (m.get(r.kaIn + i) || 0) + 1);
+    if (r.back !== null) for (let i = 0; i < SIM.w2; i++) m.set(r.back + i, (m.get(r.back + i) || 0) + 1);
+  }
+  const days = []; for (let dd = from; dd <= to; dd++) if (weekday(dd) < 5) days.push(dd);
+  const tbl = days.map((dd) => SIM.kaList.map((k) => load.get(k).get(dd) || 0));
+  return { gap: mean(tbl.map((row) => Math.max(...row) - Math.min(...row))), std: mean(tbl.map(stdev)), over: tbl.filter((row) => Math.max(...row) > SIM.maxPerDay).length,
+    highest: Math.max(...tbl.flat()), counts, n: list.length, from, to, sameCprs, avg: mean(tbl.flat()) };
+}
 function renderBukti() {
   const clear = () => { for (const id of ["bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
   if (!SIM) { clear(); $("bkNote").textContent = "Jalankan pembagian dulu di tab Pembagian CPR."; return; }
@@ -2009,21 +2051,26 @@ function renderBukti() {
     { name: "Median per RS", color: "var(--s2)", values: weeks.map((w) => mean(byWeek.get(w)[1])) }
   ], { tickLabel: fmtShort, tipLabel: (w) => "Minggu " + fmtDay(w) + " · rata-rata selisih (hari)", label: "Rata-rata selisih perkiraan per minggu" });
   // 2) workload
-  const a = SIM.actual, d = SIM.dss, pct = (x, y) => (x ? fmtNum(((x - y) / x) * 100, 0) + "% lebih baik" : "–");
-  const counts = Object.values(SIM.dssCount), countsA = a ? Object.values(SIM.actualCount) : [];
-  $("bkLoadDesc").textContent = a ? "Sebelum = pembagian yang sebenarnya terjadi (KA asli di file). Sesudah = pembagian oleh dashboard untuk CPR yang sama." : "Data tidak punya kolom KA asli, jadi hanya hasil dashboard yang ditampilkan. Upload CPR_Cleaned untuk membandingkan dengan kondisi sebelumnya.";
+  const a = SIM.actual || actualFromPo(), d = SIM.dss, pct = (x, y) => (x ? fmtNum(((x - y) / x) * 100, 0) + "% lebih baik" : "–");
+  const share = (arr) => { const t = arr.reduce((x, y) => x + y, 0) || 1; return `${fmtNum((Math.min(...arr) / t) * 100, 0)}% – ${fmtNum((Math.max(...arr) / t) * 100, 0)}%`; };
+  const counts = Object.values(SIM.dssCount), countsA = a ? Object.values(a.counts || SIM.actualCount) : [];
+  $("bkLoadDesc").textContent = SIM.actual ? "Sebelum = pembagian yang sebenarnya terjadi (KA asli di file). Sesudah = pembagian oleh dashboard untuk CPR yang sama."
+    : a && a.sameCprs ? `Sebelum = siapa yang sebenarnya mengerjakan ${fmtInt(a.n)} CPR yang sama (KA asli dari CPR_Cleaned). Sesudah = pembagian dashboard untuk CPR tersebut. Ini perbandingan yang adil karena CPR-nya sama.`
+    : a ? `Sebelum = pembagian nyata ${fmtInt(a.n)} CPR yang dibuat ${fmtDay(a.from)} – ${fmtDay(a.to)} (KA asli dari CPR_Cleaned). Sesudah = pembagian dashboard periode ini. CPR-nya berbeda, jadi perhatikan baris rata-rata beban: kalau volumenya berbeda jauh, bandingkan dengan hati-hati.`
+    : "Upload CPR_Cleaned di tab Kinerja KA untuk membandingkan dengan kondisi sebelum dashboard.";
   const rowsL = [
+    ["Rata-rata beban per KA per hari (volume)", a && (a.avg ?? null), mean(SIM.load.flatMap((arr) => SIM.workDays.map((dd) => arr[dd - SIM.minDay] || 0)))],
     ["Selisih beban KA tersibuk − tersepi (CPR/hari)", a && a.gap, d.gap],
     ["Sebaran beban antar KA (std)", a && a.std, d.std],
     [`Hari ada KA di atas batas ${fmtNum(SIM.maxPerDay)}`, a && a.over, d.over],
     ["Beban tertinggi satu KA dalam sehari", a && a.highest, d.highest],
-    ["CPR per KA: paling sedikit – paling banyak", a ? `${Math.min(...countsA)}–${Math.max(...countsA)}` : null, `${Math.min(...counts)}–${Math.max(...counts)}`]
+    ["Porsi CPR per KA: paling sedikit – paling banyak", a ? share(countsA) : null, share(counts)]
   ];
   renderTable($("tblBkLoad"), [
     { key: 0, label: "Ukuran", sortable: false, render: (r) => r[0] },
     { key: 1, label: "Sebelum", num: true, sortable: false, render: (r) => (r[1] === null || r[1] === undefined ? "–" : typeof r[1] === "number" ? fmtNum(r[1], Number.isInteger(r[1]) ? 0 : 1) : r[1]) },
     { key: 2, label: "Sesudah (dashboard)", num: true, sortable: false, render: (r) => (typeof r[2] === "number" ? fmtNum(r[2], Number.isInteger(r[2]) ? 0 : 1) : r[2]) },
-    { key: 3, label: "Perubahan", num: true, sortable: false, render: (r) => (typeof r[1] === "number" && typeof r[2] === "number" ? pct(r[1], r[2]) : "–") }
+    { key: 3, label: "Perubahan", num: true, sortable: false, render: (r) => (r[0].startsWith("Rata-rata beban") ? "pembanding volume" : typeof r[1] === "number" && typeof r[2] === "number" ? pct(r[1], r[2]) : "–") }
   ], rowsL);
   // 3) lead time to PO, before vs after the dashboard went live (first "Pembagian" in the upload log)
   const live = UPLOAD_LOG.filter((x) => x.type === "Pembagian").map((x) => toDay(x.at.slice(0, 10))).sort((x, y) => x - y)[0] ?? null;
