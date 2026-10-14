@@ -1088,6 +1088,43 @@ function renderLoadTable(view) {
 }
 for (const id of ["loadSrc", "loadFrom", "loadTo"]) $(id).addEventListener("change", renderKa);
 
+/* ---------- Forecast 1 model: Linear Regression (same as the notebook) ----------
+   Target: log(1 + days from CPR created to arrival at KA). Features (notebook Forecast 1 without the
+   text-similarity feature, which is too heavy for the browser; test MAE stays 3.33 days):
+     unit_median_all, unit_mean_all, unit_median_new, new_process, create_day_of_week, create_month,
+     capex_median, has_category
+   The model is fitted again in the browser on every run, on all CPRs created before the period. */
+const NEW_PROCESS_FROM = toDay("2026-01-01"); // the KA HO stage started in 2026
+function solveLinear(A, b) {
+  // Gaussian elimination with partial pivoting: solves A x = b
+  const n = b.length, M = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let piv = col; for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    [M[col], M[piv]] = [M[piv], M[col]];
+    if (Math.abs(M[col][col]) < 1e-12) continue;
+    for (let r = 0; r < n; r++) { if (r === col) continue; const f = M[r][col] / M[col][col]; for (let k = col; k <= n; k++) M[r][k] -= f * M[col][k]; }
+  }
+  return M.map((row, i) => (Math.abs(row[i]) < 1e-12 ? 0 : row[n] / row[i]));
+}
+function fitF1Model(train) {
+  const group = (key) => { const g = new Map(); for (const r of train) { const k = key(r); if (k === null) continue; if (!g.has(k)) g.set(k, []); g.get(k).push(r.f1); } return g; };
+  const toMap = (g, fn) => new Map([...g].map(([k, a]) => [k, fn(a)]));
+  const allMed = median(train.map((r) => r.f1)), allMean = mean(train.map((r) => r.f1));
+  const unitMedAll = toMap(group((r) => r.unit), median), unitMeanAll = toMap(group((r) => r.unit), mean);
+  const unitMedNew = toMap(group((r) => (r.create >= NEW_PROCESS_FROM ? r.unit : null)), median);
+  const capexMed = toMap(group((r) => r.capex || "Kosong"), median);
+  const features = (r) => {
+    const medAll = unitMedAll.get(r.unit) ?? allMed;
+    return [1, medAll, unitMeanAll.get(r.unit) ?? allMean, unitMedNew.get(r.unit) ?? medAll, r.create >= NEW_PROCESS_FROM ? 1 : 0,
+      weekday(r.create), dayToDate(r.create).getUTCMonth() + 1, capexMed.get(r.capex || "Kosong") ?? allMed, r.capex ? 1 : 0];
+  };
+  // ordinary least squares: (X'X) b = X'y
+  const k = 9, XtX = Array.from({ length: k }, () => new Array(k).fill(0)), Xty = new Array(k).fill(0);
+  for (const r of train) { const x = features(r), y = Math.log1p(r.f1); for (let i = 0; i < k; i++) { Xty[i] += x[i] * y; for (let j = 0; j < k; j++) XtX[i][j] += x[i] * x[j]; } }
+  const coef = solveLinear(XtX, Xty);
+  return { n: train.length, predict: (r) => Math.max(0, Math.expm1(features(r).reduce((s, v, i) => s + v * coef[i], 0))) };
+}
+
 /* ---------- Simulation (DSS allocation) ---------- */
 async function runSimulation(opts = {}) {
   const btn = $("sRun"); btn.disabled = true; btn.textContent = "Menghitung …";
@@ -1143,8 +1180,11 @@ function simulate() {
   const unitMed = (list, key) => { const g = new Map(); for (const r of list) { if (r[key] === null) continue; if (!g.has(r.unit)) g.set(r.unit, []); g.get(r.unit).push(r[key]); } const out = {}; for (const [u, a] of g) out[u] = median(a); return out; };
   const f1Unit = unitMed(base, "f1"), f2Unit = unitMed(baseF2, "f2");
   const f1All = median(base.map((r) => r.f1)) ?? 2, f2All = median(baseF2.map((r) => r.f2)) ?? 4;
-  // how many past CPRs the forecast learns from (CPRs with both "created" and "arrived at KA" dates)
-  const histCount = base.filter((r) => r.f1 !== null).length;
+  // Forecast 1 = Linear Regression fitted on every CPR created before the period (all years, like the notebook);
+  // falls back to the median per hospital when there is too little history
+  const f1Train = RECS.filter((r) => r.create !== null && r.create < start && r.f1 !== null);
+  const f1Model = f1Train.length >= 100 ? fitF1Model(f1Train) : null;
+  const f1Pred = (r) => Math.round(f1Model ? f1Model.predict(r) : f1Unit[r.unit] ?? f1All);
   const w1 = Math.max(1, Math.round(median(base.map((r) => r.rev1)) ?? 1));
   const w2 = Math.max(1, Math.round(median(baseF2.map((r) => r.rev2)) ?? 2));
   // KA list and PIC per unit
@@ -1163,7 +1203,7 @@ function simulate() {
   }
   // Day grid (covers real dates and forecast dates)
   const minDay = Math.min(...test.map((r) => r.create));
-  const lastPred = (r) => r.create + Math.round(f1Unit[r.unit] ?? f1All) + w1 + Math.round(f2Unit[r.unit] ?? f2All) + w2;
+  const lastPred = (r) => r.create + f1Pred(r) + w1 + Math.round(f2Unit[r.unit] ?? f2All) + w2;
   const maxActual = Math.max(...test.map((r) => Math.max(lastPred(r), ...[r.kaIn, r.kaOut, r.back].filter((x) => x !== null).map((x) => x + w1 + w2 + 30))));
   const nDays = maxActual - minDay + 120;
   const newLoad = () => kaList.map(() => new Float64Array(nDays));
@@ -1209,7 +1249,7 @@ function simulate() {
     const lock = useLocks() ? LOCKED.get(r.cpr) : null;
     const c = {
       r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2,
-      f1: lock ? lock.f1 : Math.round(f1Unit[r.unit] ?? f1All), f2: lock ? lock.f2 : Math.round(f2Unit[r.unit] ?? f2All),
+      f1: lock ? lock.f1 : f1Pred(r), f2: lock ? lock.f2 : Math.round(f2Unit[r.unit] ?? f2All),
       lock: lock && kaList.includes(lock.ka) ? lock : null
     };
     c.predArrival = r.create + c.f1; c.s1 = c.predArrival; c.s2 = c.s1 + w1 + c.f2;
@@ -1255,7 +1295,7 @@ function simulate() {
   const dssCount = {}; for (const c of assigned) dssCount[c.ka] = (dssCount[c.ka] || 0) + 1;
   SIM_KA = new Map(assigned.map((c) => [c.r.cpr, c.ka]));
   return {
-    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, histCount,
+    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, histCount: f1Train.length, f1Method: f1Model ? "Linear Regression" : "median per rumah sakit",
     kaList, workDays, actual: actualTbl ? summarize(actualTbl) : null, dss: summarize(dssTbl), rules, assigned, actualCount, dssCount,
     same: META.hasKa ? assigned.filter((c) => c.ka === c.r.ka).length / assigned.length : null, load: L, actualLoad: actualL, minDay, nDays, n: test.length,
     open: assigned.filter((c) => c.r.backOut === null).length
@@ -1303,7 +1343,7 @@ function renderSim() {
   const warn = $("histWarn");
   warn.hidden = s.histCount >= 100;
   warn.replaceChildren(el("div"));
-  warn.firstChild.innerHTML = `<b>Perkiraan tiba di KA kurang bisa dipercaya.</b> Perkiraan dihitung dari riwayat CPR yang sudah pernah tiba di KA, dan saat ini hanya ada ${fmtInt(s.histCount)} CPR seperti itu sebelum ${fmtDay(s.start)}${s.histCount ? ` (median ${fmtNum(s.f1All, 0)} hari, dipakai untuk semua rumah sakit yang tidak punya riwayat)` : " (dipakai angka default 2 hari)"}. Upload <b>CPR_Cleaned</b> sebagai data riwayat terlebih dahulu, lalu file CPRHistory, kemudian jalankan pembagian lagi.`;
+  warn.firstChild.innerHTML = `<b>Perkiraan tiba di KA kurang bisa dipercaya.</b> Perkiraan dihitung dari riwayat CPR yang sudah pernah tiba di KA, dan saat ini hanya ada ${fmtInt(s.histCount)} CPR seperti itu sebelum ${fmtDay(s.start)}${s.histCount ? ` (median ${fmtNum(s.f1All, 0)} hari)` : " (dipakai angka default 2 hari)"}. Upload <b>CPR_Cleaned</b> sebagai data riwayat terlebih dahulu, lalu file CPRHistory, kemudian jalankan pembagian lagi.`;
   const lg = (items) => items.map(([name, c]) => `<span><i style="background:${c}"></i>${name}</span>`).join("");
   const kas = s.kaList.slice().sort((a, b) => (s.dssCount[b] || 0) - (s.dssCount[a] || 0));
   $("subKaCount").textContent = s.actual ? "Hasil DSS dibanding pembagian aktual" : "Hasil pembagian DSS";
@@ -1312,7 +1352,7 @@ function renderSim() {
     { name: "DSS", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) },
     { name: "Aktual", color: "var(--s2)", values: kas.map((k) => s.actualCount[k] || 0) }
   ] : [{ name: "CPR", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) }], { dec: 0, label: "Jumlah CPR per KA" });
-  $("simNote").textContent = `Perkiraan tiba di KA memakai median per rumah sakit. Lama review dihitung ${s.w1} hari (review 1) dan ${s.w2} hari (review 2). Batas beban ${fmtNum(s.maxPerDay)} CPR per KA per hari${s.userMax ? " (diisi manual)" : " (otomatis)"}.`;
+  $("simNote").textContent = `Perkiraan tiba di KA (Forecast 1): ${s.f1Method === "Linear Regression" ? `Linear Regression yang dilatih dari ${fmtInt(s.histCount)} CPR sebelum periode ini (model terbaik di notebook)` : "median per rumah sakit, karena riwayat kurang dari 100 CPR"}. Perkiraan kembali ke KA (Forecast 2): median per rumah sakit. Lama review dihitung ${s.w1} hari (review 1) dan ${s.w2} hari (review 2). Batas beban ${fmtNum(s.maxPerDay)} CPR per KA per hari${s.userMax ? " (diisi manual)" : " (otomatis)"}.`;
   incState.page = 0; renderIncoming();
 }
 function incRows() {
