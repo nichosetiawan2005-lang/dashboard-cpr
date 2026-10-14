@@ -1,7 +1,7 @@
 # Dashboard Alokasi CPR
 
 Dashboard untuk membagikan CPR ke Key Account (KA) HO dengan aturan DSS
-(vendor sama → PIC rumah sakit → beban paling ringan) dan melihat lama kerja tiap KA.
+(vendor sama → KA dengan beban paling ringan; List RS PIC dipakai sebagai daftar KA) dan melihat lama kerja tiap KA.
 Bagian dari skripsi *Decision Support System untuk forecasting CPR dan redistribusi beban kerja KA*.
 
 ## Isi repo

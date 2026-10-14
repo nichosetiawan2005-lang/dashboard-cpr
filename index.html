@@ -213,7 +213,7 @@ details.more[open] > summary::before { content: "▾ "; }
     <div class="tiles" id="simTiles"></div>
     <p class="note" id="simCompare"></p>
     <div class="card" style="margin-top:12px"><h3>Jumlah CPR per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
-    <div class="section-title"><h2>Daftar CPR dan KA-nya</h2><p>Urutan aturan: vendor sama → PIC rumah sakit → beban paling ringan.</p></div>
+    <div class="section-title"><h2>Daftar CPR dan KA-nya</h2><p>Urutan aturan: vendor sama → KA dengan beban paling ringan. List RS PIC hanya dipakai sebagai daftar KA.</p></div>
     <div class="tbl-tools"><input type="search" id="incSearch" placeholder="Cari CPR, rumah sakit, vendor, KA"><div class="pager"><button type="button" id="incCopy">Salin tabel</button><button type="button" id="incPrev" aria-label="Halaman sebelumnya">‹</button><span id="incPage"></span><button type="button" id="incNext" aria-label="Halaman berikutnya">›</button></div></div>
     <div class="tbl-wrap"><table id="tblInc"></table></div>
     <details class="more">
@@ -223,7 +223,7 @@ details.more[open] > summary::before { content: "▾ "; }
         <div class="field"><label for="sTo">sampai</label><input type="date" id="sTo"></div>
         <div class="field"><label for="sVendor">Bobot vendor sama</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
         <div class="field"><label for="sMax">Batas beban/hari</label><input type="number" id="sMax" min="1" step="0.5" placeholder="otomatis"></div>
-        <label class="check"><input type="checkbox" id="sPic" checked> Prioritaskan PIC unit</label>
+        <input type="checkbox" id="sPic" hidden>
         <button class="btn" id="sRun" type="button">Bagikan</button>
       </div>
       <p class="note" id="simNote"></p>
@@ -846,7 +846,7 @@ async function initDb() {
     const meta = await DB.doc("cpr/meta").get();
     const pic = await DB.doc("settings/pic").get();
     const params = await DB.doc("settings/params").get();
-    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = p.usePic !== false; }
+    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; }
     if (pic.exists) PIC_LIST = pic.data().list || null;
     if (!meta.exists) { renderSavedInfo(); renderQuality(); return; }
     setStatus("Memuat data tersimpan …");
@@ -888,7 +888,7 @@ async function saveData() {
 }
 async function saveParams() {
   if (!DB || IS_SAMPLE) return;
-  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: $("sPic").checked });
+  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: false });
   const meta = await DB.doc("cpr/meta").get();
   if (meta.exists) await DB.doc("cpr/meta").update({ simFrom: $("sFrom").value, simTo: $("sTo").value });
 }
@@ -1104,7 +1104,7 @@ function syncLoadDates() {
 function simulate() {
   const start = isoToDay($("sFrom").value), end = isoToDay($("sTo").value);
   const vf = Math.max(0, Math.min(1, parseFloat($("sVendor").value) || 0.5));
-  const usePic = $("sPic").checked;
+  const usePic = false; // PIC rule removed: it piled CPRs onto the PIC instead of spreading them
   const userMax = parseFloat($("sMax").value);
   // Validation mode: only CPRs with complete dates, so the real KA load can be compared.
   // Operational mode: every CPR created in the period, finished or still in progress.
@@ -1191,7 +1191,7 @@ function simulate() {
     push(byCreate, r.create, c); if (r.kaIn !== null) push(byArrive, r.kaIn, c); if (r.kaOut !== null) push(byKaOut, r.kaOut, c); if (r.back !== null) push(byBack, r.back, c);
   }
   const vendorHolder = (vendor, day) => { if (!hasVendor(vendor)) return null; for (const x of byVendor.get(vendor) || []) if (holding(x, day)) return x.ka; return null; };
-  const rules = { "Vendor sama": 0, "PIC unit": 0, "Beban terendah": 0, "Exception": 0 };
+  const rules = { "Vendor sama": 0, "Beban terendah": 0, "Exception": 0 };
   for (let day = minDay; day <= maxActual + 60; day++) {
     for (const c of byCreate.get(day) || []) {
       const days = activeDays(c);
