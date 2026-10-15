@@ -276,10 +276,12 @@ details.more[open] > summary::before { content: "▾ "; }
     <div class="section-title"><h2>CPR perlu tindakan</h2><p id="asOfNote"></p></div>
     <div class="filters" style="margin-top:0">
       <div class="field"><label for="actFilter">Tampilkan</label><select id="actFilter">
-        <option value="">Semua</option><option value="late">Terlambat di review 1 KA</option><option value="pre">Tertahan sebelum tiba di KA</option><option value="post">Tertahan di approver (setelah KA)</option></select></div>
+        <option value="">Semua yang aktif</option><option value="late">Terlambat di review 1 KA</option><option value="pre">Tertahan sebelum tiba di KA</option><option value="post">Tertahan di approver (setelah KA)</option><option value="stale">Kemungkinan tidak aktif (&gt; 30 hari)</option><option value="ignored">Sudah diabaikan</option></select></div>
       <div class="field"><label for="actKa">KA</label><select id="actKa"></select></div>
+      <button class="btn ghost" id="actIgnoreAll" type="button" hidden>Abaikan semua yang tampil</button>
     </div>
     <div class="tbl-wrap" style="max-height:460px;overflow:auto"><table id="tblAct"></table></div>
+    <p class="note">"Kemungkinan tidak aktif" = CPR yang lewat lebih dari 30 hari dari perkiraan tiba di KA tapi belum juga tiba (biasanya masih Draft di requester, dikembalikan, atau batal). CPR ini tidak masuk daftar "Semua yang aktif". Klik "Abaikan" bila CPR memang tidak diproses lagi: CPR keluar dari daftar dan dari beban KA, dan bisa dikembalikan kapan saja.</p>
     <p class="note">Aturan: CPR boleh dialihkan hanya bila belum mulai dikerjakan (belum tiba, atau sudah tiba tapi review 1 belum selesai). CPR yang tertahan di approver tidak dialihkan; tindak lanjuti ke approver pada tahap yang tertulis.</p>
 
     <div class="card" id="trCard" hidden style="margin-top:12px;border-color:var(--accent)">
@@ -1120,13 +1122,16 @@ function renderSaveBadge() {
   b.className = "pill " + kind; b.textContent = text;
 }
 // ---------- SPV data: transfers ("spv/transfers") and KA absences ("spv/absences") ----------
-let TRANSFERS = [], ABSENCES = [];
+let TRANSFERS = [], ABSENCES = [], IGNORED = {}; // IGNORED: cpr -> { at, by, note }
+const STALE_DAYS = 30; // more than this many days past the expected arrival at KA = probably not active
 async function loadSpv() {
   if (!DB) return;
   try { const t = await DB.doc("spv/transfers").get(); TRANSFERS = t.exists ? t.data().items || [] : []; } catch { TRANSFERS = []; }
   try { const a = await DB.doc("spv/absences").get(); ABSENCES = a.exists ? a.data().items || [] : []; } catch { ABSENCES = []; }
+  try { const g = await DB.doc("spv/ignored").get(); IGNORED = g.exists ? g.data().items || {} : {}; } catch { IGNORED = {}; }
 }
 async function saveTransfers() { await DB.doc("spv/transfers").set({ items: TRANSFERS.slice(-1500) }); }
+async function saveIgnored() { await DB.doc("spv/ignored").set({ items: IGNORED }); }
 async function saveAbsences() { await DB.doc("spv/absences").set({ items: ABSENCES }); }
 function lastTransfers() { const m = new Map(); for (const t of TRANSFERS) m.set(t.cpr, t); return m; }
 function isAbsent(ka, day) { return ABSENCES.some((a) => a.ka === ka && day >= a.from && day <= a.to); }
@@ -1617,7 +1622,8 @@ function simulate() {
   const newLoad = () => kaList.map(() => new Float64Array(nDays));
   const off = (d) => d - minDay;
   const activeDays = (c) => { const out = []; for (let i = 0; i < c.w1; i++) out.push(off(c.s1 + i)); for (let i = 0; i < c.w2; i++) out.push(off(c.s2 + i)); return out.filter((x) => x >= 0 && x < nDays); };
-  const add = (L, c, sign) => { const a = L[kaIdx.get(c.ka)]; for (const d of activeDays(c)) a[d] += sign * c.weight; };
+  const add = (L, c, sign) => { if (c.r && IGNORED[c.r.cpr]) return; // ignored by SPV: no load for the KA
+    const a = L[kaIdx.get(c.ka)]; for (const d of activeDays(c)) a[d] += sign * c.weight; };
   const lastDay = (c) => c.s2 + c.w2 - 1;
   const holding = (c, day) => c.s1 <= day && day <= lastDay(c);
   const peak = (L, ka, days, w) => { const a = L[kaIdx.get(ka)]; let p = 0; for (const d of days) p = Math.max(p, a[d] + w); return p; };
@@ -1672,7 +1678,7 @@ function simulate() {
   const D = dataDate();
   // review-1 window of a CPR not yet started: planned review days, or - if it already sits at the KA - until the data date
   const pendingOffs = (c) => { const end = Math.max(c.s1 + c.w1 - 1, c.r.kaIn !== null && D !== null ? D : -Infinity); const out = []; for (let d = c.s1; d <= end; d++) out.push(off(d)); return out.filter((x) => x >= 0 && x < nDays); };
-  const checkAbsence = (c) => {
+  const checkAbsence = (c) => { if (IGNORED[c.r.cpr]) return;
     if (!notStarted(c) || !ABSENCES.length || !absent(c.ka, pendingOffs(c))) return;
     const a = absenceFor(c.ka, c.s1, Math.max(c.s1 + c.w1 - 1, D ?? 0));
     const { best } = bestKa(c, activeDays(c), c.ka);
@@ -1897,20 +1903,22 @@ function actionItems() {
   const D = dataDate(), out = [];
   for (const c of SIM.assigned) {
     const r = c.r; if (r.backOut !== null) continue;
+    if (IGNORED[r.cpr]) { out.push({ c, type: "ignored", days: 0, status: `Diabaikan ${fmtStamp(IGNORED[r.cpr].at)}`, where: "–", canMove: false }); continue; }
     const where = r.stage ? `${r.stage}${r.stageSince !== null && r.stageSince !== undefined ? " sejak " + fmtShort(r.stageSince) : ""}` : "–";
     if (r.kaIn !== null && r.kaOut === null) {
       const d = D - r.kaIn; if (d > 3) out.push({ c, type: "late", days: d, status: `Review 1 belum selesai ${d} hari`, where: "Key Account HO", canMove: true });
     } else if (r.kaIn === null) {
       const due = r.create + (c.f1Hi ?? c.f1); const d = D - due;
-      if (d > 0) out.push({ c, type: "pre", days: d, status: `Belum tiba di KA, lewat ${d} hari dari batas perkiraan`, where, canMove: true });
+      if (d > STALE_DAYS) out.push({ c, type: "stale", days: d, status: `Belum tiba di KA ${d} hari setelah batas perkiraan, kemungkinan masih draft atau batal`, where, canMove: false });
+      else if (d > 0) out.push({ c, type: "pre", days: d, status: `Belum tiba di KA, lewat ${d} hari dari batas perkiraan`, where, canMove: true });
     } else if (r.kaOut !== null && r.back === null) {
       const d = D - r.kaOut; if (d > c.f2P80) out.push({ c, type: "post", days: d, status: `Menunggu approver ${d} hari (normalnya ≤ ${fmtNum(c.f2P80, 0)})`, where, canMove: false });
     }
   }
   return out.sort((a, b) => b.days - a.days);
 }
-const actKind = { late: "bad", pre: "warn", post: "serious" };
-const actLabel = { late: "Terlambat review", pre: "Tertahan sebelum KA", post: "Tertahan di approver" };
+const actKind = { late: "bad", pre: "warn", post: "serious", stale: "muted", ignored: "muted" };
+const actLabel = { late: "Terlambat review", pre: "Tertahan sebelum KA", post: "Tertahan di approver", stale: "Kemungkinan tidak aktif", ignored: "Diabaikan" };
 function kaLoadOn(ka, day) { if (!SIM) return null; const k = SIM.kaList.indexOf(ka); return k < 0 ? null : SIM.load[k][day - SIM.minDay] || 0; }
 function renderSpv() {
   const editable = canSave() && !IS_SAMPLE;
@@ -1924,15 +1932,20 @@ function renderSpv() {
   const items = actionItems();
   const week = Date.now() - 7 * 864e5;
   $("spvTiles").replaceChildren(
-    tile("CPR berjalan", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.backOut === null).length : 0), "", "belum selesai review 2"),
+    tile("CPR berjalan", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.backOut === null && !IGNORED[c.r.cpr]).length : 0), "", "belum selesai review 2"),
     tile("Terlambat review 1", fmtInt(items.filter((x) => x.type === "late").length), "CPR", "lebih dari 3 hari di KA"),
     tile("Tertahan sebelum KA", fmtInt(items.filter((x) => x.type === "pre").length), "CPR", "lewat batas perkiraan (P80)"),
     tile("Tertahan di approver", fmtInt(items.filter((x) => x.type === "post").length), "CPR", "setelah review 1 KA"),
+    tile("Kemungkinan tidak aktif", fmtInt(items.filter((x) => x.type === "stale").length), "CPR", `> ${STALE_DAYS} hari, cek lalu abaikan`),
     tile("KA tidak hadir hari ini", fmtInt(new Set(ABSENCES.filter((a) => today >= a.from && today <= a.to).map((a) => a.ka)).size), "orang", ""),
     tile("Pengalihan 7 hari terakhir", fmtInt(TRANSFERS.filter((t) => Date.parse(t.at) >= week).length), "", `${fmtInt(TRANSFERS.filter((t) => t.by === "SPV").length)} oleh SPV sejak awal`)
   );
   const f = $("actFilter").value, fk = $("actKa").value;
-  const rows = items.filter((x) => (!f || x.type === f) && (!fk || x.c.ka === fk));
+  // "Semua yang aktif" hides CPRs that are probably not active and CPRs the SPV ignored
+  const rows = items.filter((x) => (f ? x.type === f : x.type !== "stale" && x.type !== "ignored") && (!fk || x.c.ka === fk));
+  $("actIgnoreAll").hidden = !(editable && f === "stale" && rows.length);
+  $("actIgnoreAll").textContent = `Abaikan semua yang tampil (${fmtInt(rows.length)})`;
+  ACT_ROWS = rows;
   renderTable($("tblAct"), [
     { key: "cpr", label: "Nomor CPR", code: true, sortable: false, render: (x) => x.c.r.cpr },
     { key: "unit", label: "RS", sortable: false, render: (x) => x.c.unit },
@@ -1940,7 +1953,15 @@ function renderSpv() {
     { key: "type", label: "Kondisi", sortable: false, render: (x) => pill(actLabel[x.type], actKind[x.type]) },
     { key: "status", label: "Keterangan", sortable: false, render: (x) => x.status },
     { key: "where", label: "Posisi / tahap", sortable: false, render: (x) => x.where },
-    { key: "act", label: "", sortable: false, render: (x) => (x.canMove && editable ? Object.assign(el("button", { class: "btn ghost", type: "button", style: "padding:4px 10px" }, "Alihkan"), { onclick: () => openTransfer(x.c.r.cpr) }) : "") }
+    { key: "act", label: "", sortable: false, render: (x) => {
+      if (!editable) return "";
+      const btn = (label, fn) => Object.assign(el("button", { class: "btn ghost", type: "button", style: "padding:4px 10px;margin-left:4px" }, label), { onclick: fn });
+      const box = el("span");
+      if (x.canMove) box.append(btn("Alihkan", () => openTransfer(x.c.r.cpr)));
+      if (x.type === "ignored") box.append(btn("Kembalikan", () => setIgnored([x.c.r.cpr], false)));
+      else box.append(btn("Abaikan", () => setIgnored([x.c.r.cpr], true)));
+      return box;
+    } }
   ], rows);
   // absences
   renderTable($("tblAbs"), [
@@ -2012,6 +2033,22 @@ async function removeAbsence(a) {
   try { await saveAbsences(); await logEvent({ type: "Ketidakhadiran", note: `dihapus: ${kaLabel(a.ka)} ${fmtDay(a.from)} – ${fmtDay(a.to)}` }); await runSimulation(); } catch (err) { setStatus("Tidak tersimpan: " + saveErrorText(err)); }
 }
 for (const id of ["actFilter", "actKa"]) $(id).addEventListener("change", renderSpv);
+let ACT_ROWS = [];
+// mark CPRs as not processed any more (on = true) or bring them back (on = false)
+async function setIgnored(cprs, on) {
+  if (!cprs.length) return;
+  for (const cpr of cprs) { if (on) IGNORED[cpr] = { at: new Date().toISOString(), by: "SPV" }; else delete IGNORED[cpr]; }
+  try {
+    await saveIgnored();
+    await logEvent({ type: "Abaikan CPR", cpr: cprs.length, note: on ? `${cprs.length} CPR diabaikan (tidak dihitung ke beban KA)` : `${cprs.length} CPR dikembalikan` });
+    setStatus(on ? `${fmtInt(cprs.length)} CPR diabaikan dan tidak dihitung ke beban KA.` : `${fmtInt(cprs.length)} CPR dikembalikan.`);
+  } catch (err) { setStatus("Tidak tersimpan: " + saveErrorText(err)); }
+  await runSimulation({ save: false });
+}
+$("actIgnoreAll").addEventListener("click", () => {
+  const cprs = ACT_ROWS.filter((x) => x.type === "stale").map((x) => x.c.r.cpr);
+  if (confirm(`Abaikan ${cprs.length} CPR yang kemungkinan tidak aktif? CPR ini tidak dihitung ke beban KA. Bisa dikembalikan dari pilihan "Sudah diabaikan".`)) setIgnored(cprs, true);
+});
 
 /* ---------- Bukti & Akurasi ---------- */
 // real workload in the 3 months before the period, using the KA written in CPR_Cleaned
