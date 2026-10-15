@@ -174,6 +174,11 @@ details.more[open] > summary::before { content: "▾ "; }
           Upload CPRHistory (worklot)
           <input type="file" id="fileCpr" accept=".xlsx,.xls,.csv">
         </label>
+        <label class="file-btn" for="fileProg" id="lblProg">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
+          Update progress (Data PO)
+          <input type="file" id="fileProg" accept=".xlsx,.xls,.csv">
+        </label>
         <label class="file-btn" for="filePic" id="lblPic">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
           List RS PIC
@@ -244,7 +249,7 @@ details.more[open] > summary::before { content: "▾ "; }
       <h3>Data kinerja: CPR_Cleaned</h3>
       <div class="sub">CPR_Cleaned dipakai untuk dua hal: menilai kinerja KA dari CPR yang sudah jadi PO, dan sebagai riwayat untuk melatih forecast. Data ini tidak masuk ke worklot; worklot hanya dari CPRHistory.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
-        <label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload CPR_Cleaned (kinerja)<input type="file" id="filePo" accept=".xlsx,.xls,.csv"></label>
+        <label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload Data PO / CPR_Cleaned (kinerja)<input type="file" id="filePo" accept=".xlsx,.xls,.csv"></label>
         <div class="field"><label for="poFrom">PO dibuat dari</label><input type="date" id="poFrom"></div>
         <div class="field"><label for="poTo">sampai</label><input type="date" id="poTo"></div>
       </div>
@@ -832,6 +837,8 @@ function pivotHistory(rows, roleKa, roleBack) {
       const prev = list.filter((x) => Number(x[HCOL.seq] ?? 0) < seq).map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort();
       return prev.length ? prev[prev.length - 1] : stamps(rowsOfRole, HCOL.submit)[0] || null;
     };
+    // CPRHistory is the KA queue: a CPR without a Key Account row entered KA on its latest Approval Date
+    const queueAt = list.map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort().slice(-1)[0] || null;
     const code = String(id).split("-")[1] || String(last[HCOL.unit]);
     const assetUnit = String(last[HCOL.asset] ?? "").split(".")[0].trim();
     const kaUser = kaRows.length ? String(kaRows[kaRows.length - 1][HCOL.user] ?? "").trim() || null : null;
@@ -852,10 +859,10 @@ function pivotHistory(rows, roleKa, roleBack) {
         cpr: String(id), unit: known[code] || assetUnit || String(last[HCOL.unit]), vendor: "(kosong)", vendorName: String(last[HCOL.subject] ?? "").slice(0, 60),
         ka: kaUserM, kaName: kaUserM,
         create: minDay(req.length ? req : list, HCOL.submit), phIn: null, phOut: null,
-        kaIn: d(kIn), kaOut: d(kOut), back: d(bIn), backOut: d(bOut),
+        kaIn: d(kIn ?? (kaRows.length ? null : queueAt)), kaOut: d(kOut), back: d(bIn), backOut: d(bOut),
         capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
         createAt: (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null, submitAt: null,
-        kaInAt: kIn, kaOutAt: kOut, backAt: bIn, backOutAt: bOut,
+        kaInAt: kIn ?? (kaRows.length ? null : queueAt), kaOutAt: kOut, backAt: bIn, backOutAt: bOut,
         stage: now && normRole(now[HCOL.role]) !== "requester" ? String(now[HCOL.role] ?? "").trim() || null : null, stageSince: now ? d(toStamp(now[HCOL.approve])) : null
       }));
       continue;
@@ -867,11 +874,11 @@ function pivotHistory(rows, roleKa, roleBack) {
       cpr: String(id), unit: known[code] || assetUnit || String(last[HCOL.unit]), vendor: "(kosong)", vendorName: String(last[HCOL.subject] ?? "").slice(0, 60),
       ka: kaUser, kaName: kaUser,
       create: minDay(req.length ? req : list, HCOL.submit), phIn: null, phOut: null,
-      kaIn: toDay((arrival(kaRows) || "").slice(0, 10) || null), kaOut: maxDay(kaRows, HCOL.approve),
+      kaIn: toDay(((kaRows.length ? arrival(kaRows) : queueAt) || "").slice(0, 10) || null), kaOut: maxDay(kaRows, HCOL.approve),
       back: toDay((arrival(backRows) || "").slice(0, 10) || null), backOut: maxDay(backRows, HCOL.approve),
       capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
       createAt: (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null, submitAt: null,
-      kaInAt: arrival(kaRows), kaOutAt: stamps(kaRows, HCOL.approve).slice(-1)[0] || null,
+      kaInAt: kaRows.length ? arrival(kaRows) : queueAt, kaOutAt: stamps(kaRows, HCOL.approve).slice(-1)[0] || null,
       backAt: arrival(backRows), backOutAt: stamps(backRows, HCOL.approve).slice(-1)[0] || null,
       stage: waitRow ? String(waitRow[HCOL.role] ?? "").trim() || null : null, stageSince: waitRow ? toDay(waitRow[HCOL.submit]) : null
     }));
@@ -925,6 +932,7 @@ async function applyHistory(rows, fileName, roleKa, roleBack) {
   const base = IS_SAMPLE ? [] : RECS;
   META.hasKa = false; void feedHasKa; // worklot data: the DSS assigns the KA
   RECS = mergeRecs(base, result.recs, HIST_KEYS).map(finishRec);
+  applyProgress();
   return result;
 }
 
@@ -1004,7 +1012,7 @@ function renderAuth() {
   $("authUser").textContent = ACCESS === "admin" ? "Akses: admin" : ACCESS === "view" ? "Akses: lihat" : "";
   $("btnLogin").textContent = ACCESS !== "none" ? "Keluar" : "Masukkan kode";
   // only admins upload
-  $("lblCpr").hidden = !IS_ADMIN; $("lblPic").hidden = !IS_ADMIN;
+  $("lblCpr").hidden = !IS_ADMIN; $("lblPic").hidden = !IS_ADMIN; $("lblProg").hidden = !IS_ADMIN;
 }
 if (SB) {
   $("btnLogin").addEventListener("click", () => {
@@ -1043,6 +1051,7 @@ async function initDb() {
     if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = !!p.usePic; HIST_MODE = p.histMode || "selesai"; $("histMode").value = HIST_MODE; }
     if (pic.exists) PIC_LIST = pic.data().list || null;
     try { await loadPo(); } catch {}
+    try { await loadProgress(); } catch {}
     await loadLog(); renderLog(); await loadSpv();
     if (!meta.exists) { renderSavedInfo(); renderQuality(); renderKa(); return; }
     setStatus("Memuat data tersimpan …");
@@ -1052,6 +1061,7 @@ async function initDb() {
     META = { hasKa: m.hasKa, format: m.format, fileName: m.fileName, rawRows: m.rawRows, duplicates: m.duplicates, negatives: m.negatives, columnsFound: m.columnsFound };
     RECS = rows.map((a) => { const r = {}; FIELDS.forEach((k, i) => { r[k] = a[i]; }); return finishRec(r); });
     SAVED_AT = m.savedAt; IS_SAMPLE = false;
+    applyProgress();
     await loadLocks();
     deriveMeta(); populateControls();
     if (m.simFrom) { $("sFrom").value = m.simFrom; $("sTo").value = m.simTo; }
@@ -1326,15 +1336,142 @@ async function loadKinerjaFile(file, rows, columns) {
   {
     const need = [COL.cpr, PO_COL.po].filter((c) => !columns.includes(c));
     if (need.length) { setStatus(`File kinerja tidak bisa dipakai: kolom ${need.map((c) => `"${c}"`).join(", ")} tidak ditemukan. Pakai export CPR_Cleaned yang ada kolom PO-nya.`); return; }
-    PO_RECS = buildPoRecords(rows);
+    // add to the saved PO records (same CPR number -> the newer file wins)
+    const poMap = new Map(PO_RECS.map((r) => [r.cpr, r]));
+    const poFresh = buildPoRecords(rows);
+    for (const r of poFresh) poMap.set(r.cpr, r);
+    PO_RECS = [...poMap.values()];
     PO_META = { fileName: file.name, savedAt: new Date().toISOString(), chunks: Math.ceil(PO_RECS.length / CHUNK), count: PO_RECS.length, rawRows: rows.length };
+    const prog = await updateProgress(file, rows);
     setPoDates(); renderKa();
     let saved = "";
     if (DB && canSave()) { try { await savePo(); saved = " Tersimpan."; await logEvent({ type: "CPR jadi PO", file: file.name, rows: rows.length, cpr: PO_RECS.length, total: PO_RECS.length }); } catch (err) { saved = " Tidak tersimpan: " + saveErrorText(err) + "."; } }
-    setStatus(`${fmtInt(PO_RECS.length)} CPR yang sudah jadi PO terbaca dari ${file.name} (dari ${fmtInt(rows.length)} baris).${saved}`);
+    setStatus(`${file.name}: ${fmtInt(poFresh.length)} CPR sudah jadi PO (total data kinerja ${fmtInt(PO_RECS.length)} CPR).${saved} ${prog}`);
     renderAll();
   }
 }
+/* ---------- Progress CPR (Data PO export) ----------
+   CPRHistory only says when a CPR entered the KA queue. The Data PO export says what happened after:
+   KA approved (review 1), PurchasingHO received / approved (review 2), PO created, or rejected.
+   progress/meta      file name, upload time, data date, number of chunks
+   progress/chunk-N   [cpr, kaIn, kaOut, back, backOut, po, status] per CPR, 1000 per document */
+let PROG = new Map(), PROG_META = null;
+const PROG_FIELDS = ["cpr", "kaIn", "kaOut", "back", "backOut", "po", "status", "stage", "stageSince"];
+// approver steps in the Data PO export: "Date Received CPR by X" + "Date Approved CPR by X"
+function stageColumns(columns) {
+  const out = [];
+  for (const c of columns) {
+    const m = c.match(/^Date Received CPR by (.+)$/); if (!m) continue;
+    const name = m[1].trim();
+    const ok = columns.find((x) => x.replace(/_/g, " ").toLowerCase() === ("Date Approved CPR by " + name).toLowerCase());
+    out.push({ name, rec: c, ok });
+  }
+  return out;
+}
+// the step a CPR is waiting at: the latest step that received it but has not approved it yet
+// if no step is waiting, the CPR waits for the next approver after the last approved step
+function stageOfRow(r, steps) {
+  let best = null, lastOk = null;
+  for (const st of steps) {
+    const inAt = toStamp(r[st.rec]); if (!inAt) continue;
+    const okAt = st.ok ? toStamp(r[st.ok]) : null;
+    if (okAt) { if (!lastOk || okAt > lastOk.at) lastOk = { name: "Approver berikutnya setelah " + st.name, at: okAt }; continue; }
+    if (!best || inAt > best.at) best = { name: st.name, at: inAt };
+  }
+  return best || lastOk;
+}
+const CPR_STATUS = "CPR Status";
+function buildProgress(rows) {
+  const out = new Map(); let maxDay = null;
+  const steps = rows.length ? stageColumns(Object.keys(rows[0])) : [];
+  for (const r of rows) {
+    const cpr = r[COL.cpr]; if (!cpr) continue;
+    const p = {
+      cpr: String(cpr), kaIn: toDay(r[COL.kaIn]), kaOut: toDay(r[COL.kaOut]), back: toDay(r[COL.back]), backOut: toDay(r[COL.backOut]),
+      po: /cancel/i.test(String(r[PO_COL.poStatus] ?? "")) ? null : toDay(r[PO_COL.po]),
+      status: r[CPR_STATUS] ? String(r[CPR_STATUS]).trim() : null, stage: null, stageSince: null
+    };
+    const st = stageOfRow(r, steps); if (st) { p.stage = st.name; p.stageSince = toDay(st.at); }
+    // one CPR can have several PO lines: keep the filled values
+    const old = out.get(p.cpr);
+    if (old) for (const k of PROG_FIELDS) if (p[k] === null && old[k] !== null) p[k] = old[k];
+    out.set(p.cpr, p);
+    for (const k of ["create", "kaIn", "kaOut", "back", "backOut"]) { const d = toDay(r[COL[k]]); if (d !== null && (maxDay === null || d > maxDay)) maxDay = d; }
+    const d = toDay(r[PO_COL.po]); if (d !== null && (maxDay === null || d > maxDay)) maxDay = d;
+  }
+  return { map: out, maxDay };
+}
+const isRejected = (p) => /reject|cancel|batal|tolak/i.test(p.status || "");
+// put the latest progress over the worklot records
+function applyProgress() {
+  for (const r of RECS) {
+    const p = PROG.get(r.cpr);
+    r.prog = p || null;
+    r.done = false;
+    if (!p) continue;
+    if (p.kaIn !== null) { r.kaIn = p.kaIn; r.kaInAt = null; }
+    if (p.kaOut !== null) { r.kaOut = p.kaOut; r.kaOutAt = null; }
+    if (p.back !== null) { r.back = p.back; r.backAt = null; }
+    if (p.backOut !== null) { r.backOut = p.backOut; r.backOutAt = null; }
+    r.stage = p.stage ?? null; r.stageSince = p.stageSince ?? null;
+    r.done = p.po !== null || r.backOut !== null || isRejected(p);
+    finishRec(r);
+  }
+}
+function progressDate() { return PROG_META ? PROG_META.date : null; }
+async function saveProgress() {
+  if (!DB || !canSave()) return;
+  const rows = [...PROG.values()].map((p) => PROG_FIELDS.map((k) => p[k] ?? null));
+  const n = Math.ceil(rows.length / CHUNK);
+  const old = await DB.doc("progress/meta").get(); const oldN = old.exists ? old.data().chunks || 0 : 0;
+  for (let i = 0; i < n; i++) await DB.doc("progress/chunk-" + i).set({ rows: rows.slice(i * CHUNK, (i + 1) * CHUNK) });
+  for (let i = n; i < oldN; i++) await DB.doc("progress/chunk-" + i).delete();
+  await DB.doc("progress/meta").set({ ...PROG_META, chunks: n });
+}
+async function loadProgress() {
+  if (!DB) return;
+  const meta = await DB.doc("progress/meta").get(); if (!meta.exists) return;
+  PROG_META = meta.data();
+  const chunks = await Promise.all(Array.from({ length: PROG_META.chunks || 0 }, (_, i) => DB.doc("progress/chunk-" + i).get()));
+  PROG = new Map();
+  for (const c of chunks) for (const a of c.exists ? c.data().rows : []) { const p = {}; PROG_FIELDS.forEach((k, i) => { p[k] = a[i]; }); PROG.set(p.cpr, p); }
+}
+// read a Data PO file as progress: adds to the saved progress, returns a short summary
+async function updateProgress(file, rows) {
+  const { map, maxDay } = buildProgress(rows);
+  const doneBefore = new Set(RECS.filter((r) => r.done).map((r) => r.cpr));
+  const stepBefore = new Map(RECS.map((r) => [r.cpr, [r.kaOut, r.back, r.backOut].join("|")]));
+  for (const [cpr, p] of map) PROG.set(cpr, p); // newer file wins
+  const prevDate = progressDate();
+  PROG_META = { fileName: file.name, savedAt: new Date().toISOString(), date: Math.max(maxDay ?? 0, prevDate ?? 0) || null, count: PROG.size };
+  applyProgress();
+  const inWorklot = RECS.filter((r) => map.has(r.cpr));
+  const changed = inWorklot.filter((r) => stepBefore.get(r.cpr) !== [r.kaOut, r.back, r.backOut].join("|")).length;
+  const finished = inWorklot.filter((r) => r.done && !doneBefore.has(r.cpr)).length;
+  const noUpdate = RECS.filter((r) => !r.prog).length;
+  let saved = "";
+  if (DB && canSave()) {
+    try {
+      await saveProgress(); if (RECS.length && !IS_SAMPLE) await saveData();
+      await logEvent({ type: "Update progress", file: file.name, rows: rows.length, cpr: inWorklot.length, note: `${changed} CPR berubah tahap, ${finished} CPR selesai (jadi PO / ditolak), ${noUpdate} CPR worklot belum ada di Data PO` });
+    } catch (err) { saved = ` Progress tidak tersimpan: ${saveErrorText(err)}.`; }
+  }
+  if (SIM) await runSimulation({ save: false });
+  return `Progress per ${progressDate() !== null ? fmtDay(progressDate()) : "–"}: ${fmtInt(inWorklot.length)} CPR worklot ditemukan, ${fmtInt(changed)} berubah tahap, ${fmtInt(finished)} selesai. ${fmtInt(noUpdate)} CPR worklot belum ada di Data PO.${saved}`;
+}
+$("fileProg").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  setStatus(`Membaca ${file.name} …`);
+  try {
+    const { rows, columns } = await readWorkbook(file);
+    const need = [COL.cpr, COL.kaIn, COL.kaOut].filter((c) => !columns.includes(c));
+    if (need.length) { setStatus(`File progress tidak bisa dipakai: kolom ${need.map((c) => `"${c}"`).join(", ")} tidak ditemukan. Pakai export Data PO.`); e.target.value = ""; return; }
+    if (columns.includes(PO_COL.po)) await loadKinerjaFile(file, rows, columns); // also feeds Kinerja KA
+    else setStatus(await updateProgress(file, rows));
+    renderAll();
+  } catch (err) { setStatus(`File tidak bisa dibaca: ${err.message}.`); }
+  e.target.value = "";
+});
 for (const id of ["poFrom", "poTo"]) $(id).addEventListener("change", () => renderKa());
 
 function realKa(r) {
@@ -1895,6 +2032,7 @@ function makeSample() {
 
 /* ---------- Kontrol SPV ---------- */
 function dataDate() { // the latest date seen in the data = "today" for the action list
+  if (progressDate() !== null) return progressDate();
   let m = null; for (const r of RECS) for (const k of ["create", "kaIn", "kaOut", "back", "backOut"]) if (r[k] !== null && r[k] !== undefined && (m === null || r[k] > m)) m = r[k];
   return m;
 }
@@ -1902,7 +2040,9 @@ function actionItems() {
   if (!SIM) return [];
   const D = dataDate(), out = [];
   for (const c of SIM.assigned) {
-    const r = c.r; if (r.backOut !== null) continue;
+    const r = c.r; if (r.backOut !== null || r.done) continue;
+    // without a progress update after the CPR entered KA, its status is unknown: not a problem yet
+    if (!r.prog || D === null || D < (r.kaIn ?? r.create)) continue;
     if (IGNORED[r.cpr]) { out.push({ c, type: "ignored", days: 0, status: `Diabaikan ${fmtStamp(IGNORED[r.cpr].at)}`, where: "–", canMove: false }); continue; }
     const where = r.stage ? `${r.stage}${r.stageSince !== null && r.stageSince !== undefined ? " sejak " + fmtShort(r.stageSince) : ""}` : "–";
     if (r.kaIn !== null && r.kaOut === null) {
@@ -1928,11 +2068,15 @@ function renderSpv() {
   fill($("actKa"), true); fill($("absKa"), false);
   const today = toDay(new Date()), D = dataDate();
   $("spvNote").textContent = SIM ? "" : "Jalankan pembagian dulu di tab Pembagian CPR agar daftar tindakan bisa dihitung.";
-  $("asOfNote").textContent = D !== null ? `Dihitung per tanggal data terakhir: ${fmtDay(D)}. Upload data terbaru agar daftar ini mutakhir.` : "";
+  $("asOfNote").textContent = progressDate() !== null
+    ? `Dihitung dari update progress terakhir (Data PO per ${fmtDay(progressDate())}). Upload Data PO terbaru agar daftar ini mutakhir.`
+    : "Belum ada update progress. Upload Data PO lewat tombol \"Update progress\" agar CPR yang terlambat atau tertahan bisa dihitung.";
   const items = actionItems();
   const week = Date.now() - 7 * 864e5;
   $("spvTiles").replaceChildren(
-    tile("CPR berjalan", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.backOut === null && !IGNORED[c.r.cpr]).length : 0), "", "belum selesai review 2"),
+    tile("CPR berjalan", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.backOut === null && !c.r.done && !IGNORED[c.r.cpr]).length : 0), "", "belum selesai review 2"),
+    tile("Belum ada update", fmtInt(SIM ? SIM.assigned.filter((c) => !c.r.prog && !IGNORED[c.r.cpr]).length : 0), "CPR", "belum ada di Data PO, status belum diketahui"),
+    tile("Selesai", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.done).length : 0), "CPR", "jadi PO, selesai review 2, atau ditolak"),
     tile("Terlambat review 1", fmtInt(items.filter((x) => x.type === "late").length), "CPR", "lebih dari 3 hari di KA"),
     tile("Tertahan sebelum KA", fmtInt(items.filter((x) => x.type === "pre").length), "CPR", "lewat batas perkiraan (P80)"),
     tile("Tertahan di approver", fmtInt(items.filter((x) => x.type === "post").length), "CPR", "setelah review 1 KA"),

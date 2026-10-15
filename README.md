@@ -59,3 +59,13 @@ Repo ini **tidak berisi data CPR**. Data di-upload lewat dashboard dan disimpan 
 
 - Data otomatis masuk dari CGP Flow, tanpa upload manual.
 - Forecast 2 memakai model notebook (saat ini median per rumah sakit; hasilnya setara).
+
+## Tiga jenis upload
+
+| Upload | File | Dipakai untuk |
+|---|---|---|
+| Upload CPRHistory (worklot) | SHG_CPRHistory | Antrian CPR masuk KA. Approval Date terakhir = tanggal masuk KA. CPR baru ditambahkan, KA dibagikan DSS. |
+| Update progress (Data PO) | Export Data PO | Perjalanan CPR setelah masuk KA: review 1 selesai, tahap approver, PurchasingHO, PO, ditolak. Sekaligus mengisi Kinerja KA. |
+| List RS PIC | List_RS_PIC | Daftar KA dan PIC rumah sakit. |
+
+Kontrol SPV hanya menandai CPR terlambat/tertahan bila CPR itu sudah ada di Data PO yang diupload setelah CPR masuk KA. CPR tanpa update ditampilkan sebagai "Belum ada update". CPR yang jadi PO, selesai review 2, atau ditolak dihitung selesai.
