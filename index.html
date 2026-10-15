@@ -221,8 +221,7 @@ details.more[open] > summary::before { content: "▾ "; }
         <div class="field"><label for="sTo">sampai</label><input type="date" id="sTo"></div>
         <div class="field"><label for="sVendor">Bobot vendor sama</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
         <div class="field"><label for="sMax">Batas beban/hari</label><input type="number" id="sMax" min="1" step="0.5" placeholder="otomatis"></div>
-        <label class="check" title="PIC rumah sakit hanya mendapat CPR selama jumlah CPR-nya tidak melebihi rata-rata semua KA + toleransi"><input type="checkbox" id="sPic"> Prioritaskan PIC (batas adil)</label>
-        <div class="field"><label for="sPicTol">Toleransi PIC (%)</label><input type="number" id="sPicTol" min="0" max="200" step="5" value="10"></div>
+        <label class="check" title="PIC rumah sakit hanya mendapat CPR selama jumlah CPR-nya tidak melebihi rata-rata semua KA"><input type="checkbox" id="sPic"> Prioritaskan PIC (batas adil)</label>
         <button class="btn" id="sRun" type="button">Jalankan pembagian</button>
         <button class="btn ghost" id="sReset" type="button" hidden>Bagikan ulang semua</button>
       </div>
@@ -672,7 +671,8 @@ function updateModeBanner() {
 }
 const kaLabel = (u) => (META.kaLabel && META.kaLabel[u]) || u || "–";
 
-function populateControls() {
+// keep = { newMin }: keep the user's allocation period and only widen it so newly uploaded CPRs are included
+function populateControls(keep) {
   updateModeBanner();
   const fKa = $("fKa"), fUnit = $("fUnit");
   fKa.replaceChildren(el("option", { value: "" }, "Semua KA"));
@@ -683,8 +683,14 @@ function populateControls() {
   // default test window: last ~3 months of CPR creation
   if (META.maxCreate !== null) {
     const end = META.maxCreate, d = dayToDate(end);
-    const start = toDay(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 2, 1)).toISOString());
-    $("sFrom").value = dayToIso(Math.max(start, META.minCreate)); $("sTo").value = dayToIso(end);
+    const oldFrom = isoToDay($("sFrom").value), oldTo = isoToDay($("sTo").value);
+    if (keep && oldFrom !== null && oldTo !== null) {
+      $("sFrom").value = dayToIso(Math.min(oldFrom, keep.newMin ?? oldFrom));
+      $("sTo").value = dayToIso(Math.max(oldTo, end));
+    } else {
+      const start = toDay(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 2, 1)).toISOString());
+      $("sFrom").value = dayToIso(Math.max(start, META.minCreate)); $("sTo").value = dayToIso(end);
+    }
   }
   $("fNew").checked = true;
 }
@@ -705,6 +711,7 @@ $("fileCpr").addEventListener("change", async (e) => {
   try {
     const { rows, columns } = await readWorkbook(file);
     const before = new Set(IS_SAMPLE ? [] : RECS.map((r) => r.cpr));
+    const hadData = !IS_SAMPLE;
     let fmtNote = "", inFile = 0;
     if (isHistory(columns)) {
       const missingH = HREQUIRED.filter((k) => !columns.includes(HCOL[k]));
@@ -724,10 +731,14 @@ $("fileCpr").addEventListener("change", async (e) => {
     } else {
       const missing = REQUIRED.filter((k) => !columns.includes(COL[k]));
       if (missing.length) { setStatus(`File tidak bisa dipakai: kolom ${missing.map((k) => `"${COL[k]}"`).join(", ")} tidak ditemukan. Pastikan file berasal dari export CPR_Cleaned atau CPRHistory.`); return; }
-      RECS = buildRecords(rows, columns); IS_SAMPLE = false; META.fileName = file.name; META.format = "cleaned"; HIST = null; SAVED_AT = null; inFile = RECS.length;
+      const fresh = buildRecords(rows, columns); inFile = fresh.length;
+      RECS = mergeRecs(IS_SAMPLE ? [] : RECS, fresh).map(finishRec); IS_SAMPLE = false; META.fileName = file.name; META.format = "cleaned"; HIST = null; SAVED_AT = null;
     }
     if (DB) await loadLocks();
-    deriveMeta(); populateControls();
+    // added CPRs: widen the period so they are picked up, existing CPRs keep their KA
+    const added = RECS.filter((r) => !before.has(r.cpr) && r.create !== null);
+    const newMin = added.length ? Math.min(...added.map((r) => r.create)) : null;
+    deriveMeta(); populateControls(hadData ? { newMin } : null);
     $("sampleBanner").hidden = true; updateModeBanner();
     $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPR`;
     SIM = null; SIM_KA = new Map(); // allocation waits for "Jalankan pembagian"
@@ -745,7 +756,9 @@ $("fileCpr").addEventListener("change", async (e) => {
         renderAll();
       } catch (err) { saved = ` Data tidak tersimpan: ${saveErrorText(err)}.`; }
     }
-    setStatus(`${fmtInt(RECS.length)} CPR terbaca dari ${file.name}.${saved}${fmtNote} Atur pembagian lalu klik "Jalankan pembagian".`);
+    const nNew = RECS.filter((r) => !before.has(r.cpr)).length;
+    const addNote = hadData ? ` Ditambahkan ke data lama: ${fmtInt(nNew)} CPR baru, ${fmtInt(inFile - nNew)} CPR sudah ada (diperbarui, KA-nya tetap). Total sekarang ${fmtInt(RECS.length)} CPR; periode pembagian diperluas ${$("sFrom").value} s/d ${$("sTo").value}.` : "";
+    setStatus(`${fmtInt(inFile)} CPR terbaca dari ${file.name}.${saved}${fmtNote}${addNote} Klik "Jalankan pembagian" untuk membagi CPR yang belum punya KA.`);
   } catch (err) { setStatus(`File tidak bisa dibaca: ${err.message}. Coba simpan ulang sebagai .xlsx lalu upload lagi.`); }
   e.target.value = "";
 });
@@ -758,7 +771,7 @@ $("filePic").addEventListener("change", async (e) => {
     for (const r of rows) { const rs = r.RS ?? r.rs ?? r["Rumah Sakit"]; const pic = r.PIC ?? r.pic; if (rs && pic) list[String(rs).trim()] = String(pic).trim(); }
     if (!Object.keys(list).length) { setStatus("List RS PIC tidak terbaca: file harus punya kolom RS dan PIC."); return; }
     PIC_LIST = list;
-    if (!META.hasKa && !IS_SAMPLE) { deriveMeta(); populateControls(); }
+    if (!META.hasKa && !IS_SAMPLE) { deriveMeta(); populateControls({}); }
     setStatus(`List RS PIC terbaca: ${Object.keys(list).length} rumah sakit. Membagikan ulang …`);
     let saved = "";
     if (DB) { try { await DB.doc("settings/pic").set({ list }); saved = " Tersimpan."; await logEvent({ type: "List RS PIC", file: file.name, rows: rows.length, cpr: null, note: `${Object.keys(list).length} RS, ${new Set(Object.values(list)).size} KA` }); } catch (err) { saved = ` Tidak tersimpan: ${saveErrorText(err)}.`; } }
@@ -921,7 +934,7 @@ for (const id of ["roleKa", "roleBack", "histMode"]) $(id).addEventListener("cha
   const base = BASE_BEFORE_HIST;
   RECS = base; IS_SAMPLE = !base.length; if (IS_SAMPLE) RECS = [];
   await applyHistory(HIST.rows, HIST.fileName, $("roleKa").value, $("roleBack").value);
-  IS_SAMPLE = false; deriveMeta(); populateControls(); updateModeBanner();
+  IS_SAMPLE = false; deriveMeta(); populateControls({}); updateModeBanner();
   SIM = null; SIM_KA = new Map(); renderAll();
   if (DB) { try { await saveData(); } catch (err) { setStatus("Tidak tersimpan: " + saveErrorText(err)); } }
   renderQuality();
@@ -1025,7 +1038,7 @@ async function initDb() {
     const meta = await DB.doc("cpr/meta").get();
     const pic = await DB.doc("settings/pic").get();
     const params = await DB.doc("settings/params").get();
-    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = !!p.usePic; $("sPicTol").value = p.picTol ?? 10; HIST_MODE = p.histMode || "selesai"; $("histMode").value = HIST_MODE; }
+    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = !!p.usePic; HIST_MODE = p.histMode || "selesai"; $("histMode").value = HIST_MODE; }
     if (pic.exists) PIC_LIST = pic.data().list || null;
     try { await loadPo(); } catch {}
     await loadLog(); renderLog(); await loadSpv();
@@ -1069,7 +1082,7 @@ async function saveData() {
 }
 async function saveParams() {
   if (!DB) return;
-  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: $("sPic").checked, picTol: parseFloat($("sPicTol").value) || 0, histMode: HIST_MODE });
+  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: $("sPic").checked, histMode: HIST_MODE });
   const meta = await DB.doc("cpr/meta").get();
   if (meta.exists && !IS_SAMPLE) await DB.doc("cpr/meta").update({ simFrom: $("sFrom").value, simTo: $("sTo").value });
 }
@@ -1201,7 +1214,7 @@ function filtered() {
   return RECS.filter((r) => (!onlyNew || r.isNew) && r.create !== null && (from === null || r.create >= from) && (to === null || r.create <= to) && (!ka || kaOf(r) === ka) && (!unit || r.unit === unit));
 }
 for (const id of ["fFrom", "fTo", "fKa", "fUnit", "fNew"]) $(id).addEventListener("change", renderAll);
-$("fReset").addEventListener("click", () => { populateControls(); renderAll(); });
+$("fReset").addEventListener("click", () => { populateControls({}); renderAll(); });
 
 function tile(k, v, unit, d) {
   const t = el("div", { class: "tile" });
@@ -1554,7 +1567,7 @@ function simulate() {
   const start = isoToDay($("sFrom").value), end = isoToDay($("sTo").value);
   const vf = Math.max(0, Math.min(1, parseFloat($("sVendor").value) || 0.5));
   // PIC rule is optional: the PIC only gets the CPR while his CPR count stays within the fair share (+ tolerance)
-  const usePic = $("sPic").checked, picTol = Math.max(0, parseFloat($("sPicTol").value) || 0);
+  const usePic = $("sPic").checked;
   const userMax = parseFloat($("sMax").value);
   // Validation mode: only CPRs with complete dates, so the real KA load can be compared.
   // Operational mode: every CPR created in the period, finished or still in progress.
@@ -1700,7 +1713,7 @@ function simulate() {
       if (hv && !absent(hv, days) && peak(L, hv, days, vf) <= maxPerDay) { ka = hv; weight = vf; rule = "Vendor sama"; }
       if (!ka && usePic) {
         const p = pic[c.unit];
-        const fair = (assigned.length / kaList.length) * (1 + picTol / 100) + 1; // fair share so far + tolerance
+        const fair = assigned.length / kaList.length + 1; // fair share so far (average per KA)
         if (p && kaIdx.has(p) && !absent(p, days) && (cnt[p] || 0) <= fair && peak(L, p, days, 1) <= maxPerDay) { ka = p; rule = "PIC unit"; }
       }
       if (!ka) {

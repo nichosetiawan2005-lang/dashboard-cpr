@@ -27,7 +27,8 @@ Repo ini **tidak berisi data CPR**. Data di-upload lewat dashboard dan disimpan 
 2. **Pengalihan otomatis**: KA tidak hadir (cuti/sakit/dinas) pada hari review, atau beban KA melewati batas saat CPR tiba.
 3. **Pengalihan oleh SPV** dari tab Kontrol SPV, wajib dengan alasan. Semua pengalihan tercatat (kapan, dari siapa, ke siapa, alasan, oleh siapa).
 4. **CPR tertahan di approver** tidak membebani KA (beban hanya dihitung pada hari review) dan masuk daftar tindak lanjut SPV beserta tahapnya.
-5. PIC rumah sakit opsional dengan **batas adil**: PIC hanya mendapat CPR selama jumlah CPR-nya ≤ rata-rata semua KA + toleransi.
+5. PIC rumah sakit opsional dengan **batas adil**: PIC hanya mendapat CPR selama jumlah CPR-nya ≤ rata-rata semua KA (tanpa toleransi).
+6. Upload berikutnya **menambah** data: CPR baru ditambahkan, CPR lama diperbarui dan KA-nya tetap; periode pembagian diperluas otomatis.
 
 ## Forecast
 
