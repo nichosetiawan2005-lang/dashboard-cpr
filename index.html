@@ -243,7 +243,15 @@ details.more[open] > summary::before { content: "▾ "; }
     <p class="note" id="simCompare"></p>
     <div id="simResults"><div class="card" style="margin-top:12px"><h3>Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
     <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. Status is updated from PO Data; details and follow-up actions are available in Supervisor Control.</p></div>
-    <div class="tbl-tools"><input type="search" id="incSearch" placeholder="Search CPR, hospital, vendor, KA"><div class="pager"><button type="button" id="incCopy">Copy table</button><button type="button" id="incPrev" aria-label="Previous page">‹</button><span id="incPage"></span><button type="button" id="incNext" aria-label="Next page">›</button></div></div>
+    <div class="filters" id="incFilters" style="margin:0 0 10px">
+      <div class="field"><label for="incStatus">Status</label><select id="incStatus"></select></div>
+      <div class="field"><label for="incKa">Key Account</label><select id="incKa"></select></div>
+      <div class="field"><label for="incUnit">Hospital</label><select id="incUnit"></select></div>
+      <div class="field"><label for="incRule">Rule</label><select id="incRule"></select></div>
+      <div class="field"><label for="incAssign">Assignment</label><select id="incAssign"></select></div>
+      <button class="btn ghost" type="button" id="incClear">Clear filters</button>
+    </div>
+    <div class="tbl-tools"><input type="search" id="incSearch" placeholder="Search CPR number, description, hospital, KA"><div class="pager"><button type="button" id="incCopy">Copy table</button><button type="button" id="incPrev" aria-label="Previous page">‹</button><span id="incPage"></span><button type="button" id="incNext" aria-label="Next page">›</button></div></div>
     <div class="tbl-wrap"><table id="tblInc"></table></div>
     </div>
   </section>
@@ -1975,9 +1983,28 @@ function renderSim() {
   $("simNote").textContent = `Arrival at KA (Forecast 1): ${s.f1Method === "Linear Regression" ? `Linear Regression trained on ${fmtInt(s.histCount)} CPRs preceding this period (best-performing model in the analysis notebook)` : "median per hospital, because fewer than 100 historical CPRs are available"}. Return to KA (Forecast 2): median per hospital. Review duration is assumed to be ${s.w1} day${s.w1 === 1 ? "" : "s"} (review 1) and ${s.w2} day${s.w2 === 1 ? "" : "s"} (review 2). Workload limit: ${fmtNum(s.maxPerDay)} CPRs per KA per day${s.userMax ? " (set manually)" : " (automatic)"}.`;
   incState.page = 0; renderIncoming();
 }
+const assignLabel = (c) => (c.isNewAssign ? "New" : c.locked ? "Fixed" : "Not saved");
+// dropdown filters above the CPR table; each list only offers values that exist in the current allocation
+const INC_FILTERS = [
+  ["incStatus", "All statuses", (c) => progressStatus(c)[0]],
+  ["incKa", "All Key Accounts", (c) => kaLabel(c.ka)],
+  ["incUnit", "All hospitals", (c) => c.unit],
+  ["incRule", "All rules", (c) => ruleLabel(c.rule)],
+  ["incAssign", "All assignments", (c) => assignLabel(c)]
+];
+function fillIncFilters() {
+  for (const [id, allText, get] of INC_FILTERS) {
+    const sel = $(id), cur = sel.value;
+    const values = [...new Set(SIM.assigned.map(get))].sort();
+    sel.replaceChildren(el("option", { value: "" }, allText), ...values.map((v) => el("option", { value: v }, `${v} (${fmtInt(SIM.assigned.filter((c) => get(c) === v).length)})`)));
+    sel.value = values.includes(cur) ? cur : "";
+  }
+}
 function incRows() {
   const q = incState.q.trim().toLowerCase();
-  return SIM.assigned.filter((c) => !q || [c.r.cpr, c.unit, c.vendor, c.r.vendorName, kaLabel(c.ka), kaLabel(c.r.ka)].join(" ").toLowerCase().includes(q))
+  const active = INC_FILTERS.filter(([id]) => $(id).value);
+  return SIM.assigned.filter((c) => active.every(([id, , get]) => get(c) === $(id).value))
+    .filter((c) => !q || [c.r.cpr, c.unit, c.vendor, c.r.vendorName, kaLabel(c.ka), kaLabel(c.r.ka)].join(" ").toLowerCase().includes(q))
     .sort((a, b) => a.r.create - b.r.create || a.r.cpr.localeCompare(b.r.cpr));
 }
 const ruleKind = { "Vendor sama": "info", "PIC unit": "good", "Beban terendah": "warn", "Dialihkan": "serious", "Exception": "bad" };
@@ -2000,6 +2027,7 @@ function progressStatus(c) {
 }
 function renderIncoming() {
   if (!SIM) return;
+  fillIncFilters(); $("incAssign").parentElement.hidden = !useLocks();
   const rows = incRows(), per = 50, pages = Math.max(1, Math.ceil(rows.length / per));
   incState.page = Math.min(incState.page, pages - 1);
   $("incPage").textContent = `${incState.page + 1} / ${pages} · ${fmtInt(rows.length)} CPRs`;
@@ -2013,9 +2041,11 @@ function renderIncoming() {
     { key: "ka", label: "Key Account", sortable: false, render: (c) => kaLabel(c.ka) },
     { key: "status", label: "Status", sortable: false, render: (c) => { const [t, k] = progressStatus(c); return pill(t, k); } },
     { key: "rule", label: "Rule", sortable: false, render: (c) => pill(ruleLabel(c.rule), ruleKind[c.rule]) },
-    ...(useLocks() ? [{ key: "lk", label: "Assignment", sortable: false, render: (c) => (c.isNewAssign ? pill("New", "info") : c.locked ? pill("Fixed", "muted") : pill("Not saved", "warn")) }] : []),
+    ...(useLocks() ? [{ key: "lk", label: "Assignment", sortable: false, render: (c) => pill(assignLabel(c), c.isNewAssign ? "info" : c.locked ? "muted" : "warn") }] : []),
   ], rows.slice(incState.page * per, incState.page * per + per));
 }
+for (const [id] of INC_FILTERS) $(id).addEventListener("change", () => { incState.page = 0; renderIncoming(); });
+$("incClear").addEventListener("click", () => { for (const [id] of INC_FILTERS) $(id).value = ""; $("incSearch").value = ""; incState.q = ""; incState.page = 0; renderIncoming(); });
 $("incSearch").addEventListener("input", (e) => { incState.q = e.target.value; incState.page = 0; renderIncoming(); });
 $("incPrev").addEventListener("click", () => { incState.page = Math.max(0, incState.page - 1); renderIncoming(); });
 $("incNext").addEventListener("click", () => { incState.page++; renderIncoming(); });
