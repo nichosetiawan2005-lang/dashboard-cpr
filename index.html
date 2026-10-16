@@ -162,14 +162,25 @@ details.more[open] > summary::before { content: "▾ "; }
 .dq li { margin-bottom: 4px; }
 /* landing page shown before an access code is entered (online version) */
 body.checking .top, body.checking .wrap { visibility: hidden; }
-body.locked .top, body.locked .wrap > :not(#loginCard) { display: none !important; }
-body.locked .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-body.locked #loginCard { display: block !important; width: 100%; max-width: 440px; padding: 28px; }
-.landing-name { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
-.landing-full { color: var(--muted); font-size: 15px; margin-top: 2px; }
-.landing-text { font-size: 13.5px; color: var(--muted); margin: 14px 0 22px; line-height: 1.55; }
-body.locked #loginForm { flex-direction: column; align-items: stretch; }
-body.locked #loginForm .btn { width: 100%; }
+body.locked .top, body.locked .wrap > :not(#landing) { display: none !important; }
+body.locked .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; max-width: none; }
+body.locked #landing { display: flex !important; }
+#landing { position: relative; width: 100%; max-width: 1300px; align-items: flex-end; justify-content: center; padding: 40px 0; }
+.land-art { position: absolute; bottom: 40px; height: 420px; width: auto; }
+.land-left { left: 0; } .land-right { right: 0; }
+#loginCard { position: relative; z-index: 1; width: 100%; max-width: 520px; padding: 44px 56px 36px; border-radius: 14px; box-shadow: 0 10px 40px rgba(20, 24, 32, .08); margin: 0 0 6px; }
+.land-brand { text-align: center; font-size: 13px; font-weight: 700; letter-spacing: .18em; color: var(--accent-ink); }
+.land-full { text-align: center; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.land-title { text-align: center; font-size: 32px; font-weight: 500; margin: 22px 0 26px; }
+#loginForm { display: flex; flex-direction: column; }
+#loginForm label { font-size: 15px; color: var(--muted); font-weight: 500; margin-bottom: 8px; }
+#loginForm input { height: 50px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--info-bg); font-size: 15px; }
+.land-help { text-align: right; font-size: 13px; color: var(--muted); margin: 12px 0 26px; }
+.land-btn { height: 50px; border: 0; border-radius: 8px; background: #252b42; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; }
+.land-btn:hover { filter: brightness(1.15); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .land-btn { background: var(--accent); } }
+:root[data-theme="dark"] .land-btn { background: var(--accent); }
+@media (max-width: 1150px) { .land-art { display: none; } #loginCard { padding: 32px 22px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 @media (max-width: 560px) { .tile .v { font-size: 22px; } .brand h1 { font-size: 17px; } }
 </style>
@@ -215,16 +226,70 @@ body.locked #loginForm .btn { width: 100%; }
   <div class="banner info" id="sampleBanner">
     <div><b>Sample data is currently displayed.</b> Recommended sequence: (1) upload the Hospital PIC List, (2) upload the CPR Queue (CPRHistory), (3) select Run Allocation, and (4) upload PO Data to update CPR progress and KA performance. All uploaded data is stored in this dashboard.</div>
   </div>
-  <div class="card" id="loginCard" hidden>
-    <div class="landing-name">CAPRA</div>
-    <div class="landing-full">CPR Arrival Prediction &amp; Resource Allocation</div>
-    <p class="landing-text">Decision Support System for Key Account HO. CAPRA forecasts when each CPR will reach Key Account HO, allocates CPRs evenly across Key Accounts, and tracks their progress until they are converted into purchase orders.</p>
-    <h3>Sign in</h3><div class="sub">Enter the access code provided by the dashboard administrator. The code will be remembered in this browser.</div>
-    <form id="loginForm" class="filters" style="border:0;padding:0;margin:8px 0 0">
-      <div class="field"><label for="loginCode">Code</label><input type="password" id="loginCode" autocomplete="off" required></div>
-      <button class="btn" type="submit">Sign in</button>
-    </form>
-    <p class="note" id="loginMsg"></p>
+  <div id="landing" hidden>
+    <!-- original illustrations, decorative only -->
+    <svg class="land-art land-left" viewBox="0 0 260 420" aria-hidden="true">
+      <g opacity=".35" fill="none" stroke="#9aa6b8" stroke-width="1.5"><circle cx="40" cy="70" r="6"/><path d="M200 40l8 8M208 40l-8 8M30 250l7 7M37 250l-7 7"/></g>
+      <!-- plant -->
+      <path d="M58 330c-26-40-30-92-6-128 10 40 14 84 6 128z" fill="#1baf7a"/>
+      <path d="M66 330c4-52 22-96 52-118-6 44-22 86-52 118z" fill="#15946a"/>
+      <path d="M62 330c-30-24-48-56-50-88 24 18 42 50 50 88z" fill="#23c48a"/>
+      <path d="M36 328h56l-7 66H43z" fill="#f59e42"/><rect x="32" y="322" width="64" height="10" rx="3" fill="#e5862a"/>
+      <!-- person with tablet -->
+      <path d="M150 396l6-118h20l-2 118z" fill="#252b42"/><path d="M178 396l-2-118h20l4 118z" fill="#1d2235"/>
+      <path d="M144 398h28v-8h-22zM176 398h30l-4-8h-24z" fill="#3a3f5c"/>
+      <path d="M144 288c-2-60 6-112 32-126 26 14 34 66 30 126z" fill="#f59e42"/>
+      <path d="M150 196c-14 18-22 40-22 60l10 2c2-18 8-36 18-50z" fill="#f6c7a3"/>
+      <path d="M200 200c14 14 20 34 20 52l-30 6-2-10 20-4c-2-14-8-26-16-34z" fill="#f6c7a3"/>
+      <rect x="180" y="236" width="26" height="36" rx="4" transform="rotate(-12 193 254)" fill="#252b42"/><rect x="184" y="241" width="18" height="26" rx="2" transform="rotate(-12 193 254)" fill="#8ec5ff"/>
+      <rect x="168" y="146" width="16" height="20" rx="6" fill="#f6c7a3"/>
+      <circle cx="176" cy="128" r="24" fill="#f6c7a3"/>
+      <path d="M152 126c0-22 16-34 30-32 16 2 24 16 20 30-8-12-22-16-34-12-6 2-10 8-16 14z" fill="#7a2f3a"/>
+      <circle cx="170" cy="96" r="12" fill="#7a2f3a"/>
+      <circle cx="184" cy="128" r="2" fill="#252b42"/><path d="M180 138q5 4 10 0" stroke="#252b42" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <path d="M0 400h260" stroke="#c9cfd7" stroke-width="2"/>
+    </svg>
+    <div class="card" id="loginCard">
+      <div class="land-brand">CAPRA</div>
+      <div class="land-full">CPR Arrival Prediction &amp; Resource Allocation</div>
+      <h2 class="land-title">Sign in</h2>
+      <form id="loginForm">
+        <label for="loginCode">Access code</label>
+        <input type="password" id="loginCode" autocomplete="off" required placeholder="Enter your access code">
+        <p class="land-help">Don't have a code? Contact the dashboard administrator.</p>
+        <button class="land-btn" type="submit">Sign in</button>
+      </form>
+      <p class="note" id="loginMsg" style="text-align:center"></p>
+    </div>
+    <svg class="land-art land-right" viewBox="0 0 300 420" aria-hidden="true">
+      <g opacity=".35" fill="none" stroke="#9aa6b8" stroke-width="1.5"><circle cx="40" cy="30" r="6"/><circle cx="280" cy="180" r="4"/><path d="M10 120l8 8M18 120l-8 8M260 300l7 7M267 300l-7 7"/></g>
+      <!-- chart board -->
+      <rect x="20" y="60" width="120" height="86" rx="8" fill="#e7f0fb" stroke="#c9cfd7"/>
+      <rect x="36" y="112" width="14" height="22" rx="3" fill="#2a78d6"/><rect x="58" y="96" width="14" height="38" rx="3" fill="#2a78d6"/><rect x="80" y="104" width="14" height="30" rx="3" fill="#2a78d6"/><rect x="102" y="84" width="14" height="50" rx="3" fill="#1baf7a"/>
+      <!-- seated person with laptop -->
+      <path d="M40 396c0-20 14-30 40-30h40c18 0 26 10 26 30z" fill="#3a3f5c"/>
+      <path d="M58 370c-4-46 6-80 34-86 28 6 36 40 30 86z" fill="#eb6834"/>
+      <rect x="84" y="262" width="14" height="16" rx="5" fill="#f6c7a3"/>
+      <circle cx="91" cy="244" r="21" fill="#f6c7a3"/>
+      <path d="M70 242c-2-20 12-30 24-28 14 2 20 12 18 24-6-8-16-10-26-8-6 2-10 6-16 12z" fill="#6b3e2e"/>
+      <circle cx="85" cy="246" r="1.8" fill="#252b42"/><circle cx="97" cy="246" r="1.8" fill="#252b42"/><path d="M86 254q5 4 10 0" stroke="#252b42" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <path d="M70 352h60l-6-36H76z" fill="#d7dde6"/><rect x="64" y="350" width="72" height="6" rx="2" fill="#b9c1cd"/>
+      <path d="M68 318c10 6 18 14 22 28M126 318c-8 6-14 14-18 28" stroke="#f6c7a3" stroke-width="9" stroke-linecap="round" fill="none"/>
+      <!-- standing person with clipboard -->
+      <path d="M206 398l4-150h18l-2 150zM230 398l-2-150h18l6 150z" fill="#252b42"/>
+      <path d="M200 400h28v-8h-24zM228 400h30l-4-8h-26z" fill="#1a1e2e"/>
+      <path d="M198 256c-4-62 4-108 30-118 28 8 36 56 30 118z" fill="#ffffff" stroke="#d7dde6" stroke-width="2"/>
+      <path d="M216 142l12 12 12-12" fill="none" stroke="#f59e42" stroke-width="5" stroke-linejoin="round"/>
+      <rect x="198" y="246" width="60" height="10" fill="#252b42"/><rect x="223" y="247" width="10" height="8" fill="#eda100"/>
+      <path d="M204 160c-14 24-18 50-14 80h12c-2-24 2-46 10-64z" fill="#ffffff" stroke="#d7dde6" stroke-width="2"/>
+      <path d="M252 160c12 22 14 44 10 62l-26 4-2-10 18-4c2-14-2-28-8-40z" fill="#ffffff" stroke="#d7dde6" stroke-width="2"/>
+      <rect x="226" y="196" width="22" height="30" rx="3" fill="#2a78d6"/><rect x="230" y="202" width="14" height="3" fill="#fff"/><rect x="230" y="209" width="14" height="3" fill="#fff"/><rect x="230" y="216" width="9" height="3" fill="#fff"/>
+      <rect x="221" y="122" width="14" height="18" rx="5" fill="#f6c7a3"/>
+      <circle cx="228" cy="104" r="22" fill="#f6c7a3"/>
+      <path d="M206 102c-2-22 12-32 24-30 16 2 22 14 20 26-8-10-18-12-30-10-6 2-10 8-14 14z" fill="#1f2433"/>
+      <circle cx="221" cy="106" r="1.9" fill="#252b42"/><circle cx="235" cy="106" r="1.9" fill="#252b42"/><path d="M223 115q5 4 10 0" stroke="#252b42" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <path d="M0 400h300" stroke="#c9cfd7" stroke-width="2"/>
+    </svg>
   </div>
   <div class="banner warn" id="modeBanner" hidden></div>
   <div class="status-line" id="status"></div>
@@ -1053,7 +1118,7 @@ const VIEW_HIDDEN_TABS = ["spv", "bukti", "kualitas"];
 if (SB) {
   $("btnLogin").addEventListener("click", () => {
     if (ACCESS !== "none") { storeCode(""); location.reload(); return; }
-    $("loginCard").hidden = !$("loginCard").hidden;
+    $("loginCode").focus();
   });
   $("loginForm").addEventListener("submit", async (e) => {
     e.preventDefault(); $("loginMsg").textContent = "Verifying code …";
