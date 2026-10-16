@@ -160,6 +160,16 @@ details.more[open] > summary::before { content: "▾ "; }
 .note { font-size: 12.5px; color: var(--muted); margin-top: 8px; max-width: 90ch; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .dq li { margin-bottom: 4px; }
+/* landing page shown before an access code is entered (online version) */
+body.checking .top, body.checking .wrap { visibility: hidden; }
+body.locked .top, body.locked .wrap > :not(#loginCard) { display: none !important; }
+body.locked .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+body.locked #loginCard { display: block !important; width: 100%; max-width: 440px; padding: 28px; }
+.landing-name { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
+.landing-full { color: var(--muted); font-size: 15px; margin-top: 2px; }
+.landing-text { font-size: 13.5px; color: var(--muted); margin: 14px 0 22px; line-height: 1.55; }
+body.locked #loginForm { flex-direction: column; align-items: stretch; }
+body.locked #loginForm .btn { width: 100%; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 @media (max-width: 560px) { .tile .v { font-size: 22px; } .brand h1 { font-size: 17px; } }
 </style>
@@ -205,8 +215,11 @@ details.more[open] > summary::before { content: "▾ "; }
   <div class="banner info" id="sampleBanner">
     <div><b>Sample data is currently displayed.</b> Recommended sequence: (1) upload the Hospital PIC List, (2) upload the CPR Queue (CPRHistory), (3) select Run Allocation, and (4) upload PO Data to update CPR progress and KA performance. All uploaded data is stored in this dashboard.</div>
   </div>
-  <div class="card" id="loginCard" hidden style="margin-top:16px;max-width:420px">
-    <h3>Access code</h3><div class="sub">Please request an access code from the dashboard administrator. The code will be remembered in this browser.</div>
+  <div class="card" id="loginCard" hidden>
+    <div class="landing-name">CAPRA</div>
+    <div class="landing-full">CPR Arrival Prediction &amp; Resource Allocation</div>
+    <p class="landing-text">Decision Support System for Key Account HO. CAPRA forecasts when each CPR will reach Key Account HO, allocates CPRs evenly across Key Accounts, and tracks their progress until they are converted into purchase orders.</p>
+    <h3>Sign in</h3><div class="sub">Enter the access code provided by the dashboard administrator. The code will be remembered in this browser.</div>
     <form id="loginForm" class="filters" style="border:0;padding:0;margin:8px 0 0">
       <div class="field"><label for="loginCode">Code</label><input type="password" id="loginCode" autocomplete="off" required></div>
       <button class="btn" type="submit">Sign in</button>
@@ -1021,6 +1034,10 @@ function makeSupabaseDb() {
 }
 function renderAuth() {
   if (!SB) return;
+  // no valid code yet: show only the landing page with the sign-in form
+  document.body.classList.remove("checking");
+  document.body.classList.toggle("locked", ACCESS === "none");
+  if (ACCESS === "none") setTimeout(() => $("loginCode").focus(), 0);
   $("authBox").hidden = false;
   $("authUser").textContent = ACCESS === "admin" ? "Access: administrator" : ACCESS === "view" ? "Access: view only" : "";
   $("btnLogin").textContent = ACCESS !== "none" ? "Sign out" : "Enter access code";
@@ -2389,6 +2406,7 @@ document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () 
 function renderAll() { renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
 let resizeTimer; window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => renderers[currentTab](), 150); });
 
+if (SB) document.body.classList.add("checking"); // hide the page until the access code is checked
 (function boot() {
   const rows = makeSample();
   RECS = buildRecords(rows, Object.values(COL)); IS_SAMPLE = true;
