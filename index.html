@@ -116,9 +116,10 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 td.code { font-family: var(--font-data); font-size: 12px; }
-td.cellwrap { white-space: normal; min-width: 150px; max-width: 200px; }
+td.cellwrap { white-space: normal; min-width: 130px; max-width: 180px; }
 #tblInc td { vertical-align: middle; }
-#tblInc th, #tblInc td { padding-inline: 8px; }
+#tblInc th, #tblInc td { padding-inline: 7px; }
+#tblInc { font-size: 12.5px; }
 #tblInc th { white-space: normal; vertical-align: bottom; min-width: 70px; }
 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 99px; font-size: 12px; font-weight: 500; }
 .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
@@ -2049,6 +2050,15 @@ function progressStatus(c) {
   return ["At KA – Review 2", "info"];
 }
 // actual arrival = "Date Received CPR by Key Account HO" from PO Data only (empty until PO Data confirms it)
+// return to KA: the actual date from PO Data, else Forecast 2; an estimate already past the data date is marked overdue
+function returnText(c) {
+  const box = el("div");
+  const D = dataDate(), late = c.r.back === null && c.r.prog && D !== null && c.s2 < D && !c.r.done;
+  box.append(el("div", {}, fmtDay(c.r.back !== null ? c.r.back : c.s2)));
+  if (c.r.back !== null) box.append(el("div", { class: "note", style: "margin:0;font-size:11px" }, "actual"));
+  if (late) box.append(el("div", { style: "font-size:11px;color:var(--warn)" }, "overdue"));
+  return box;
+}
 const actualArrival = (r) => (r.prog && r.prog.kaIn !== null && r.prog.kaIn !== undefined ? r.prog.kaIn : null);
 function renderIncoming() {
   if (!SIM) return;
@@ -2063,6 +2073,7 @@ function renderIncoming() {
     { key: "create", label: "Created", sortable: false, render: (c) => (c.r.createAt ? fmtStampShort(c.r.createAt) : fmtDay(c.r.create)) },
     { key: "est", label: "Estimated Arrival at Key Account", sortable: false, render: (c) => fmtDay(c.predArrival) },
     { key: "act", label: "Actual Arrival at Key Account", sortable: false, render: (c) => (actualArrival(c.r) !== null ? fmtDay(actualArrival(c.r)) : "–") },
+    { key: "ret", label: "Estimated Return to Key Account", sortable: false, render: (c) => returnText(c) },
     { key: "ka", label: "Key Account", sortable: false, render: (c) => kaLabel(c.ka) },
     { key: "status", label: "Status", sortable: false, render: (c) => { const [t, k] = progressStatus(c); return pill(t, k); } },
     { key: "rule", label: "Rule", sortable: false, render: (c) => pill(ruleLabel(c.rule), ruleKind[c.rule]) },
@@ -2076,8 +2087,8 @@ $("incPrev").addEventListener("click", () => { incState.page = Math.max(0, incSt
 $("incNext").addEventListener("click", () => { incState.page++; renderIncoming(); });
 $("incCopy").addEventListener("click", async () => {
   if (!SIM) return;
-  const lines = [["CPR Number", "Hospital", "Description", "Created", "Estimated Arrival at Key Account", "Actual Arrival at Key Account", "Key Account", "Status", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
-  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), actualArrival(c.r) !== null ? dayToIso(actualArrival(c.r)) : "", kaLabel(c.ka), progressStatus(c)[0], ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
+  const lines = [["CPR Number", "Hospital", "Description", "Created", "Estimated Arrival at Key Account", "Actual Arrival at Key Account", "Estimated Return to Key Account", "Key Account", "Status", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
+  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), actualArrival(c.r) !== null ? dayToIso(actualArrival(c.r)) : "", dayToIso(c.r.back !== null ? c.r.back : c.s2), kaLabel(c.ka), progressStatus(c)[0], ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
   const text = lines.join("\n");
   try { await navigator.clipboard.writeText(text); setStatus(`${fmtInt(lines.length - 1)} rows copied. Paste into Excel with Ctrl+V.`); }
   catch { const ta = el("textarea", { style: "position:fixed;left:-9999px" }); ta.value = text; document.body.append(ta); ta.select(); const ok = document.execCommand && document.execCommand("copy"); ta.remove(); setStatus(ok ? `${fmtInt(lines.length - 1)} rows copied.` : "The browser blocked automatic copying. Please select the table and copy it manually."); }
