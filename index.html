@@ -2048,6 +2048,8 @@ function progressStatus(c) {
   if (r.back === null) return ["With approver", "serious"];
   return ["At KA – Review 2", "info"];
 }
+// actual arrival = "Date Received CPR by Key Account HO" from PO Data only (empty until PO Data confirms it)
+const actualArrival = (r) => (r.prog && r.prog.kaIn !== null && r.prog.kaIn !== undefined ? r.prog.kaIn : null);
 function renderIncoming() {
   if (!SIM) return;
   fillIncFilters(); $("incAssign").parentElement.hidden = !useLocks();
@@ -2060,7 +2062,7 @@ function renderIncoming() {
     { key: "desc", label: "Description", wrap: true, sortable: false, render: (c) => c.r.vendorName ? String(c.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 60) : "–" },
     { key: "create", label: "Created", sortable: false, render: (c) => (c.r.createAt ? fmtStampShort(c.r.createAt) : fmtDay(c.r.create)) },
     { key: "est", label: "Estimated Arrival at Key Account", sortable: false, render: (c) => fmtDay(c.predArrival) },
-    { key: "act", label: "Actual Arrival at Key Account", sortable: false, render: (c) => (c.r.kaIn !== null ? fmtDay(c.r.kaIn) : "–") },
+    { key: "act", label: "Actual Arrival at Key Account", sortable: false, render: (c) => (actualArrival(c.r) !== null ? fmtDay(actualArrival(c.r)) : "–") },
     { key: "ka", label: "Key Account", sortable: false, render: (c) => kaLabel(c.ka) },
     { key: "status", label: "Status", sortable: false, render: (c) => { const [t, k] = progressStatus(c); return pill(t, k); } },
     { key: "rule", label: "Rule", sortable: false, render: (c) => pill(ruleLabel(c.rule), ruleKind[c.rule]) },
@@ -2075,7 +2077,7 @@ $("incNext").addEventListener("click", () => { incState.page++; renderIncoming()
 $("incCopy").addEventListener("click", async () => {
   if (!SIM) return;
   const lines = [["CPR Number", "Hospital", "Description", "Created", "Estimated Arrival at Key Account", "Actual Arrival at Key Account", "Key Account", "Status", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
-  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), c.r.kaIn !== null ? dayToIso(c.r.kaIn) : "", kaLabel(c.ka), progressStatus(c)[0], ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
+  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), actualArrival(c.r) !== null ? dayToIso(actualArrival(c.r)) : "", kaLabel(c.ka), progressStatus(c)[0], ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
   const text = lines.join("\n");
   try { await navigator.clipboard.writeText(text); setStatus(`${fmtInt(lines.length - 1)} rows copied. Paste into Excel with Ctrl+V.`); }
   catch { const ta = el("textarea", { style: "position:fixed;left:-9999px" }); ta.value = text; document.body.append(ta); ta.select(); const ok = document.execCommand && document.execCommand("copy"); ta.remove(); setStatus(ok ? `${fmtInt(lines.length - 1)} rows copied.` : "The browser blocked automatic copying. Please select the table and copy it manually."); }
@@ -2312,7 +2314,7 @@ function renderBukti() {
   if (!SIM) { clear(); $("bkNote").textContent = "Please run the allocation in the CPR Allocation tab first."; return; }
   $("bkNote").textContent = `Period: CPRs created ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)} (${fmtInt(SIM.n)} CPRs).`;
   // 1) forecast accuracy on CPRs that already arrived
-  const ev = SIM.assigned.filter((c) => c.r.kaIn !== null && c.r.f1 !== null);
+  const ev = SIM.assigned.filter((c) => c.r.kaIn !== null && c.r.f1 !== null && (META.hasKa || actualArrival(c.r) !== null));
   const err = ev.map((c) => c.f1 - c.r.f1), errB = ev.map((c) => c.f1Base - c.r.f1);
   const mae = mean(err.map(Math.abs)), maeB = mean(errB.map(Math.abs));
   const within2 = ev.length ? (err.filter((e) => Math.abs(e) <= 2).length / ev.length) * 100 : null;
@@ -2320,7 +2322,7 @@ function renderBukti() {
   const coverage = ev.length && ev[0].f1Lo !== null ? (inBand.length / ev.length) * 100 : null;
   const bias = median(err), biasMean = mean(err);
   $("bkFcTiles").replaceChildren(
-    tile("CPRs evaluated", fmtInt(ev.length), "", "have actually reached the KA"),
+    tile("CPRs evaluated", fmtInt(ev.length), "", "arrival confirmed by PO Data (Date Received CPR by Key Account HO)"),
     tile("Mean absolute error (MAE)", fmtNum(mae), "days", maeB !== null ? `baseline: ${fmtNum(maeB)} days (${mae < maeB ? "model is more accurate" : "model is not yet more accurate"})` : ""),
     tile("Within ±2 days", fmtNum(within2, 0), "%", "forecast error of at most 2 days"),
     tile("Bias (median error)", (bias > 0 ? "+" : "") + fmtNum(bias, 0), "days", (Math.abs(bias ?? 0) < 0.5 ? "balanced" : bias > 0 ? "tends to forecast later than actual" : "tends to forecast earlier than actual") + ` · mean ${fmtNum(biasMean)} (influenced by long-delayed CPRs)`),
