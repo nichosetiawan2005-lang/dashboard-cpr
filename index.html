@@ -1987,15 +1987,13 @@ function renderIncoming() {
   incState.page = Math.min(incState.page, pages - 1);
   $("incPage").textContent = `${incState.page + 1} / ${pages} · ${fmtInt(rows.length)} CPRs`;
   renderTable($("tblInc"), [
-    { key: "cpr", label: "CPR number", code: true, sortable: false, render: (c) => c.r.cpr },
+    { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (c) => c.r.cpr },
     { key: "unit", label: "Hospital", sortable: false },
-    { key: "vendor", label: "Vendor", sortable: false, render: (c) => c.r.vendorName ? c.r.vendorName.slice(0, 32) : c.vendor },
-    { key: "create", label: "Created / submitted", sortable: false, render: (c) => {
-      const box = el("div"); box.append(el("div", {}, c.r.createAt ? fmtStampShort(c.r.createAt) : fmtDay(c.r.create)));
-      if (c.r.submitAt && c.r.submitAt !== c.r.createAt) box.append(el("div", { class: "note", style: "margin:0;font-size:11.5px" }, "submitted " + fmtStampShort(c.r.submitAt)));
-      return box; } },
-    { key: "pred", label: "Arrival at KA", sortable: false, render: (c) => (c.r.kaIn !== null ? fmtDay(c.r.kaIn) : fmtDay(c.predArrival) + " (forecast)") },
-    { key: "ka", label: "KA", sortable: false, render: (c) => kaLabel(c.ka) },
+    { key: "desc", label: "Description", sortable: false, render: (c) => c.r.vendorName ? c.r.vendorName.slice(0, 40) : "–" },
+    { key: "create", label: "Created", sortable: false, render: (c) => (c.r.createAt ? fmtStampShort(c.r.createAt) : fmtDay(c.r.create)) },
+    { key: "est", label: "Estimated Arrival at Key Account", sortable: false, render: (c) => fmtDay(c.predArrival) },
+    { key: "act", label: "Actual Arrival at Key Account", sortable: false, render: (c) => (c.r.kaIn !== null ? fmtDay(c.r.kaIn) : "–") },
+    { key: "ka", label: "Key Account", sortable: false, render: (c) => kaLabel(c.ka) },
     { key: "rule", label: "Rule", sortable: false, render: (c) => pill(ruleLabel(c.rule), ruleKind[c.rule]) },
     ...(useLocks() ? [{ key: "lk", label: "Assignment", sortable: false, render: (c) => (c.isNewAssign ? pill("New", "info") : c.locked ? pill("Fixed", "muted") : pill("Not saved", "warn")) }] : []),
   ], rows.slice(incState.page * per, incState.page * per + per));
@@ -2005,8 +2003,8 @@ $("incPrev").addEventListener("click", () => { incState.page = Math.max(0, incSt
 $("incNext").addEventListener("click", () => { incState.page++; renderIncoming(); });
 $("incCopy").addEventListener("click", async () => {
   if (!SIM) return;
-  const lines = [["CPR number", "Hospital", "Vendor ID", "Created", "Forecast arrival at KA", "Actual arrival at KA", "DSS KA", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
-  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.vendor, c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), c.r.kaIn !== null ? dayToIso(c.r.kaIn) : "", kaLabel(c.ka), ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
+  const lines = [["CPR Number", "Hospital", "Description", "Created", "Estimated Arrival at Key Account", "Actual Arrival at Key Account", "Key Account", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
+  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), c.r.kaIn !== null ? dayToIso(c.r.kaIn) : "", kaLabel(c.ka), ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
   const text = lines.join("\n");
   try { await navigator.clipboard.writeText(text); setStatus(`${fmtInt(lines.length - 1)} rows copied. Paste into Excel with Ctrl+V.`); }
   catch { const ta = el("textarea", { style: "position:fixed;left:-9999px" }); ta.value = text; document.body.append(ta); ta.select(); const ok = document.execCommand && document.execCommand("copy"); ta.remove(); setStatus(ok ? `${fmtInt(lines.length - 1)} rows copied.` : "The browser blocked automatic copying. Please select the table and copy it manually."); }
