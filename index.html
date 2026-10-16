@@ -116,6 +116,10 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 td.code { font-family: var(--font-data); font-size: 12px; }
+td.cellwrap { white-space: normal; min-width: 150px; max-width: 200px; }
+#tblInc td { vertical-align: middle; }
+#tblInc th, #tblInc td { padding-inline: 8px; }
+#tblInc th { white-space: normal; vertical-align: bottom; min-width: 70px; }
 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 99px; font-size: 12px; font-weight: 500; }
 .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .pill.good { background: var(--good-bg); color: var(--good); }
@@ -238,7 +242,7 @@ details.more[open] > summary::before { content: "▾ "; }
     <div class="tiles" id="simTiles"></div>
     <p class="note" id="simCompare"></p>
     <div id="simResults"><div class="card" style="margin-top:12px"><h3>Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
-    <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. The Hospital PIC List is used as the list of KAs.</p></div>
+    <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. Status is updated from PO Data; details and follow-up actions are available in Supervisor Control.</p></div>
     <div class="tbl-tools"><input type="search" id="incSearch" placeholder="Search CPR, hospital, vendor, KA"><div class="pager"><button type="button" id="incCopy">Copy table</button><button type="button" id="incPrev" aria-label="Previous page">‹</button><span id="incPage"></span><button type="button" id="incNext" aria-label="Next page">›</button></div></div>
     <div class="tbl-wrap"><table id="tblInc"></table></div>
     </div>
@@ -577,7 +581,7 @@ function renderTable(table, columns, rows, state = {}) {
   for (const r of data.slice(0, limit)) {
     const row = el("tr");
     for (const c of columns) {
-      const td = el("td", { class: (c.num ? "num " : "") + (c.code ? "code" : "") });
+      const td = el("td", { class: (c.num ? "num " : "") + (c.code ? "code " : "") + (c.wrap ? "cellwrap" : "") });
       const out = c.render ? c.render(r) : r[c.key];
       if (out instanceof Node) td.append(out); else td.textContent = out === null || out === undefined ? "–" : out === "(kosong)" ? "(blank)" : out;
       row.append(td);
@@ -1981,6 +1985,19 @@ const ruleKind = { "Vendor sama": "info", "PIC unit": "good", "Beban terendah": 
 const RULE_LABEL = { "Vendor sama": "Same vendor", "PIC unit": "Hospital PIC", "Beban terendah": "Lowest workload", "Dialihkan": "Reassigned", "Exception": "Exception" };
 const ruleLabel = (r) => RULE_LABEL[r] || r;
 const byLabel = (b) => (b === "Otomatis" ? "Automatic" : b === "SPV" ? "Supervisor" : b);
+// short progress status of a CPR (details and follow-up notes stay in Supervisor Control)
+function progressStatus(c) {
+  const r = c.r, p = r.prog;
+  if (IGNORED[r.cpr]) return ["Dismissed", "muted"];
+  if (p && isRejected(p)) return ["Rejected", "muted"];
+  if (p && p.po !== null) return ["Completed (PO)", "good"];
+  if (r.backOut !== null) return ["Review 2 completed", "good"];
+  if (!p) return ["No update yet", "muted"];
+  if (r.kaIn === null) return ["Before KA", "warn"];
+  if (r.kaOut === null) return ["At KA – Review 1", "info"];
+  if (r.back === null) return ["With approver", "serious"];
+  return ["At KA – Review 2", "info"];
+}
 function renderIncoming() {
   if (!SIM) return;
   const rows = incRows(), per = 50, pages = Math.max(1, Math.ceil(rows.length / per));
@@ -1989,11 +2006,12 @@ function renderIncoming() {
   renderTable($("tblInc"), [
     { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (c) => c.r.cpr },
     { key: "unit", label: "Hospital", sortable: false },
-    { key: "desc", label: "Description", sortable: false, render: (c) => c.r.vendorName ? c.r.vendorName.slice(0, 40) : "–" },
+    { key: "desc", label: "Description", wrap: true, sortable: false, render: (c) => c.r.vendorName ? String(c.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 60) : "–" },
     { key: "create", label: "Created", sortable: false, render: (c) => (c.r.createAt ? fmtStampShort(c.r.createAt) : fmtDay(c.r.create)) },
     { key: "est", label: "Estimated Arrival at Key Account", sortable: false, render: (c) => fmtDay(c.predArrival) },
     { key: "act", label: "Actual Arrival at Key Account", sortable: false, render: (c) => (c.r.kaIn !== null ? fmtDay(c.r.kaIn) : "–") },
     { key: "ka", label: "Key Account", sortable: false, render: (c) => kaLabel(c.ka) },
+    { key: "status", label: "Status", sortable: false, render: (c) => { const [t, k] = progressStatus(c); return pill(t, k); } },
     { key: "rule", label: "Rule", sortable: false, render: (c) => pill(ruleLabel(c.rule), ruleKind[c.rule]) },
     ...(useLocks() ? [{ key: "lk", label: "Assignment", sortable: false, render: (c) => (c.isNewAssign ? pill("New", "info") : c.locked ? pill("Fixed", "muted") : pill("Not saved", "warn")) }] : []),
   ], rows.slice(incState.page * per, incState.page * per + per));
@@ -2003,8 +2021,8 @@ $("incPrev").addEventListener("click", () => { incState.page = Math.max(0, incSt
 $("incNext").addEventListener("click", () => { incState.page++; renderIncoming(); });
 $("incCopy").addEventListener("click", async () => {
   if (!SIM) return;
-  const lines = [["CPR Number", "Hospital", "Description", "Created", "Estimated Arrival at Key Account", "Actual Arrival at Key Account", "Key Account", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
-  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), c.r.kaIn !== null ? dayToIso(c.r.kaIn) : "", kaLabel(c.ka), ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
+  const lines = [["CPR Number", "Hospital", "Description", "Created", "Estimated Arrival at Key Account", "Actual Arrival at Key Account", "Key Account", "Status", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
+  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), c.r.kaIn !== null ? dayToIso(c.r.kaIn) : "", kaLabel(c.ka), progressStatus(c)[0], ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
   const text = lines.join("\n");
   try { await navigator.clipboard.writeText(text); setStatus(`${fmtInt(lines.length - 1)} rows copied. Paste into Excel with Ctrl+V.`); }
   catch { const ta = el("textarea", { style: "position:fixed;left:-9999px" }); ta.value = text; document.body.append(ta); ta.select(); const ok = document.execCommand && document.execCommand("copy"); ta.remove(); setStatus(ok ? `${fmtInt(lines.length - 1)} rows copied.` : "The browser blocked automatic copying. Please select the table and copy it manually."); }
