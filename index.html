@@ -224,7 +224,7 @@ details.more[open] > summary::before { content: "▾ "; }
 
   <!-- PEMBAGIAN CPR -->
   <section class="panel active" id="panel-distribusi" role="tabpanel" aria-labelledby="tab-distribusi">
-    <div class="card" style="margin-top:16px">
+    <div class="card" id="settingsCard" style="margin-top:16px">
       <h3>Allocation settings</h3>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
         <div class="field"><label for="sFrom">CPR created from</label><input type="date" id="sFrom"></div>
@@ -1029,6 +1029,7 @@ function renderAuth() {
   // view-only code: only CPR Allocation and KA Performance are shown
   const viewOnly = ACCESS === "view";
   for (const t of VIEW_HIDDEN_TABS) $("tab-" + t).hidden = viewOnly;
+  $("settingsCard").hidden = viewOnly; // viewers see the saved allocation result, not the settings
   if (viewOnly && VIEW_HIDDEN_TABS.includes(currentTab)) showTab("distribusi");
 }
 const VIEW_HIDDEN_TABS = ["spv", "bukti", "kualitas"];
