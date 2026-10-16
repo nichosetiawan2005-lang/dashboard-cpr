@@ -1,4 +1,4 @@
-<title>CAPRA CPR Dashboard</title>
+<title>CPR Allocation & Workload Balancing</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
 <style>
@@ -165,7 +165,7 @@ body.checking .top, body.checking .wrap { visibility: hidden; }
 body.locked .top, body.locked .wrap > :not(#loginCard) { display: none !important; }
 body.locked .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
 body.locked #loginCard { display: block !important; width: 100%; max-width: 440px; padding: 28px; }
-.landing-name { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
+.landing-name { font-size: 26px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
 .landing-full { color: var(--muted); font-size: 15px; margin-top: 2px; }
 .landing-text { font-size: 13.5px; color: var(--muted); margin: 14px 0 22px; line-height: 1.55; }
 body.locked #loginForm { flex-direction: column; align-items: stretch; }
@@ -178,7 +178,7 @@ body.locked #loginForm .btn { width: 100%; }
   <div class="wrap">
     <div class="top-row">
       <div class="brand">
-        <h1>CAPRA <span style="font-weight:500;color:var(--muted);font-size:14px">CPR Arrival Prediction &amp; Resource Allocation</span></h1>
+        <h1>CPR Allocation &amp; Workload Balancing</h1>
         <span id="dataLabel">Decision Support System for Key Account HO</span> <span class="pill muted" id="saveBadge">Checking storage …</span>
       </div>
       <div class="uploads">
@@ -216,9 +216,9 @@ body.locked #loginForm .btn { width: 100%; }
     <div><b>Sample data is currently displayed.</b> Recommended sequence: (1) upload the Hospital PIC List, (2) upload the CPR Queue (CPRHistory), (3) select Run Allocation, and (4) upload PO Data to update CPR progress and KA performance. All uploaded data is stored in this dashboard.</div>
   </div>
   <div class="card" id="loginCard" hidden>
-    <div class="landing-name">CAPRA</div>
-    <div class="landing-full">CPR Arrival Prediction &amp; Resource Allocation</div>
-    <p class="landing-text">Decision Support System for Key Account HO. CAPRA forecasts when each CPR will reach Key Account HO, allocates CPRs evenly across Key Accounts, and tracks their progress until they are converted into purchase orders.</p>
+    <div class="landing-name">CPR Allocation &amp; Workload Balancing</div>
+    <div class="landing-full">Decision Support System for Key Account HO</div>
+    <p class="landing-text">This dashboard forecasts when each CPR will reach Key Account HO, allocates CPRs evenly across Key Accounts, and tracks their progress until they are converted into purchase orders.</p>
     <h3>Sign in</h3><div class="sub">Enter the access code provided by the dashboard administrator. The code will be remembered in this browser.</div>
     <form id="loginForm" class="filters" style="border:0;padding:0;margin:8px 0 0">
       <div class="field"><label for="loginCode">Code</label><input type="password" id="loginCode" autocomplete="off" required></div>

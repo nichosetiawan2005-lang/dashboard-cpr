@@ -1,4 +1,4 @@
-# CAPRA — CPR Arrival Prediction & Resource Allocation
+# CPR Allocation & Workload Balancing
 
 Decision Support System for Key Account HO (interface in English).
 
