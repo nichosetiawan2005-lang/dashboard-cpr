@@ -1026,7 +1026,12 @@ function renderAuth() {
   $("btnLogin").textContent = ACCESS !== "none" ? "Sign out" : "Enter access code";
   // only admins upload
   $("lblCpr").hidden = !IS_ADMIN; $("lblPic").hidden = !IS_ADMIN; $("lblProg").hidden = !IS_ADMIN; renderPicControl();
+  // view-only code: only CPR Allocation and KA Performance are shown
+  const viewOnly = ACCESS === "view";
+  for (const t of VIEW_HIDDEN_TABS) $("tab-" + t).hidden = viewOnly;
+  if (viewOnly && VIEW_HIDDEN_TABS.includes(currentTab)) showTab("distribusi");
 }
+const VIEW_HIDDEN_TABS = ["spv", "bukti", "kualitas"];
 if (SB) {
   $("btnLogin").addEventListener("click", () => {
     if (ACCESS !== "none") { storeCode(""); location.reload(); return; }
@@ -2372,6 +2377,7 @@ function renderBukti() {
 const renderers = { distribusi: renderSim, ka: renderKa, spv: renderSpv, bukti: renderBukti, kualitas: renderQuality };
 let currentTab = "distribusi";
 function showTab(name) {
+  if ($("tab-" + name).hidden) name = "distribusi"; // a tab hidden for this access level cannot be opened
   currentTab = name;
   document.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name ? "true" : "false"));
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === "panel-" + name));
