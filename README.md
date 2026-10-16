@@ -1,4 +1,6 @@
-# Dashboard Alokasi CPR
+# CAPRA — CPR Arrival Prediction & Resource Allocation
+
+Decision Support System for Key Account HO (interface in English).
 
 Dashboard untuk membagikan CPR ke Key Account (KA) HO dengan aturan DSS
 (vendor sama → KA dengan beban paling ringan; List RS PIC dipakai sebagai daftar KA) dan melihat lama kerja tiap KA.

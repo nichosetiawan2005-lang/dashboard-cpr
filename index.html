@@ -1,4 +1,4 @@
-<title>Dashboard Alokasi CPR</title>
+<title>CAPRA CPR Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
 <style>
@@ -164,47 +164,47 @@ details.more[open] > summary::before { content: "▾ "; }
   <div class="wrap">
     <div class="top-row">
       <div class="brand">
-        <h1>Dashboard Alokasi CPR</h1>
-        <span id="dataLabel">Key Account HO · Forecast &amp; pembagian worklot</span> <span class="pill muted" id="saveBadge">Memeriksa penyimpanan …</span>
+        <h1>CAPRA <span style="font-weight:500;color:var(--muted);font-size:14px">CPR Arrival Prediction &amp; Resource Allocation</span></h1>
+        <span id="dataLabel">Decision Support System for Key Account HO</span> <span class="pill muted" id="saveBadge">Checking storage …</span>
       </div>
       <div class="uploads">
         <span id="authBox" hidden><span class="note" id="authUser" style="margin:0 6px 0 0"></span><button class="file-btn" type="button" id="btnLogin">Login</button></span>
         <label class="file-btn primary" for="fileCpr" id="lblCpr">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
-          Upload CPRHistory (worklot)
+          Upload CPR Queue (CPRHistory)
           <input type="file" id="fileCpr" accept=".xlsx,.xls,.csv">
         </label>
         <label class="file-btn" for="fileProg" id="lblProg">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
-          Update progress (Data PO)
+          Update Progress (PO Data)
           <input type="file" id="fileProg" accept=".xlsx,.xls,.csv">
         </label>
         <label class="file-btn" for="filePic" id="lblPic">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
-          List RS PIC
+          Hospital PIC List
           <input type="file" id="filePic" accept=".xlsx,.xls,.csv">
         </label>
       </div>
     </div>
     <div class="tabs" role="tablist">
-      <button class="tab" role="tab" aria-selected="true" data-tab="distribusi" id="tab-distribusi">Pembagian CPR</button>
-      <button class="tab" role="tab" aria-selected="false" data-tab="ka" id="tab-ka">Kinerja KA</button>
-      <button class="tab" role="tab" aria-selected="false" data-tab="spv" id="tab-spv">Kontrol SPV</button>
-      <button class="tab" role="tab" aria-selected="false" data-tab="bukti" id="tab-bukti">Bukti &amp; Akurasi</button>
-      <button class="tab" role="tab" aria-selected="false" data-tab="kualitas" id="tab-kualitas">Data</button>
+      <button class="tab" role="tab" aria-selected="true" data-tab="distribusi" id="tab-distribusi">CPR Allocation</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="ka" id="tab-ka">KA Performance</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="spv" id="tab-spv">Supervisor Control</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="bukti" id="tab-bukti">Evaluation</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="kualitas" id="tab-kualitas">Data Management</button>
     </div>
   </div>
 </div>
 
 <div class="wrap">
   <div class="banner info" id="sampleBanner">
-    <div><b>Ini data contoh.</b> Urutan pakai: (1) CPR_Cleaned di tab Kinerja KA untuk kinerja dan riwayat forecast, (2) List RS PIC, (3) CPRHistory untuk worklot, lalu Jalankan pembagian. Data yang di-upload disimpan di dashboard ini.</div>
+    <div><b>Sample data is currently displayed.</b> Recommended sequence: (1) upload the Hospital PIC List, (2) upload the CPR Queue (CPRHistory), (3) select Run Allocation, and (4) upload PO Data to update CPR progress and KA performance. All uploaded data is stored in this dashboard.</div>
   </div>
   <div class="card" id="loginCard" hidden style="margin-top:16px;max-width:420px">
-    <h3>Kode akses</h3><div class="sub">Minta kode ke admin dashboard. Kode diingat di browser ini.</div>
+    <h3>Access code</h3><div class="sub">Please request an access code from the dashboard administrator. The code will be remembered in this browser.</div>
     <form id="loginForm" class="filters" style="border:0;padding:0;margin:8px 0 0">
-      <div class="field"><label for="loginCode">Kode</label><input type="password" id="loginCode" autocomplete="off" required></div>
-      <button class="btn" type="submit">Masuk</button>
+      <div class="field"><label for="loginCode">Code</label><input type="password" id="loginCode" autocomplete="off" required></div>
+      <button class="btn" type="submit">Sign in</button>
     </form>
     <p class="note" id="loginMsg"></p>
   </div>
@@ -220,15 +220,15 @@ details.more[open] > summary::before { content: "▾ "; }
   <!-- PEMBAGIAN CPR -->
   <section class="panel active" id="panel-distribusi" role="tabpanel" aria-labelledby="tab-distribusi">
     <div class="card" style="margin-top:16px">
-      <h3>Pengaturan pembagian</h3>
+      <h3>Allocation settings</h3>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
-        <div class="field"><label for="sFrom">CPR dibuat dari</label><input type="date" id="sFrom"></div>
-        <div class="field"><label for="sTo">sampai</label><input type="date" id="sTo"></div>
-        <div class="field"><label for="sVendor">Bobot vendor sama</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
-        <div class="field"><label for="sMax">Batas beban/hari</label><input type="number" id="sMax" min="1" step="0.5" placeholder="otomatis"></div>
-        <label class="check" title="PIC rumah sakit hanya mendapat CPR selama jumlah CPR-nya tidak melebihi rata-rata semua KA"><input type="checkbox" id="sPic"> Prioritaskan PIC (batas adil)</label>
-        <button class="btn" id="sRun" type="button">Jalankan pembagian</button>
-        <button class="btn ghost" id="sReset" type="button" hidden>Bagikan ulang semua</button>
+        <div class="field"><label for="sFrom">CPR created from</label><input type="date" id="sFrom"></div>
+        <div class="field"><label for="sTo">to</label><input type="date" id="sTo"></div>
+        <div class="field"><label for="sVendor">Same-vendor weight</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
+        <div class="field"><label for="sMax">Daily workload limit</label><input type="number" id="sMax" min="1" step="0.5" placeholder="automatic"></div>
+        <label class="check" title="The hospital PIC receives the CPR only while the PIC's CPR count does not exceed the average of all KAs"><input type="checkbox" id="sPic"> Prioritize hospital PIC (fair-share limit)</label>
+        <button class="btn" id="sRun" type="button">Run allocation</button>
+        <button class="btn ghost" id="sReset" type="button" hidden>Reallocate all</button>
       </div>
       <p class="note" id="runInfo" style="font-weight:500;color:var(--fg)"></p>
       <p class="note" id="simNote"></p>
@@ -236,9 +236,9 @@ details.more[open] > summary::before { content: "▾ "; }
     <div class="banner warn" id="histWarn" hidden></div>
     <div class="tiles" id="simTiles"></div>
     <p class="note" id="simCompare"></p>
-    <div id="simResults"><div class="card" style="margin-top:12px"><h3>Jumlah CPR per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
-    <div class="section-title"><h2>Daftar CPR dan KA-nya</h2><p>Urutan aturan: vendor sama → KA dengan beban paling ringan. List RS PIC hanya dipakai sebagai daftar KA.</p></div>
-    <div class="tbl-tools"><input type="search" id="incSearch" placeholder="Cari CPR, rumah sakit, vendor, KA"><div class="pager"><button type="button" id="incCopy">Salin tabel</button><button type="button" id="incPrev" aria-label="Halaman sebelumnya">‹</button><span id="incPage"></span><button type="button" id="incNext" aria-label="Halaman berikutnya">›</button></div></div>
+    <div id="simResults"><div class="card" style="margin-top:12px"><h3>Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
+    <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. The Hospital PIC List is used as the list of KAs.</p></div>
+    <div class="tbl-tools"><input type="search" id="incSearch" placeholder="Search CPR, hospital, vendor, KA"><div class="pager"><button type="button" id="incCopy">Copy table</button><button type="button" id="incPrev" aria-label="Previous page">‹</button><span id="incPage"></span><button type="button" id="incNext" aria-label="Next page">›</button></div></div>
     <div class="tbl-wrap"><table id="tblInc"></table></div>
     </div>
   </section>
@@ -246,30 +246,30 @@ details.more[open] > summary::before { content: "▾ "; }
   <!-- KINERJA KA -->
   <section class="panel" id="panel-ka" role="tabpanel" aria-labelledby="tab-ka">
     <div class="card" style="margin-top:16px">
-      <h3>Data kinerja: CPR_Cleaned</h3>
-      <div class="sub">CPR_Cleaned dipakai untuk dua hal: menilai kinerja KA dari CPR yang sudah jadi PO, dan sebagai riwayat untuk melatih forecast. Data ini tidak masuk ke worklot; worklot hanya dari CPRHistory.</div>
+      <h3>Performance data: PO Data</h3>
+      <div class="sub">PO Data (or CPR_Cleaned) serves two purposes: evaluating KA performance based on CPRs that have been converted into POs, and providing historical data for training the forecast model. It does not add CPRs to the work queue; the queue is sourced only from CPRHistory.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
-        <label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload Data PO / CPR_Cleaned (kinerja)<input type="file" id="filePo" accept=".xlsx,.xls,.csv"></label>
-        <div class="field"><label for="poFrom">PO dibuat dari</label><input type="date" id="poFrom"></div>
-        <div class="field"><label for="poTo">sampai</label><input type="date" id="poTo"></div>
+        <label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload PO Data / CPR_Cleaned<input type="file" id="filePo" accept=".xlsx,.xls,.csv"></label>
+        <div class="field"><label for="poFrom">PO created from</label><input type="date" id="poFrom"></div>
+        <div class="field"><label for="poTo">to</label><input type="date" id="poTo"></div>
       </div>
       <p class="note" id="poInfo"></p>
     </div>
     <p class="note" id="kaNote"></p>
-    <div class="section-title"><h2>Rata-rata lama KA mengerjakan CPR</h2><p>Review 1 = CPR diterima KA sampai di-approve. Review 2 = CPR kembali ke KA sampai di-approve. Waktu menunggu approver lain tidak dihitung.</p></div>
+    <div class="section-title"><h2>Average KA processing time per CPR</h2><p>Review 1 = from receipt by the KA until approval. Review 2 = from the CPR's return to the KA until approval. Time spent waiting for other approvers is excluded.</p></div>
     <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Review 1</span><span><i style="background:var(--s2)"></i>Review 2</span></div><div class="chart" id="chKa"></div></div>
-    <div class="section-title"><h2>Per KA</h2><p>Beban = jumlah CPR yang sedang di-review dalam satu hari kerja.</p></div>
+    <div class="section-title"><h2>By KA</h2><p>Workload = number of CPRs under review on a given working day.</p></div>
     <div class="tbl-wrap"><table id="tblKa"></table></div>
     <details class="more">
-      <summary>Lihat beban per hari</summary>
+      <summary>View daily workload</summary>
       <p class="note" id="loadDesc"></p>
       <div class="filters" id="loadTools">
-        <div class="field" id="loadSrcWrap"><label for="loadSrc">Sumber beban</label><select id="loadSrc"><option value="dss">Hasil pembagian DSS</option><option value="actual">Pembagian aktual (validasi)</option></select></div>
-        <div class="field"><label for="loadFrom">Hari dari</label><input type="date" id="loadFrom"></div>
-        <div class="field"><label for="loadTo">sampai</label><input type="date" id="loadTo"></div>
+        <div class="field" id="loadSrcWrap"><label for="loadSrc">Workload source</label><select id="loadSrc"><option value="dss">DSS allocation</option><option value="actual">Actual allocation (validation)</option></select></div>
+        <div class="field"><label for="loadFrom">Day from</label><input type="date" id="loadFrom"></div>
+        <div class="field"><label for="loadTo">to</label><input type="date" id="loadTo"></div>
       </div>
       <div class="tbl-wrap heat-wrap"><table class="heat" id="tblHeat"></table></div>
-      <div class="scale"><span>Sepi</span><span class="bar"></span><span>Sibuk</span><span style="margin-left:14px" id="overLegend"></span></div>
+      <div class="scale"><span>Low</span><span class="bar"></span><span>High</span><span style="margin-left:14px" id="overLegend"></span></div>
     </details>
   </section>
 
@@ -278,83 +278,83 @@ details.more[open] > summary::before { content: "▾ "; }
     <p class="note" id="spvNote"></p>
     <div class="tiles" id="spvTiles"></div>
 
-    <div class="section-title"><h2>CPR perlu tindakan</h2><p id="asOfNote"></p></div>
+    <div class="section-title"><h2>CPRs requiring action</h2><p id="asOfNote"></p></div>
     <div class="filters" style="margin-top:0">
-      <div class="field"><label for="actFilter">Tampilkan</label><select id="actFilter">
-        <option value="">Semua yang aktif</option><option value="late">Terlambat di review 1 KA</option><option value="pre">Tertahan sebelum tiba di KA</option><option value="post">Tertahan di approver (setelah KA)</option><option value="stale">Kemungkinan tidak aktif (&gt; 30 hari)</option><option value="ignored">Sudah diabaikan</option></select></div>
+      <div class="field"><label for="actFilter">Show</label><select id="actFilter">
+        <option value="">All active items</option><option value="late">Overdue in KA review 1</option><option value="pre">Delayed before reaching KA</option><option value="post">Pending with approver (after KA)</option><option value="stale">Possibly inactive (&gt; 30 days)</option><option value="ignored">Dismissed</option></select></div>
       <div class="field"><label for="actKa">KA</label><select id="actKa"></select></div>
-      <button class="btn ghost" id="actIgnoreAll" type="button" hidden>Abaikan semua yang tampil</button>
+      <button class="btn ghost" id="actIgnoreAll" type="button" hidden>Dismiss all shown</button>
     </div>
     <div class="tbl-wrap" style="max-height:460px;overflow:auto"><table id="tblAct"></table></div>
-    <p class="note">"Kemungkinan tidak aktif" = CPR yang lewat lebih dari 30 hari dari perkiraan tiba di KA tapi belum juga tiba (biasanya masih Draft di requester, dikembalikan, atau batal). CPR ini tidak masuk daftar "Semua yang aktif". Klik "Abaikan" bila CPR memang tidak diproses lagi: CPR keluar dari daftar dan dari beban KA, dan bisa dikembalikan kapan saja.</p>
-    <p class="note">Aturan: CPR boleh dialihkan hanya bila belum mulai dikerjakan (belum tiba, atau sudah tiba tapi review 1 belum selesai). CPR yang tertahan di approver tidak dialihkan; tindak lanjuti ke approver pada tahap yang tertulis.</p>
+    <p class="note">"Possibly inactive" refers to a CPR that has not reached the KA more than 30 days after its expected arrival (typically still in Draft with the requester, returned, or cancelled). Such CPRs are excluded from "All active items". Select "Dismiss" when a CPR is no longer being processed: it is removed from this list and from the KA workload, and can be restored at any time.</p>
+    <p class="note">Rule: a CPR may be reassigned only if work has not yet started on it (not yet arrived, or arrived but review 1 not completed). CPRs pending with an approver are not reassigned; follow up with the approver at the stated stage.</p>
 
     <div class="card" id="trCard" hidden style="margin-top:12px;border-color:var(--accent)">
-      <h3>Alihkan CPR</h3>
+      <h3>Reassign CPR</h3>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
-        <div class="field"><label for="trCpr">Nomor CPR</label><input type="text" id="trCpr" placeholder="cpr-…" style="min-width:210px"></div>
-        <div class="field"><label>KA sekarang</label><div id="trFrom" style="padding:7px 0;font-weight:600">–</div></div>
-        <div class="field"><label for="trTo">Alihkan ke</label><select id="trTo"></select></div>
-        <div class="field"><label for="trReason">Alasan</label><select id="trReason">
-          <option>Beban KA berlebih</option><option>KA tidak hadir (cuti/sakit/dinas)</option><option>Review terlambat</option><option>Permintaan SPV</option><option>Lainnya</option></select></div>
-        <div class="field" style="flex:1;min-width:200px"><label for="trNote">Catatan</label><input type="text" id="trNote" placeholder="opsional"></div>
-        <button class="btn" type="button" id="trSave">Simpan pengalihan</button>
-        <button class="btn ghost" type="button" id="trCancel">Batal</button>
+        <div class="field"><label for="trCpr">CPR number</label><input type="text" id="trCpr" placeholder="cpr-…" style="min-width:210px"></div>
+        <div class="field"><label>Current KA</label><div id="trFrom" style="padding:7px 0;font-weight:600">–</div></div>
+        <div class="field"><label for="trTo">Reassign to</label><select id="trTo"></select></div>
+        <div class="field"><label for="trReason">Reason</label><select id="trReason">
+          <option>KA workload exceeded</option><option>KA absent (leave/sick/business travel)</option><option>Review overdue</option><option>Supervisor request</option><option>Other</option></select></div>
+        <div class="field" style="flex:1;min-width:200px"><label for="trNote">Notes</label><input type="text" id="trNote" placeholder="optional"></div>
+        <button class="btn" type="button" id="trSave">Save reassignment</button>
+        <button class="btn ghost" type="button" id="trCancel">Cancel</button>
       </div>
       <p class="note" id="trMsg"></p>
     </div>
-    <div style="margin-top:10px"><button class="btn ghost" type="button" id="trOpen">Alihkan CPR lain (ketik nomor)</button></div>
+    <div style="margin-top:10px"><button class="btn ghost" type="button" id="trOpen">Reassign another CPR (enter number)</button></div>
 
-    <div class="section-title"><h2>Ketidakhadiran KA</h2><p>KA yang tidak hadir tidak menerima CPR baru, dan CPR miliknya yang belum dikerjakan otomatis dialihkan.</p></div>
+    <div class="section-title"><h2>KA absences</h2><p>An absent KA receives no new CPRs, and that KA's CPRs on which work has not started are reassigned automatically.</p></div>
     <div class="card">
       <div class="filters" style="border:0;padding:0;margin:0" id="absForm">
         <div class="field"><label for="absKa">KA</label><select id="absKa"></select></div>
-        <div class="field"><label for="absFrom">Dari</label><input type="date" id="absFrom"></div>
-        <div class="field"><label for="absTo">Sampai</label><input type="date" id="absTo"></div>
-        <div class="field"><label for="absReason">Alasan</label><select id="absReason"><option>Cuti</option><option>Sakit</option><option>Dinas</option><option>Lainnya</option></select></div>
-        <button class="btn" type="button" id="absAdd">Tambah</button>
+        <div class="field"><label for="absFrom">From</label><input type="date" id="absFrom"></div>
+        <div class="field"><label for="absTo">To</label><input type="date" id="absTo"></div>
+        <div class="field"><label for="absReason">Reason</label><select id="absReason"><option>Leave</option><option>Sick</option><option>Business travel</option><option>Other</option></select></div>
+        <button class="btn" type="button" id="absAdd">Add</button>
       </div>
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblAbs"></table></div>
     </div>
 
-    <div class="section-title"><h2>Riwayat pengalihan</h2><p>Setiap pengalihan dicatat: kapan, CPR mana, dari siapa, ke siapa, alasan, dan oleh siapa.</p></div>
+    <div class="section-title"><h2>Reassignment log</h2><p>Every reassignment is recorded: when, which CPR, from whom, to whom, the reason, and by whom.</p></div>
     <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="tblTr"></table></div>
   </section>
 
   <!-- BUKTI -->
   <section class="panel" id="panel-bukti" role="tabpanel" aria-labelledby="tab-bukti">
     <p class="note" id="bkNote"></p>
-    <div class="section-title"><h2>1. Apakah forecast tepat?</h2><p>Setiap CPR yang sudah benar-benar tiba di KA dibandingkan dengan perkiraannya. Perkiraan dibuat hanya dari data sebelum periode, jadi ini uji yang jujur.</p></div>
+    <div class="section-title"><h2>1. Is the forecast accurate?</h2><p>Each CPR that has actually reached the KA is compared with its forecast. Forecasts are produced only from data preceding the period, so this is an out-of-sample test.</p></div>
     <div class="tiles" id="bkFcTiles"></div>
-    <div class="card" style="margin-top:12px"><h3>Rata-rata selisih perkiraan per minggu</h3><div class="sub">Makin rendah makin tepat. Dibandingkan dengan cara sederhana (median per rumah sakit).</div><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
-    <div class="section-title"><h2>2. Apakah beban KA lebih merata?</h2><p id="bkLoadDesc"></p></div>
+    <div class="card" style="margin-top:12px"><h3>Mean absolute forecast error per week</h3><div class="sub">Lower values indicate higher accuracy. Compared against a simple baseline (median per hospital).</div><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
+    <div class="section-title"><h2>2. Is the KA workload more evenly distributed?</h2><p id="bkLoadDesc"></p></div>
     <div class="tbl-wrap"><table id="tblBkLoad"></table></div>
-    <div class="section-title"><h2>3. Apakah CPR lebih cepat jadi PO?</h2><p id="bkPoDesc"></p></div>
+    <div class="section-title"><h2>3. Are CPRs converted into POs more quickly?</h2><p id="bkPoDesc"></p></div>
     <div class="tiles" id="bkPoTiles"></div>
-    <div class="card" style="margin-top:12px"><h3>Median hari per bulan PO dibuat</h3><div class="sub" id="bkPoSub"></div><div class="legend" id="lgPo"></div><div class="chart" id="chPo"></div></div>
-    <div class="section-title"><h2>4. Apakah kerja SPV lebih ringan?</h2><p>Berapa CPR yang dibagikan otomatis dibanding yang masih harus diurus manual.</p></div>
+    <div class="card" style="margin-top:12px"><h3>Median days by PO creation month</h3><div class="sub" id="bkPoSub"></div><div class="legend" id="lgPo"></div><div class="chart" id="chPo"></div></div>
+    <div class="section-title"><h2>4. Is the supervisor's workload reduced?</h2><p>The number of CPRs allocated automatically compared with those still requiring manual handling.</p></div>
     <div class="tiles" id="bkSpvTiles"></div>
   </section>
 
   <!-- DATA -->
   <section class="panel" id="panel-kualitas" role="tabpanel" aria-labelledby="tab-kualitas">
-    <div class="section-title"><h2>Data tersimpan</h2></div>
-    <div class="card" id="savedCard"><p class="note" id="savedInfo" style="margin:0">Memeriksa data tersimpan …</p>
+    <div class="section-title"><h2>Stored data</h2></div>
+    <div class="card" id="savedCard"><p class="note" id="savedInfo" style="margin:0">Checking stored data …</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-        <button class="btn ghost" type="button" id="btnResetAlloc">Bagikan ulang semua CPR</button>
-        <button class="btn ghost" type="button" id="btnClearSaved">Hapus semua data tersimpan</button>
+        <button class="btn ghost" type="button" id="btnResetAlloc">Reallocate all CPRs</button>
+        <button class="btn ghost" type="button" id="btnClearSaved">Delete all stored data</button>
       </div>
     </div>
-    <div class="section-title"><h2>Riwayat upload</h2><p>Setiap upload dan setiap pembagian dicatat di sini, terbaru di atas.</p></div>
+    <div class="section-title"><h2>Activity log</h2><p>Every upload and allocation run is recorded here, with the most recent first.</p></div>
     <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="tblLog"></table></div>
     <div class="tiles" id="dqTiles"></div>
     <div id="histCard" hidden>
-      <div class="section-title"><h2>File riwayat approval (CPRHistory)</h2><p>Satu baris per langkah approval, disusun jadi satu baris per CPR.</p></div>
+      <div class="section-title"><h2>CPR queue file (CPRHistory)</h2><p>One row per approval step, consolidated into one record per CPR.</p></div>
       <div class="card">
         <div class="filters" style="margin:0 0 10px;border:0;padding:0">
-          <div class="field"><label for="roleKa">Role untuk Key Account HO (review 1)</label><select id="roleKa"></select></div>
-          <div class="field"><label for="roleBack">Role untuk PurchasingHO (review 2)</label><select id="roleBack"></select></div>
-          <div class="field"><label for="histMode">Arti kolom Approval Date</label><select id="histMode"><option value="selesai">Tanggal role itu menyetujui (sesuai CPR_Cleaned)</option><option value="masuk">Tanggal CPR masuk ke role itu</option></select></div>
+          <div class="field"><label for="roleKa">Role for Key Account HO (review 1)</label><select id="roleKa"></select></div>
+          <div class="field"><label for="roleBack">Role for PurchasingHO (review 2)</label><select id="roleBack"></select></div>
+          <div class="field"><label for="histMode">Meaning of the Approval Date column</label><select id="histMode"><option value="selesai">Date the role approved (consistent with CPR_Cleaned)</option><option value="masuk">Date the CPR reached the role</option></select></div>
         </div>
         <p class="note" id="histNote" style="margin:0 0 8px"></p>
         <div class="tbl-wrap"><table id="tblRoles"></table></div>
@@ -376,7 +376,7 @@ const COL = {
   submit: "CPR Submit Date"
 };
 const REQUIRED = ["cpr", "unit", "vendor", "create", "kaIn", "kaOut", "back", "backOut"];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /* ---------- State ---------- */
 let RECS = [], META = {}, PIC_LIST = null, SIM = null, IS_SAMPLE = true, SIM_KA = new Map();
@@ -420,8 +420,8 @@ function fmtShort(d) { const x = dayToDate(d); return `${x.getUTCDate()} ${MONTH
 function dayToIso(d) { return dayToDate(d).toISOString().slice(0, 10); }
 function isoToDay(s) { return s ? toDay(s) : null; }
 const weekday = (d) => (dayToDate(d).getUTCDay() + 6) % 7; // 0 = Monday
-function fmtNum(n, dec = 1) { if (n === null || n === undefined || isNaN(n)) return "–"; return n.toLocaleString("id-ID", { minimumFractionDigits: dec, maximumFractionDigits: dec }); }
-function fmtInt(n) { return (n === null || n === undefined || isNaN(n)) ? "–" : Math.round(n).toLocaleString("id-ID"); }
+function fmtNum(n, dec = 1) { if (n === null || n === undefined || isNaN(n)) return "–"; return n.toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec }); }
+function fmtInt(n) { return (n === null || n === undefined || isNaN(n)) ? "–" : Math.round(n).toLocaleString("en-US"); }
 function quantile(arr, q) {
   const a = arr.filter((x) => x !== null && !isNaN(x)).sort((x, y) => x - y);
   if (!a.length) return null;
@@ -464,7 +464,7 @@ function ticks(max) { const s = niceStep(max / 5), out = []; for (let t = 0; t <
 
 function columnChart(container, cats, values, opts = {}) {
   container.replaceChildren();
-  if (!cats.length) { container.append(el("div", { class: "empty" }, "Tidak ada data untuk filter ini.")); return; }
+  if (!cats.length) { container.append(el("div", { class: "empty" }, "No data for this filter.")); return; }
   const W = Math.max(320, container.clientWidth || 600), H = opts.height || 220, m = { t: 10, r: 8, b: 26, l: 34 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b, max = niceMax(Math.max(...values));
   const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": opts.label || "" });
@@ -491,7 +491,7 @@ function columnChart(container, cats, values, opts = {}) {
 function lineChart(container, xs, series, opts = {}) {
   container.replaceChildren();
   const all = series.flatMap((s) => s.values).filter((v) => v !== null && !isNaN(v));
-  if (!xs.length || !all.length) { container.append(el("div", { class: "empty" }, "Tidak ada data untuk filter ini.")); return; }
+  if (!xs.length || !all.length) { container.append(el("div", { class: "empty" }, "No data for this filter.")); return; }
   const W = Math.max(320, container.clientWidth || 600), H = opts.height || 220, m = { t: 12, r: 12, b: 26, l: 34 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b, max = niceMax(Math.max(...all));
   const X = (i) => m.l + (xs.length === 1 ? iw / 2 : (i / (xs.length - 1)) * iw), Y = (v) => m.t + ih - (v / max) * ih;
@@ -525,7 +525,7 @@ function lineChart(container, xs, series, opts = {}) {
 /* Horizontal bars: grouped (side by side) or stacked */
 function barChartH(container, cats, series, opts = {}) {
   container.replaceChildren();
-  if (!cats.length) { container.append(el("div", { class: "empty" }, "Tidak ada data.")); return; }
+  if (!cats.length) { container.append(el("div", { class: "empty" }, "No data available.")); return; }
   const stacked = !!opts.stacked, n = series.length;
   const rowH = stacked ? 26 : 12 * n + 10, labelW = opts.labelW || 130;
   const W = Math.max(320, container.clientWidth || 600), m = { t: 4, r: 52, b: 22, l: labelW };
@@ -578,12 +578,12 @@ function renderTable(table, columns, rows, state = {}) {
     for (const c of columns) {
       const td = el("td", { class: (c.num ? "num " : "") + (c.code ? "code" : "") });
       const out = c.render ? c.render(r) : r[c.key];
-      if (out instanceof Node) td.append(out); else td.textContent = out === null || out === undefined ? "–" : out;
+      if (out instanceof Node) td.append(out); else td.textContent = out === null || out === undefined ? "–" : out === "(kosong)" ? "(blank)" : out;
       row.append(td);
     }
     tbody.append(row);
   }
-  if (!data.length) { const row = el("tr"); const td = el("td", { colspan: columns.length, class: "empty" }, "Tidak ada data."); row.append(td); tbody.append(row); }
+  if (!data.length) { const row = el("tr"); const td = el("td", { colspan: columns.length, class: "empty" }, "No data available."); row.append(td); tbody.append(row); }
   table.replaceChildren(thead, tbody);
 }
 const pill = (text, kind) => el("span", { class: "pill " + kind }, text);
@@ -674,7 +674,7 @@ function updateModeBanner() {
   const b = $("modeBanner");
   b.hidden = IS_SAMPLE || META.hasKa || !!PIC_LIST;
   b.replaceChildren(el("div"));
-  b.firstChild.innerHTML = "<b>Upload List RS PIC.</b> File ini tidak punya kolom KA, jadi daftar KA diambil dari List RS PIC.";
+  b.firstChild.innerHTML = "<b>Please upload the Hospital PIC List.</b> This file has no KA column, so the list of KAs is taken from the Hospital PIC List.";
 }
 const kaLabel = (u) => (META.kaLabel && META.kaLabel[u]) || u || "–";
 
@@ -682,9 +682,9 @@ const kaLabel = (u) => (META.kaLabel && META.kaLabel[u]) || u || "–";
 function populateControls(keep) {
   updateModeBanner();
   const fKa = $("fKa"), fUnit = $("fUnit");
-  fKa.replaceChildren(el("option", { value: "" }, "Semua KA"));
+  fKa.replaceChildren(el("option", { value: "" }, "All KAs"));
   for (const u of META.kaList) fKa.append(el("option", { value: u }, kaLabel(u)));
-  fUnit.replaceChildren(el("option", { value: "" }, "Semua rumah sakit"));
+  fUnit.replaceChildren(el("option", { value: "" }, "All hospitals"));
   for (const u of META.units) fUnit.append(el("option", { value: u }, u));
   if (META.minCreate !== null) { $("fFrom").value = dayToIso(META.minCreate); $("fTo").value = dayToIso(META.maxCreate); }
   // default test window: last ~3 months of CPR creation
@@ -713,7 +713,7 @@ async function readWorkbook(file) {
 
 $("fileCpr").addEventListener("change", async (e) => {
   const file = e.target.files[0]; if (!file) return;
-  setStatus(`Membaca ${file.name} …`);
+  setStatus(`Reading ${file.name} …`);
   await new Promise((r) => setTimeout(r, 30));
   try {
     const { rows, columns } = await readWorkbook(file);
@@ -722,22 +722,22 @@ $("fileCpr").addEventListener("change", async (e) => {
     let fmtNote = "", inFile = 0;
     if (isHistory(columns)) {
       const missingH = HREQUIRED.filter((k) => !columns.includes(HCOL[k]));
-      if (missingH.length) { setStatus(`File riwayat approval tidak lengkap: kolom ${missingH.map((k) => `"${HCOL[k]}"`).join(", ")} tidak ditemukan.`); return; }
+      if (missingH.length) { setStatus(`The queue file is incomplete: column(s) ${missingH.map((k) => `"${HCOL[k]}"`).join(", ")} not found.`); return; }
       const wasSample = IS_SAMPLE;
       BASE_BEFORE_HIST = IS_SAMPLE ? [] : RECS.slice();
       const res = await applyHistory(rows, file.name); inFile = res.recs.length;
       IS_SAMPLE = false; META.fileName = file.name; SAVED_AT = null;
       META.rawRows = rows.length; META.duplicates = 0; META.negatives = 0;
       META.format = "history"; META.columnsFound = Object.fromEntries(Object.keys(HCOL).map((k) => [k, columns.includes(HCOL[k])]));
-      fmtNote = ` Format riwayat approval: ${fmtInt(rows.length)} baris jadi ${fmtInt(res.cprs)} CPR${wasSample ? "" : ", digabung dengan data tersimpan"}. Cek pemetaan role di tab Data.`;
+      fmtNote = ` CPR queue format: ${fmtInt(rows.length)} rows consolidated into ${fmtInt(res.cprs)} CPRs${wasSample ? "" : ", merged with stored data"}. Role mapping can be reviewed in the Data Management tab.`;
     } else if (columns.includes(COL.cpr) && columns.includes(PO_COL.po)) {
       e.target.value = "";
       await loadKinerjaFile(file, rows, columns);
-      setStatus($("status").textContent + " File ini CPR_Cleaned, jadi dipakai sebagai data kinerja dan riwayat forecast, bukan worklot. Data worklot di-upload dari CPRHistory.");
+      setStatus($("status").textContent + " This file is PO Data/CPR_Cleaned, so it is used for progress, KA performance and forecast history, not as the work queue. The work queue is uploaded from CPRHistory.");
       return;
     } else {
       const missing = REQUIRED.filter((k) => !columns.includes(COL[k]));
-      if (missing.length) { setStatus(`File tidak bisa dipakai: kolom ${missing.map((k) => `"${COL[k]}"`).join(", ")} tidak ditemukan. Pastikan file berasal dari export CPR_Cleaned atau CPRHistory.`); return; }
+      if (missing.length) { setStatus(`The file cannot be used: column(s) ${missing.map((k) => `"${COL[k]}"`).join(", ")} not found. Please ensure the file is a CPR_Cleaned or CPRHistory export.`); return; }
       const fresh = buildRecords(rows, columns); inFile = fresh.length;
       RECS = mergeRecs(IS_SAMPLE ? [] : RECS, fresh).map(finishRec); IS_SAMPLE = false; META.fileName = file.name; META.format = "cleaned"; HIST = null; SAVED_AT = null;
     }
@@ -747,26 +747,26 @@ $("fileCpr").addEventListener("change", async (e) => {
     const newMin = added.length ? Math.min(...added.map((r) => r.create)) : null;
     deriveMeta(); populateControls(hadData ? { newMin } : null);
     $("sampleBanner").hidden = true; updateModeBanner();
-    $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPR`;
-    SIM = null; SIM_KA = new Map(); // allocation waits for "Jalankan pembagian"
+    $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPRs`;
+    SIM = null; SIM_KA = new Map(); // allocation waits for "Run allocation"
     renderAll();
     let saved = "";
     if (DB) {
-      setStatus(`${fmtInt(RECS.length)} CPR terbaca. Menyimpan …`);
+      setStatus(`${fmtInt(RECS.length)} CPRs read. Saving …`);
       try {
         await saveData();
-        $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPR · tersimpan ${fmtStamp(SAVED_AT)}`;
-        saved = " Data tersimpan.";
+        $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPRs · saved ${fmtStamp(SAVED_AT)}`;
+        saved = " Data saved.";
         const fresh = RECS.filter((r) => !before.has(r.cpr)).length;
         const now = new Set(RECS.map((r) => r.cpr)), gone = [...before].filter((c) => !now.has(c)).length;
         await logEvent({ type: "Data CPR", file: file.name, rows: rows.length, cpr: inFile, baru: fresh, lama: inFile - fresh, hilang: gone, total: RECS.length });
         renderAll();
-      } catch (err) { saved = ` Data tidak tersimpan: ${saveErrorText(err)}.`; }
+      } catch (err) { saved = ` Data could not be saved: ${saveErrorText(err)}.`; }
     }
     const nNew = RECS.filter((r) => !before.has(r.cpr)).length;
-    const addNote = hadData ? ` Ditambahkan ke data lama: ${fmtInt(nNew)} CPR baru, ${fmtInt(inFile - nNew)} CPR sudah ada (diperbarui, KA-nya tetap). Total sekarang ${fmtInt(RECS.length)} CPR; periode pembagian diperluas ${$("sFrom").value} s/d ${$("sTo").value}.` : "";
-    setStatus(`${fmtInt(inFile)} CPR terbaca dari ${file.name}.${saved}${fmtNote}${addNote} Klik "Jalankan pembagian" untuk membagi CPR yang belum punya KA.`);
-  } catch (err) { setStatus(`File tidak bisa dibaca: ${err.message}. Coba simpan ulang sebagai .xlsx lalu upload lagi.`); }
+    const addNote = hadData ? ` Added to existing data: ${fmtInt(nNew)} new CPRs and ${fmtInt(inFile - nNew)} existing CPRs (updated, KA unchanged). Total: ${fmtInt(RECS.length)} CPRs; the allocation period has been extended to ${$("sFrom").value} – ${$("sTo").value}.` : "";
+    setStatus(`${fmtInt(inFile)} CPRs read from ${file.name}.${saved}${fmtNote}${addNote} Select "Run allocation" to assign CPRs that do not yet have a KA.`);
+  } catch (err) { setStatus(`The file could not be read: ${err.message}. Please re-save it as .xlsx and upload it again.`); }
   e.target.value = "";
 });
 
@@ -776,15 +776,15 @@ $("filePic").addEventListener("change", async (e) => {
     const { rows } = await readWorkbook(file);
     const list = {};
     for (const r of rows) { const rs = r.RS ?? r.rs ?? r["Rumah Sakit"]; const pic = r.PIC ?? r.pic; if (rs && pic) list[String(rs).trim()] = String(pic).trim(); }
-    if (!Object.keys(list).length) { setStatus("List RS PIC tidak terbaca: file harus punya kolom RS dan PIC."); return; }
+    if (!Object.keys(list).length) { setStatus("The Hospital PIC List could not be read: the file must contain RS and PIC columns."); return; }
     PIC_LIST = list;
     if (!META.hasKa && !IS_SAMPLE) { deriveMeta(); populateControls({}); }
-    setStatus(`List RS PIC terbaca: ${Object.keys(list).length} rumah sakit. Membagikan ulang …`);
+    setStatus(`Hospital PIC List read: ${Object.keys(list).length} hospitals. Processing …`);
     let saved = "";
-    if (DB) { try { await DB.doc("settings/pic").set({ list }); saved = " Tersimpan."; await logEvent({ type: "List RS PIC", file: file.name, rows: rows.length, cpr: null, note: `${Object.keys(list).length} RS, ${new Set(Object.values(list)).size} KA` }); } catch (err) { saved = ` Tidak tersimpan: ${saveErrorText(err)}.`; } }
+    if (DB) { try { await DB.doc("settings/pic").set({ list }); saved = " Saved."; await logEvent({ type: "Hospital PIC List", file: file.name, rows: rows.length, cpr: null, note: `${Object.keys(list).length} RS, ${new Set(Object.values(list)).size} KA` }); } catch (err) { saved = ` Not saved: ${saveErrorText(err)}.`; } }
     renderAll();
-    setStatus(`List RS PIC terbaca: ${Object.keys(list).length} rumah sakit.${saved}`);
-  } catch (err) { setStatus(`List RS PIC tidak bisa dibaca: ${err.message}.`); }
+    setStatus(`Hospital PIC List read: ${Object.keys(list).length} hospitals.${saved}`);
+  } catch (err) { setStatus(`The Hospital PIC List could not be read: ${err.message}.`); }
   e.target.value = "";
 });
 
@@ -906,21 +906,21 @@ function renderHistInfo() {
   const counts = new Map(); for (const r of HIST.rows) { const k = normRole(r[HCOL.role]); counts.set(k, (counts.get(k) || 0) + 1); }
   const roles = [...counts.keys()].sort();
   for (const [id, cur] of [["roleKa", HIST.roleKa], ["roleBack", HIST.roleBack]]) {
-    const sel = $(id); sel.replaceChildren(el("option", { value: "" }, "— tidak ada di file —"));
+    const sel = $(id); sel.replaceChildren(el("option", { value: "" }, "— not in file —"));
     for (const r of roles) sel.append(el("option", { value: r }, r));
     sel.value = cur || "";
   }
   const res = HIST.result;
   $("histMode").value = HIST_MODE;
-  $("histNote").textContent = `${fmtInt(HIST.rows.length)} baris → ${fmtInt(res.cprs)} CPR (${fmtInt(res.dropped)} rejected/batal dibuang). `
-    + (HIST_MODE === "masuk" ? "Approval Date dibaca sebagai tanggal CPR masuk ke role itu: review KA dianggap selesai saat role berikutnya menerima CPR. " : "Approval Date dibaca sebagai tanggal role itu menyetujui; tanggal CPR masuk ke KA = Approval Date langkah sebelumnya. ")
-    + (!HIST.roleKa ? "Role Key Account tidak ditemukan, jadi tanggal tiba di KA masih kosong untuk CPR dari file ini. " : "")
-    + (!HIST.roleBack ? "Role PurchasingHO tidak ditemukan, jadi tanggal kembali ke KA masih kosong. " : "")
-    + "File ini tidak punya Vendor ID, jadi aturan vendor sama tidak dipakai untuk CPR dari file ini.";
+  $("histNote").textContent = `${fmtInt(HIST.rows.length)} rows → ${fmtInt(res.cprs)} CPRs (${fmtInt(res.dropped)} rejected/cancelled CPRs excluded). `
+    + (HIST_MODE === "masuk" ? "Approval Date is interpreted as the date the CPR reached the role; the KA review is considered complete when the next role receives the CPR. " : "Approval Date is interpreted as the date the role approved; the date a CPR reached the KA is the Approval Date of the preceding step. CPRs without a Key Account row are queued at the KA as of their latest Approval Date. ")
+    + (!HIST.roleKa ? "No Key Account role was found, so the queue entry date is taken from the latest Approval Date. " : "")
+    + (!HIST.roleBack ? "No PurchasingHO role was found; the return-to-KA date will be filled from PO Data. " : "")
+    + "This file contains no Vendor ID, so the same-vendor rule does not apply to CPRs from this file.";
   renderTable($("tblRoles"), [
-    { key: "role", label: "Role di file", sortable: false },
-    { key: "n", label: "Baris", num: true, sortable: false },
-    { key: "use", label: "Dipakai sebagai", sortable: false, render: (r) => r.role === HIST.roleKa ? pill("Key Account HO", "info") : r.role === HIST.roleBack ? pill("PurchasingHO", "info") : r.role === "requester" ? pill("CPR dibuat", "muted") : "–" }
+    { key: "role", label: "Role in file", sortable: false },
+    { key: "n", label: "Rows", num: true, sortable: false },
+    { key: "use", label: "Used as", sortable: false, render: (r) => r.role === HIST.roleKa ? pill("Key Account HO", "info") : r.role === HIST.roleBack ? pill("PurchasingHO", "info") : r.role === "requester" ? pill("CPR created", "muted") : "–" }
   ], roles.map((role) => ({ role, n: counts.get(role) })));
 }
 async function applyHistory(rows, fileName, roleKa, roleBack) {
@@ -946,7 +946,7 @@ for (const id of ["roleKa", "roleBack", "histMode"]) $(id).addEventListener("cha
   await applyHistory(HIST.rows, HIST.fileName, $("roleKa").value, $("roleBack").value);
   IS_SAMPLE = false; deriveMeta(); populateControls({}); updateModeBanner();
   SIM = null; SIM_KA = new Map(); renderAll();
-  if (DB) { try { await saveData(); } catch (err) { setStatus("Tidak tersimpan: " + saveErrorText(err)); } }
+  if (DB) { try { await saveData(); } catch (err) { setStatus("Not saved: " + saveErrorText(err)); } }
   renderQuality();
 });
 let BASE_BEFORE_HIST = [];
@@ -995,7 +995,7 @@ function makeSupabaseDb() {
     id: path.split("/").pop(), path,
     get: async () => { const rows = await call(`${base}?path=eq.${encodeURIComponent(path)}&select=data`); return snap(path.split("/").pop(), rows && rows.length ? rows[0].data : undefined); },
     set: async (data) => { await call(base, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ path, data, updated_at: new Date().toISOString() }) }); },
-    update: async (data) => { const cur = await doc(path).get(); if (!cur.exists) throw { code: "invalid_argument", message: "dokumen belum ada" }; await doc(path).set({ ...cur.data(), ...data }); },
+    update: async (data) => { const cur = await doc(path).get(); if (!cur.exists) throw { code: "invalid_argument", message: "document does not exist" }; await doc(path).set({ ...cur.data(), ...data }); },
     delete: async () => { await call(`${base}?path=eq.${encodeURIComponent(path)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } }); }
   });
   return {
@@ -1009,8 +1009,8 @@ function makeSupabaseDb() {
 function renderAuth() {
   if (!SB) return;
   $("authBox").hidden = false;
-  $("authUser").textContent = ACCESS === "admin" ? "Akses: admin" : ACCESS === "view" ? "Akses: lihat" : "";
-  $("btnLogin").textContent = ACCESS !== "none" ? "Keluar" : "Masukkan kode";
+  $("authUser").textContent = ACCESS === "admin" ? "Access: administrator" : ACCESS === "view" ? "Access: view only" : "";
+  $("btnLogin").textContent = ACCESS !== "none" ? "Sign out" : "Enter access code";
   // only admins upload
   $("lblCpr").hidden = !IS_ADMIN; $("lblPic").hidden = !IS_ADMIN; $("lblProg").hidden = !IS_ADMIN;
 }
@@ -1020,10 +1020,10 @@ if (SB) {
     $("loginCard").hidden = !$("loginCard").hidden;
   });
   $("loginForm").addEventListener("submit", async (e) => {
-    e.preventDefault(); $("loginMsg").textContent = "Memeriksa kode …";
+    e.preventDefault(); $("loginMsg").textContent = "Verifying code …";
     storeCode($("loginCode").value.trim());
     await checkAccess();
-    if (ACCESS === "none") { storeCode(""); $("loginMsg").textContent = "Kode tidak dikenal. Periksa lagi huruf besar/kecilnya."; return; }
+    if (ACCESS === "none") { storeCode(""); $("loginMsg").textContent = "The code was not recognized. Please check the capitalization and try again."; return; }
     location.reload();
   });
 }
@@ -1054,7 +1054,7 @@ async function initDb() {
     try { await loadProgress(); } catch {}
     await loadLog(); renderLog(); await loadSpv();
     if (!meta.exists) { renderSavedInfo(); renderQuality(); renderKa(); return; }
-    setStatus("Memuat data tersimpan …");
+    setStatus("Loading stored data …");
     const m = meta.data();
     const chunks = await Promise.all(Array.from({ length: m.chunks }, (_, i) => DB.doc("cpr/chunk-" + i).get()));
     const rows = chunks.flatMap((c) => (c.exists ? c.data().rows : []));
@@ -1066,10 +1066,10 @@ async function initDb() {
     deriveMeta(); populateControls();
     if (m.simFrom) { $("sFrom").value = m.simFrom; $("sTo").value = m.simTo; }
     $("sampleBanner").hidden = true; updateModeBanner();
-    $("dataLabel").textContent = `${m.fileName} · ${fmtInt(RECS.length)} CPR · tersimpan ${fmtStamp(m.savedAt)}`;
+    $("dataLabel").textContent = `${m.fileName} · ${fmtInt(RECS.length)} CPRs · saved ${fmtStamp(m.savedAt)}`;
     if (LOCKED.size) await runSimulation({ save: false }); else { SIM = null; SIM_KA = new Map(); renderAll(); }
-    setStatus(`Data tersimpan dimuat: ${fmtInt(RECS.length)} CPR dari ${m.fileName}.`);
-  } catch (err) { setStatus("Data tersimpan tidak bisa dimuat: " + (err.message || err.code)); renderSavedInfo(); }
+    setStatus(`Stored data loaded: ${fmtInt(RECS.length)} CPRs from ${m.fileName}.`);
+  } catch (err) { setStatus("Stored data could not be loaded: " + (err.message || err.code)); renderSavedInfo(); }
 }
 function fmtStamp(iso) { if (!iso) return "–"; const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; }
 async function loadLocks() {
@@ -1123,12 +1123,12 @@ async function clearAlloc() {
 function renderSaveBadge() {
   const b = $("saveBadge"); if (!b) return;
   let text, kind;
-  if (!DB_READY) { text = "Memeriksa penyimpanan …"; kind = "muted"; }
-  else if (!DB) { text = "Penyimpanan tidak aktif: data hilang saat refresh"; kind = "bad"; }
-  else if (SB && ACCESS === "none") { text = "Belum memasukkan kode: data asli tidak ditampilkan"; kind = "warn"; }
-  else if (!IS_SAMPLE && SAVED_AT) { text = "Tersimpan " + fmtStamp(SAVED_AT); kind = "good"; }
-  else if (!IS_SAMPLE) { text = "Belum tersimpan"; kind = "warn"; }
-  else { text = PIC_LIST ? "List RS PIC tersimpan · data CPR belum ada" : "Belum ada data tersimpan"; kind = "muted"; }
+  if (!DB_READY) { text = "Checking storage …"; kind = "muted"; }
+  else if (!DB) { text = "Storage inactive: data will be lost on refresh"; kind = "bad"; }
+  else if (SB && ACCESS === "none") { text = "No access code entered: actual data is not displayed"; kind = "warn"; }
+  else if (!IS_SAMPLE && SAVED_AT) { text = "Saved " + fmtStamp(SAVED_AT); kind = "good"; }
+  else if (!IS_SAMPLE) { text = "Not yet saved"; kind = "warn"; }
+  else { text = PIC_LIST ? "Hospital PIC List saved · no CPR data yet" : "No stored data yet"; kind = "muted"; }
   b.className = "pill " + kind; b.textContent = text;
 }
 // ---------- SPV data: transfers ("spv/transfers") and KA absences ("spv/absences") ----------
@@ -1163,32 +1163,35 @@ async function logEvent(entry) {
 }
 function renderLog() {
   const t = $("tblLog"); if (!t) return;
-  const kind = { "Data CPR": "info", "CPR jadi PO": "good", "List RS PIC": "muted", "Pembagian": "warn", "Pengalihan": "serious", "Ketidakhadiran": "muted" };
+  const kind = { "CPR queue": "info", "PO data": "good", "Hospital PIC List": "muted", "Allocation": "warn", "Reassignment": "serious", "Absence": "muted", "Progress update": "good", "Dismissed CPR": "muted" };
   renderTable(t, [
-    { key: "at", label: "Waktu", sortable: false, render: (r) => fmtStamp(r.at) },
-    { key: "type", label: "Jenis", sortable: false, render: (r) => pill(r.type, kind[r.type] || "muted") },
+    { key: "at", label: "Time", sortable: false, render: (r) => fmtStamp(r.at) },
+    { key: "type", label: "Type", sortable: false, render: (r) => pill(logType(r.type), kind[logType(r.type)] || "muted") },
     { key: "file", label: "File", sortable: false, render: (r) => r.file || "–" },
-    { key: "rows", label: "Baris di file", num: true, sortable: false, render: (r) => (r.rows === null || r.rows === undefined ? "–" : fmtInt(r.rows)) },
+    { key: "rows", label: "Rows in file", num: true, sortable: false, render: (r) => (r.rows === null || r.rows === undefined ? "–" : fmtInt(r.rows)) },
     { key: "cpr", label: "CPR", num: true, sortable: false, render: (r) => (r.cpr === null || r.cpr === undefined ? "–" : fmtInt(r.cpr)) },
-    { key: "baru", label: "CPR baru", num: true, sortable: false, render: (r) => (r.baru === null || r.baru === undefined ? "–" : fmtInt(r.baru)) },
-    { key: "lama", label: "Sudah ada sebelumnya", num: true, sortable: false, render: (r) => (r.lama === null || r.lama === undefined ? "–" : fmtInt(r.lama)) },
-    { key: "hilang", label: "Hilang (rejected)", num: true, sortable: false, render: (r) => (r.hilang === null || r.hilang === undefined ? "–" : fmtInt(r.hilang)) },
-    { key: "total", label: "Total tersimpan", num: true, sortable: false, render: (r) => (r.total === null || r.total === undefined ? "–" : fmtInt(r.total)) },
-    { key: "note", label: "Keterangan", sortable: false, render: (r) => r.note || "" }
+    { key: "baru", label: "New CPRs", num: true, sortable: false, render: (r) => (r.baru === null || r.baru === undefined ? "–" : fmtInt(r.baru)) },
+    { key: "lama", label: "Already present", num: true, sortable: false, render: (r) => (r.lama === null || r.lama === undefined ? "–" : fmtInt(r.lama)) },
+    { key: "hilang", label: "Removed (rejected)", num: true, sortable: false, render: (r) => (r.hilang === null || r.hilang === undefined ? "–" : fmtInt(r.hilang)) },
+    { key: "total", label: "Total stored", num: true, sortable: false, render: (r) => (r.total === null || r.total === undefined ? "–" : fmtInt(r.total)) },
+    { key: "note", label: "Details", sortable: false, render: (r) => r.note || "" }
   ], UPLOAD_LOG);
-  if (!UPLOAD_LOG.length) { const tb = t.querySelector("tbody td.empty"); if (tb) tb.textContent = DB ? "Belum ada upload yang tercatat." : "Riwayat hanya tersedia bila penyimpanan aktif."; }
+  if (!UPLOAD_LOG.length) { const tb = t.querySelector("tbody td.empty"); if (tb) tb.textContent = DB ? "No activity has been recorded yet." : "The activity log is available only when storage is active."; }
 }
+// log entries written before the English version keep their original type names
+const LOG_TYPES = { "Data CPR": "CPR queue", "CPR jadi PO": "PO data", "List RS PIC": "Hospital PIC List", "Pembagian": "Allocation", "Pengalihan": "Reassignment", "Ketidakhadiran": "Absence", "Update progress": "Progress update", "Abaikan CPR": "Dismissed CPR" };
+const logType = (t) => LOG_TYPES[t] || t;
 function renderSavedInfo() {
   renderLog();
   renderSaveBadge();
   const info = $("savedInfo"); if (!info) return;
   const canWrite = canSave() && !IS_SAMPLE;
   $("btnResetAlloc").hidden = !canWrite || META.hasKa; $("btnClearSaved").hidden = !canWrite;
-  if (!DB_READY) { info.textContent = "Memeriksa data tersimpan …"; return; }
-  if (!DB) { info.textContent = "Penyimpanan tidak tersedia di tampilan ini (misalnya saat belum masuk ke akun). Data hanya diproses di browser dan hilang saat halaman ditutup."; return; }
-  if (IS_SAMPLE) { info.textContent = (PIC_LIST ? `List RS PIC tersimpan (${fmtInt(Object.keys(PIC_LIST).length)} RS). ` : "") + "Data CPR belum ada. Upload file CPR untuk mulai menyimpan."; return; }
-  info.textContent = `File: ${META.fileName || "–"} · ${fmtInt(RECS.length)} CPR · disimpan ${fmtStamp(SAVED_AT)} · List RS PIC: ${PIC_LIST ? fmtInt(Object.keys(PIC_LIST).length) + " RS" : "belum ada"} · `
-    + (META.hasKa ? "Mode validasi: hasil pembagian dihitung ulang setiap kali, tidak dikunci." : `${fmtInt(LOCKED.size)} CPR sudah punya KA tetap dari pembagian sebelumnya.`);
+  if (!DB_READY) { info.textContent = "Checking stored data …"; return; }
+  if (!DB) { info.textContent = "Storage is not available in this view (for example, when not signed in). Data is processed only in the browser and will be lost when the page is closed."; return; }
+  if (IS_SAMPLE) { info.textContent = (PIC_LIST ? `Hospital PIC List saved (${fmtInt(Object.keys(PIC_LIST).length)} hospitals). ` : "") + "No CPR data yet. Upload a CPR queue file to begin."; return; }
+  info.textContent = `File: ${META.fileName || "–"} · ${fmtInt(RECS.length)} CPRs · saved ${fmtStamp(SAVED_AT)} · Hospital PIC List: ${PIC_LIST ? fmtInt(Object.keys(PIC_LIST).length) + " hospitals" : "not uploaded"} · `
+    + (META.hasKa ? "Validation mode: the allocation is recalculated on every run and is not locked." : `${fmtInt(LOCKED.size)} CPRs have a fixed KA from previous allocations.`);
 }
 // destructive buttons need a second click within 5 seconds
 function confirmTwice(btn, text) {
@@ -1198,13 +1201,13 @@ function confirmTwice(btn, text) {
   return false;
 }
 $("btnResetAlloc").addEventListener("click", async () => {
-  if (!DB || !confirmTwice($("btnResetAlloc"), "Klik lagi: KA lama dihapus, semua CPR dibagikan ulang")) return;
-  try { setStatus("Menghapus pembagian lama …"); await clearAlloc(); await runSimulation(); } catch (err) { setStatus("Gagal: " + (err.message || err.code)); }
+  if (!DB || !confirmTwice($("btnResetAlloc"), "Click again: existing KAs will be cleared and all CPRs reallocated")) return;
+  try { setStatus("Clearing previous allocation …"); await clearAlloc(); await runSimulation(); } catch (err) { setStatus("Failed: " + (err.message || err.code)); }
 });
 $("btnClearSaved").addEventListener("click", async () => {
-  if (!DB || !confirmTwice($("btnClearSaved"), "Klik lagi untuk menghapus semua data tersimpan")) return;
+  if (!DB || !confirmTwice($("btnClearSaved"), "Click again to delete all stored data")) return;
   try {
-    setStatus("Menghapus data tersimpan …");
+    setStatus("Deleting stored data …");
     const meta = await DB.doc("cpr/meta").get();
     const n = meta.exists ? meta.data().chunks || 0 : 0;
     for (let i = 0; i < n; i++) await DB.doc("cpr/chunk-" + i).delete();
@@ -1212,15 +1215,18 @@ $("btnClearSaved").addEventListener("click", async () => {
     const pm = await DB.doc("po/meta").get(); const pn = pm.exists ? pm.data().chunks || 0 : 0;
     for (let i = 0; i < pn; i++) await DB.doc("po/chunk-" + i).delete();
     await DB.doc("po/meta").delete(); await DB.doc("log/uploads").delete(); await DB.doc("spv/transfers").delete(); await DB.doc("spv/absences").delete();
+    const gm = await DB.doc("progress/meta").get(); const gn = gm.exists ? gm.data().chunks || 0 : 0;
+    for (let i = 0; i < gn; i++) await DB.doc("progress/chunk-" + i).delete();
+    await DB.doc("progress/meta").delete(); await DB.doc("spv/ignored").delete();
     await clearAlloc();
     location.reload();
-  } catch (err) { setStatus("Gagal menghapus: " + (err.message || err.code)); }
+  } catch (err) { setStatus("Deletion failed: " + (err.message || err.code)); }
 });
 function saveErrorText(err) {
   const code = err && err.code;
-  if (code === "invalid_argument") return SB ? "kode ini tidak punya akses menyimpan (hanya kode admin)" : "kamu tidak punya akses untuk menyimpan (hanya pemilik atau Editor dashboard)";
-  if (code === "quota_exceeded") return "ruang penyimpanan dashboard penuh";
-  return (err && (err.message || code)) || "kesalahan tidak dikenal";
+  if (code === "invalid_argument") return SB ? "this code does not have permission to save (administrator code required)" : "you do not have permission to save (owner or dashboard editor only)";
+  if (code === "quota_exceeded") return "dashboard storage is full";
+  return (err && (err.message || code)) || "unknown error";
 }
 
 /* ---------- Filters ---------- */
@@ -1325,17 +1331,17 @@ function setPoDates() {
 }
 $("filePo").addEventListener("change", async (e) => {
   const file = e.target.files[0]; if (!file) return;
-  setStatus(`Membaca ${file.name} …`);
+  setStatus(`Reading ${file.name} …`);
   try {
     const { rows, columns } = await readWorkbook(file);
     await loadKinerjaFile(file, rows, columns);
-  } catch (err) { setStatus("File kinerja tidak bisa dibaca: " + err.message); }
+  } catch (err) { setStatus("The performance file could not be read: " + err.message); }
   e.target.value = "";
 });
 async function loadKinerjaFile(file, rows, columns) {
   {
     const need = [COL.cpr, PO_COL.po].filter((c) => !columns.includes(c));
-    if (need.length) { setStatus(`File kinerja tidak bisa dipakai: kolom ${need.map((c) => `"${c}"`).join(", ")} tidak ditemukan. Pakai export CPR_Cleaned yang ada kolom PO-nya.`); return; }
+    if (need.length) { setStatus(`The performance file cannot be used: column(s) ${need.map((c) => `"${c}"`).join(", ")} not found. Please use a PO Data or CPR_Cleaned export that includes the PO column.`); return; }
     // add to the saved PO records (same CPR number -> the newer file wins)
     const poMap = new Map(PO_RECS.map((r) => [r.cpr, r]));
     const poFresh = buildPoRecords(rows);
@@ -1345,8 +1351,8 @@ async function loadKinerjaFile(file, rows, columns) {
     const prog = await updateProgress(file, rows);
     setPoDates(); renderKa();
     let saved = "";
-    if (DB && canSave()) { try { await savePo(); saved = " Tersimpan."; await logEvent({ type: "CPR jadi PO", file: file.name, rows: rows.length, cpr: PO_RECS.length, total: PO_RECS.length }); } catch (err) { saved = " Tidak tersimpan: " + saveErrorText(err) + "."; } }
-    setStatus(`${file.name}: ${fmtInt(poFresh.length)} CPR sudah jadi PO (total data kinerja ${fmtInt(PO_RECS.length)} CPR).${saved} ${prog}`);
+    if (DB && canSave()) { try { await savePo(); saved = " Saved."; await logEvent({ type: "PO data", file: file.name, rows: rows.length, cpr: PO_RECS.length, total: PO_RECS.length }); } catch (err) { saved = " Not saved: " + saveErrorText(err) + "."; } }
+    setStatus(`${file.name}: ${fmtInt(poFresh.length)} CPRs converted into POs (total performance data: ${fmtInt(PO_RECS.length)} CPRs).${saved} ${prog}`);
     renderAll();
   }
 }
@@ -1375,7 +1381,7 @@ function stageOfRow(r, steps) {
   for (const st of steps) {
     const inAt = toStamp(r[st.rec]); if (!inAt) continue;
     const okAt = st.ok ? toStamp(r[st.ok]) : null;
-    if (okAt) { if (!lastOk || okAt > lastOk.at) lastOk = { name: "Approver berikutnya setelah " + st.name, at: okAt }; continue; }
+    if (okAt) { if (!lastOk || okAt > lastOk.at) lastOk = { name: "Next approver after " + st.name, at: okAt }; continue; }
     if (!best || inAt > best.at) best = { name: st.name, at: inAt };
   }
   return best || lastOk;
@@ -1413,7 +1419,7 @@ function applyProgress() {
     if (p.kaOut !== null) { r.kaOut = p.kaOut; r.kaOutAt = null; }
     if (p.back !== null) { r.back = p.back; r.backAt = null; }
     if (p.backOut !== null) { r.backOut = p.backOut; r.backOutAt = null; }
-    r.stage = p.stage ?? null; r.stageSince = p.stageSince ?? null;
+    r.stage = p.stage ? String(p.stage).replace("Approver berikutnya setelah ", "Next approver after ") : null; r.stageSince = p.stageSince ?? null;
     r.done = p.po !== null || r.backOut !== null || isRejected(p);
     finishRec(r);
   }
@@ -1453,23 +1459,23 @@ async function updateProgress(file, rows) {
   if (DB && canSave()) {
     try {
       await saveProgress(); if (RECS.length && !IS_SAMPLE) await saveData();
-      await logEvent({ type: "Update progress", file: file.name, rows: rows.length, cpr: inWorklot.length, note: `${changed} CPR berubah tahap, ${finished} CPR selesai (jadi PO / ditolak), ${noUpdate} CPR worklot belum ada di Data PO` });
-    } catch (err) { saved = ` Progress tidak tersimpan: ${saveErrorText(err)}.`; }
+      await logEvent({ type: "Progress update", file: file.name, rows: rows.length, cpr: inWorklot.length, note: `${changed} CPRs changed stage, ${finished} CPRs completed (converted into PO / rejected), ${noUpdate} queued CPRs not yet in PO Data` });
+    } catch (err) { saved = ` Progress could not be saved: ${saveErrorText(err)}.`; }
   }
   if (SIM) await runSimulation({ save: false });
-  return `Progress per ${progressDate() !== null ? fmtDay(progressDate()) : "–"}: ${fmtInt(inWorklot.length)} CPR worklot ditemukan, ${fmtInt(changed)} berubah tahap, ${fmtInt(finished)} selesai. ${fmtInt(noUpdate)} CPR worklot belum ada di Data PO.${saved}`;
+  return `Progress as of ${progressDate() !== null ? fmtDay(progressDate()) : "–"}: ${fmtInt(inWorklot.length)} queued CPRs found, ${fmtInt(changed)} changed stage, ${fmtInt(finished)} completed. ${fmtInt(noUpdate)} queued CPRs are not yet in PO Data.${saved}`;
 }
 $("fileProg").addEventListener("change", async (e) => {
   const file = e.target.files[0]; if (!file) return;
-  setStatus(`Membaca ${file.name} …`);
+  setStatus(`Reading ${file.name} …`);
   try {
     const { rows, columns } = await readWorkbook(file);
     const need = [COL.cpr, COL.kaIn, COL.kaOut].filter((c) => !columns.includes(c));
-    if (need.length) { setStatus(`File progress tidak bisa dipakai: kolom ${need.map((c) => `"${c}"`).join(", ")} tidak ditemukan. Pakai export Data PO.`); e.target.value = ""; return; }
+    if (need.length) { setStatus(`The progress file cannot be used: column(s) ${need.map((c) => `"${c}"`).join(", ")} not found. Please use a PO Data export.`); e.target.value = ""; return; }
     if (columns.includes(PO_COL.po)) await loadKinerjaFile(file, rows, columns); // also feeds Kinerja KA
     else setStatus(await updateProgress(file, rows));
     renderAll();
-  } catch (err) { setStatus(`File tidak bisa dibaca: ${err.message}.`); }
+  } catch (err) { setStatus(`The file could not be read: ${err.message}.`); }
   e.target.value = "";
 });
 for (const id of ["poFrom", "poTo"]) $(id).addEventListener("change", () => renderKa());
@@ -1485,11 +1491,11 @@ function renderKa() {
   const view = loadView();
   $("lblPo").hidden = SB && !IS_ADMIN;
   if (PO_RECS.length) return renderKaFromPo(view);
-  $("poInfo").textContent = "Belum ada data kinerja. Sementara ini lama kerja dihitung dari data CPR utama.";
+  $("poInfo").textContent = "No performance data yet. Processing times are temporarily calculated from the main CPR data.";
   const data = filtered().filter((r) => realKa(r) && (r.rev1 !== null || r.rev2 !== null));
   $("kaNote").textContent = META.hasKa ? "" : data.length
-    ? `Lama kerja dihitung dari ${fmtInt(data.length)} CPR yang di file tercatat siapa KA-nya (Username pada role Key Account). CPR tanpa catatan itu tidak dihitung.`
-    : "Belum bisa dihitung: di data ini tidak ada CPR yang tercatat siapa KA yang mengerjakannya (Username pada role Key Account). Cek pemetaan role di tab Data. Kolom beban di bawah tetap dari hasil pembagian DSS.";
+    ? `Processing times are calculated from ${fmtInt(data.length)} CPRs whose KA is recorded in the file (Username on the Key Account role). CPRs without this record are excluded.`
+    : "Not yet available: no CPR in this data records which KA processed it (Username on the Key Account role). Please review the role mapping in the Data Management tab. The workload columns below still reflect the DSS allocation.";
   const groups = new Map();
   for (const r of data) { const ka = realKa(r); if (!groups.has(ka)) groups.set(ka, []); groups.get(ka).push(r); }
   // KAs with a DSS load but no recorded work still get a row (with empty review columns)
@@ -1507,21 +1513,21 @@ function renderKa() {
   }).sort((a, b) => (b.totAvg ?? 0) - (a.totAvg ?? 0));
   const withWork = rows.filter((r) => r.n > 0);
   barChartH($("chKa"), withWork.map((r) => `${r.name} (${r.n})`), [
-    { name: "Rata-rata review 1 (hari)", color: "var(--s1)", values: withWork.map((r) => r.r1avg) },
-    { name: "Rata-rata review 2 (hari)", color: "var(--s2)", values: withWork.map((r) => r.r2avg) }
-  ], { stacked: true, dec: 1, label: "Rata-rata lama review per KA" });
+    { name: "Average review 1 (days)", color: "var(--s1)", values: withWork.map((r) => r.r1avg) },
+    { name: "Average review 2 (days)", color: "var(--s2)", values: withWork.map((r) => r.r2avg) }
+  ], { stacked: true, dec: 1, label: "Average review time per KA" });
   renderTable($("tblKa"), [
     { key: "name", label: "Key Account" },
-    { key: "n", label: "CPR dikerjakan", num: true, render: (r) => fmtInt(r.n) },
-    { key: "r1avg", label: "Review 1 (hari)", num: true, render: (r) => fmtNum(r.r1avg) },
-    { key: "r2avg", label: "Review 2 (hari)", num: true, render: (r) => fmtNum(r.r2avg) },
-    { key: "totAvg", label: "Total (hari)", num: true, render: (r) => fmtNum(r.totAvg) },
-    { key: "perDay", label: "Selesai/hari (rata²)", num: true, render: (r) => fmtNum(r.perDay) },
-    { key: "perDayP90", label: "Hari tersibuk (P90)", num: true, render: (r) => fmtNum(r.perDayP90, 0) },
-    { key: "r1h", label: "Review 1 (jam, median)", num: true, render: (r) => fmtNum(r.r1h) },
-    { key: "r2h", label: "Review 2 (jam, median)", num: true, render: (r) => fmtNum(r.r2h) },
-    { key: "loadAvg", label: "Beban rata-rata/hari", num: true, render: (r) => fmtNum(r.loadAvg) },
-    { key: "loadPeak", label: "Beban tertinggi", num: true, render: (r) => fmtNum(r.loadPeak) }
+    { key: "n", label: "CPRs processed", num: true, render: (r) => fmtInt(r.n) },
+    { key: "r1avg", label: "Review 1 (days)", num: true, render: (r) => fmtNum(r.r1avg) },
+    { key: "r2avg", label: "Review 2 (days)", num: true, render: (r) => fmtNum(r.r2avg) },
+    { key: "totAvg", label: "Total (days)", num: true, render: (r) => fmtNum(r.totAvg) },
+    { key: "perDay", label: "Completed/day (avg)", num: true, render: (r) => fmtNum(r.perDay) },
+    { key: "perDayP90", label: "Busiest day (P90)", num: true, render: (r) => fmtNum(r.perDayP90, 0) },
+    { key: "r1h", label: "Review 1 (hours, median)", num: true, render: (r) => fmtNum(r.r1h) },
+    { key: "r2h", label: "Review 2 (hours, median)", num: true, render: (r) => fmtNum(r.r2h) },
+    { key: "loadAvg", label: "Avg workload/day", num: true, render: (r) => fmtNum(r.loadAvg) },
+    { key: "loadPeak", label: "Peak workload", num: true, render: (r) => fmtNum(r.loadPeak) }
   ], rows, kaSort);
   renderLoadTable(view);
 }
@@ -1543,8 +1549,8 @@ function renderKaFromPo(view) {
     if (!groups.has(ka)) groups.set(ka, []); groups.get(ka).push(r);
   }
   if (view) for (const ka of SIM.kaList) if (!groups.has(ka)) groups.set(ka, []);
-  $("poInfo").textContent = `File: ${PO_META ? PO_META.fileName : "–"} · ${fmtInt(PO_RECS.length)} CPR sudah jadi PO · dihitung ${fmtInt(inRange.length)} CPR dengan PO dibuat ${$("poFrom").value ? fmtDay(from) : "–"} – ${$("poTo").value ? fmtDay(to) : "–"}.`;
-  $("kaNote").textContent = `KA tiap CPR: ${fmtInt(fromDss)} dari hasil pembagian DSS, ${fmtInt(fromFile)} dari kolom KA di file` + (unknown ? `, ${fmtInt(unknown)} CPR tidak diketahui KA-nya (tidak dihitung).` : ".");
+  $("poInfo").textContent = `File: ${PO_META ? PO_META.fileName : "–"} · ${fmtInt(PO_RECS.length)} CPRs converted into POs · ${fmtInt(inRange.length)} CPRs with POs created ${$("poFrom").value ? fmtDay(from) : "–"} – ${$("poTo").value ? fmtDay(to) : "–"} are included.`;
+  $("kaNote").textContent = `KA source per CPR: ${fmtInt(fromDss)} from the DSS allocation, ${fmtInt(fromFile)} from the KA column in the file` + (unknown ? `; ${fmtInt(unknown)} CPRs have no identifiable KA (excluded).` : ".");
   const rows = [...groups.entries()].map(([ka, list]) => {
     const tot = list.map((r) => (r.rev1 !== null && r.rev2 !== null ? r.rev1 + r.rev2 : null));
     const lv = view && view.perKa[ka];
@@ -1557,41 +1563,41 @@ function renderKaFromPo(view) {
   }).sort((a, b) => (b.totAvg ?? 0) - (a.totAvg ?? 0));
   const withWork = rows.filter((r) => r.n > 0);
   barChartH($("chKa"), withWork.map((r) => `${r.name} (${r.n})`), [
-    { name: "Rata-rata review 1 (hari)", color: "var(--s1)", values: withWork.map((r) => r.r1avg) },
-    { name: "Rata-rata review 2 (hari)", color: "var(--s2)", values: withWork.map((r) => r.r2avg) }
-  ], { stacked: true, dec: 1, label: "Rata-rata lama review per KA" });
+    { name: "Average review 1 (days)", color: "var(--s1)", values: withWork.map((r) => r.r1avg) },
+    { name: "Average review 2 (days)", color: "var(--s2)", values: withWork.map((r) => r.r2avg) }
+  ], { stacked: true, dec: 1, label: "Average review time per KA" });
   renderTable($("tblKa"), [
     { key: "name", label: "Key Account" },
-    { key: "n", label: "CPR jadi PO", num: true, render: (r) => fmtInt(r.n) },
-    { key: "r1avg", label: "Review 1 (hari)", num: true, render: (r) => fmtNum(r.r1avg) },
-    { key: "r2avg", label: "Review 2 (hari)", num: true, render: (r) => fmtNum(r.r2avg) },
-    { key: "totAvg", label: "Total review (hari)", num: true, render: (r) => fmtNum(r.totAvg) },
-    { key: "kaToPo", label: "Tiba di KA → PO (hari)", num: true, render: (r) => fmtNum(r.kaToPo) },
-    { key: "toPo", label: "CPR dibuat → PO (hari)", num: true, render: (r) => fmtNum(r.toPo) },
-    { key: "perDay", label: "Selesai/hari (rata²)", num: true, render: (r) => fmtNum(r.perDay) },
-    { key: "perDayP90", label: "Hari tersibuk (P90)", num: true, render: (r) => fmtNum(r.perDayP90, 0) },
-    { key: "r1h", label: "Review 1 (jam, median)", num: true, render: (r) => fmtNum(r.r1h) },
-    { key: "r2h", label: "Review 2 (jam, median)", num: true, render: (r) => fmtNum(r.r2h) },
-    { key: "loadAvg", label: "Beban rata-rata/hari", num: true, render: (r) => fmtNum(r.loadAvg) }
+    { key: "n", label: "CPRs converted to PO", num: true, render: (r) => fmtInt(r.n) },
+    { key: "r1avg", label: "Review 1 (days)", num: true, render: (r) => fmtNum(r.r1avg) },
+    { key: "r2avg", label: "Review 2 (days)", num: true, render: (r) => fmtNum(r.r2avg) },
+    { key: "totAvg", label: "Total review (days)", num: true, render: (r) => fmtNum(r.totAvg) },
+    { key: "kaToPo", label: "Arrival at KA → PO (days)", num: true, render: (r) => fmtNum(r.kaToPo) },
+    { key: "toPo", label: "CPR created → PO (days)", num: true, render: (r) => fmtNum(r.toPo) },
+    { key: "perDay", label: "Completed/day (avg)", num: true, render: (r) => fmtNum(r.perDay) },
+    { key: "perDayP90", label: "Busiest day (P90)", num: true, render: (r) => fmtNum(r.perDayP90, 0) },
+    { key: "r1h", label: "Review 1 (hours, median)", num: true, render: (r) => fmtNum(r.r1h) },
+    { key: "r2h", label: "Review 2 (hours, median)", num: true, render: (r) => fmtNum(r.r2h) },
+    { key: "loadAvg", label: "Avg workload/day", num: true, render: (r) => fmtNum(r.loadAvg) }
   ], rows, kaSort);
   renderLoadTable(view);
 }
 function renderLoadTable(view) {
   const table = $("tblHeat");
   $("loadSrcWrap").hidden = !META.hasKa;
-  if (!view) { $("loadDesc").textContent = "Beban harian dihitung dari hasil pembagian DSS. Upload data dan List RS PIC terlebih dahulu."; table.replaceChildren(); $("overLegend").textContent = ""; return; }
+  if (!view) { $("loadDesc").textContent = "Daily workload is calculated from the DSS allocation. Please upload the data and the Hospital PIC List first."; table.replaceChildren(); $("overLegend").textContent = ""; return; }
   $("loadDesc").textContent = (view.useActual
-    ? "Pembagian aktual: KA asli dan tanggal asli. Dipakai hanya untuk validasi, karena data operasional nanti tidak punya kolom KA. "
-    : "Hasil pembagian DSS: CPR diberikan ke KA saat dibuat; tanggal perkiraan diganti tanggal aktual begitu CPR benar-benar tiba atau kembali. ")
-    + `Angka = jumlah CPR yang sedang di-review KA pada hari kerja itu (review 1 = ${SIM.w1} hari, review 2 = ${SIM.w2} hari), CPR dengan vendor yang sama dihitung ${fmtNum(SIM.vf)}.`;
-  $("overLegend").textContent = `Kotak bergaris merah = di atas batas ${fmtNum(SIM.maxPerDay)} CPR per hari`;
+    ? "Actual allocation: the actual KA and actual dates. Used for validation only, since operational data will not contain a KA column. "
+    : "DSS allocation: each CPR is assigned to a KA when created; forecast dates are replaced with actual dates once the CPR arrives or returns. ")
+    + `Value = number of CPRs under KA review on that working day (review 1 = ${SIM.w1} day${SIM.w1 === 1 ? "" : "s"}, review 2 = ${SIM.w2} day${SIM.w2 === 1 ? "" : "s"}); a CPR sharing a vendor is counted as ${fmtNum(SIM.vf)}.`;
+  $("overLegend").textContent = `Red outline = above the limit of ${fmtNum(SIM.maxPerDay)} CPRs per day`;
   const kas = SIM.kaList.map((ka, k) => ({ ka, k })).sort((a, b) => kaLabel(a.ka).localeCompare(kaLabel(b.ka)));
   if (!view.days.length) { table.replaceChildren(el("tbody")); return; }
   let max = 1; for (const d of view.days) for (const { k } of kas) max = Math.max(max, view.at(k, d));
   const thead = el("thead"), tr = el("tr");
-  tr.append(el("th", {}, "Tanggal"));
+  tr.append(el("th", {}, "Date"));
   for (const { ka } of kas) tr.append(el("th", {}, kaLabel(ka)));
-  tr.append(el("th", { class: "num" }, "Selisih"));
+  tr.append(el("th", { class: "num" }, "Gap"));
   thead.append(tr);
   const tbody = el("tbody");
   for (const d of view.days) {
@@ -1600,7 +1606,7 @@ function renderLoadTable(view) {
     kas.forEach(({ ka }, i) => {
       const v = vals[i], pct = Math.round(4 + (v / max) * 90), over = v > SIM.maxPerDay;
       const td = el("td", { class: "cell" + (over ? " over" : ""), style: `background:color-mix(in srgb, var(--accent) ${pct}%, var(--panel));color:${pct > 55 ? "#fff" : "var(--fg)"}` }, fmtNum(v, Number.isInteger(v) ? 0 : 1));
-      td.addEventListener("pointermove", (e) => showTip(e, `${kaLabel(ka)} · ${fmtDay(d)}`, [{ value: fmtNum(v), label: "CPR sedang di-review", color: "var(--accent)" }, { value: fmtNum(SIM.maxPerDay), label: over ? "batas (terlewati)" : "batas" }]));
+      td.addEventListener("pointermove", (e) => showTip(e, `${kaLabel(ka)} · ${fmtDay(d)}`, [{ value: fmtNum(v), label: "CPRs under review", color: "var(--accent)" }, { value: fmtNum(SIM.maxPerDay), label: over ? "limit (exceeded)" : "limit" }]));
       td.addEventListener("pointerleave", hideTip);
       row.append(td);
     });
@@ -1658,11 +1664,11 @@ function fitF1Model(train) {
 
 /* ---------- Simulation (DSS allocation) ---------- */
 async function runSimulation(opts = {}) {
-  const btn = $("sRun"); btn.disabled = true; btn.textContent = "Menghitung …";
+  const btn = $("sRun"); btn.disabled = true; btn.textContent = "Calculating …";
   await new Promise((r) => setTimeout(r, 20));
   const t0 = performance.now();
   try { SIM = simulate(); SIM.ms = performance.now() - t0; syncLoadDates(); } catch (err) { SIM = null; SIM_KA = new Map(); }
-  btn.disabled = false; btn.textContent = "Jalankan pembagian";
+  btn.disabled = false; btn.textContent = "Run allocation";
   if (SIM && opts.save !== false && canSave() && !IS_SAMPLE) {
     try {
       await saveParams(); const n = await saveNewAssignments();
@@ -1670,12 +1676,12 @@ async function runSimulation(opts = {}) {
         const at = new Date().toISOString();
         for (const t of SIM.autoTransfers) TRANSFERS.push({ at, ...t, note: "" });
         await saveTransfers();
-        await logEvent({ type: "Pengalihan", cpr: SIM.autoTransfers.length, note: `${SIM.autoTransfers.length} CPR dialihkan otomatis` });
-      } await logEvent({ type: "Pembagian", file: "", rows: null, cpr: SIM.n, baru: useLocks() ? n : null, lama: useLocks() ? SIM.n - n : null, note: `CPR dibuat ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)}, batas ${fmtNum(SIM.maxPerDay)}/hari` }); if (useLocks()) setStatus(`${fmtInt(n)} CPR baru dibagikan dan disimpan; ${fmtInt(SIM.n - n)} CPR tetap di KA sebelumnya.`); }
-    catch (err) { setStatus("Hasil pembagian tidak tersimpan: " + saveErrorText(err)); }
+        await logEvent({ type: "Reassignment", cpr: SIM.autoTransfers.length, note: `${SIM.autoTransfers.length} CPRs reassigned automatically` });
+      } await logEvent({ type: "Allocation", file: "", rows: null, cpr: SIM.n, baru: useLocks() ? n : null, lama: useLocks() ? SIM.n - n : null, note: `CPRs created ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)}, limit ${fmtNum(SIM.maxPerDay)}/day` }); if (useLocks()) setStatus(`${fmtInt(n)} new CPRs allocated and saved; ${fmtInt(SIM.n - n)} CPRs remain with their previously assigned KA.`); }
+    catch (err) { setStatus("The allocation result could not be saved: " + saveErrorText(err)); }
   }
   renderAll();
-  if (!SIM) $("simNote").textContent = "Pembagian belum bisa dijalankan: " + simError();
+  if (!SIM) $("simNote").textContent = "The allocation cannot be run yet: " + simError();
   showRunInfo();
 }
 function showRunInfo() {
@@ -1684,14 +1690,14 @@ function showRunInfo() {
   if (!SIM) { info.textContent = ""; return; }
   const now = new Date(), t = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
   const locked = SIM.assigned.filter((c) => c.locked && !c.isNewAssign).length;
-  info.textContent = `Pembagian dijalankan pukul ${t}: ${fmtInt(SIM.n)} CPR, batas beban ${fmtNum(SIM.maxPerDay)} CPR per KA per hari.`
-    + (useLocks() && locked ? ` ${fmtInt(locked)} CPR sudah punya KA tetap dari pembagian sebelumnya, jadi pengaturan baru hanya berlaku untuk CPR baru. Klik "Bagikan ulang semua" untuk menerapkannya ke semua CPR.` : "");
+  info.textContent = `Allocation run at ${t}: ${fmtInt(SIM.n)} CPRs, workload limit of ${fmtNum(SIM.maxPerDay)} CPRs per KA per day.`
+    + (useLocks() && locked ? ` ${fmtInt(locked)} CPRs already have a fixed KA from previous allocations, so new settings apply only to new CPRs. Select "Reallocate all" to apply them to every CPR.` : "");
   const tiles = $("simTiles"); tiles.classList.remove("flash"); void tiles.offsetWidth; tiles.classList.add("flash");
 }
 $("sReset").addEventListener("click", async () => {
-  if (!DB || !confirmTwice($("sReset"), "Klik lagi: semua CPR dibagikan ulang")) return;
-  try { setStatus("Menghapus pembagian lama …"); await clearAlloc(); await runSimulation(); setStatus("Semua CPR sudah dibagikan ulang dengan pengaturan sekarang."); }
-  catch (err) { setStatus("Gagal: " + (err.message || err.code)); }
+  if (!DB || !confirmTwice($("sReset"), "Click again: all CPRs will be reallocated")) return;
+  try { setStatus("Clearing previous allocation …"); await clearAlloc(); await runSimulation(); setStatus("All CPRs have been reallocated using the current settings."); }
+  catch (err) { setStatus("Failed: " + (err.message || err.code)); }
 });
 $("sRun").addEventListener("click", () => runSimulation());
 function simError() { try { simulate(); return ""; } catch (e) { return e.message; } }
@@ -1714,8 +1720,8 @@ function simulate() {
   // Validation mode: only CPRs with complete dates, so the real KA load can be compared.
   // Operational mode: every CPR created in the period, finished or still in progress.
   const test = RECS.filter((r) => r.isNew && r.create !== null && r.create >= start && r.create <= end && (!META.hasKa || (r.kaIn !== null && r.back !== null && r.kaOut !== null)));
-  if (!test.length) throw new Error(META.hasKa ? "tidak ada CPR proses KA dengan tanggal lengkap pada periode ini" : "tidak ada CPR yang dibuat pada periode ini");
-  if (!META.hasKa && !PIC_LIST) throw new Error("upload List RS PIC terlebih dahulu, karena data tidak punya kolom KA");
+  if (!test.length) throw new Error(META.hasKa ? "there are no KA-process CPRs with complete dates in this period" : "there are no CPRs created in this period");
+  if (!META.hasKa && !PIC_LIST) throw new Error("please upload the Hospital PIC List first, because the data has no KA column");
   // Forecast inputs: medians from 2026-process CPRs before the test period
   // history window: up to 1 year before the period
   // history to learn from: CPR_Cleaned (performance data) + CPRHistory, one record per CPR
@@ -1739,15 +1745,15 @@ function simulate() {
   const w2 = Math.max(1, Math.round(median(baseF2.map((r) => r.rev2)) ?? 2));
   // KA list and PIC per unit
   const kaList = META.hasKa ? [...new Set(test.map((r) => r.ka))].sort() : META.kaList.slice();
-  if (!kaList.length) throw new Error("daftar KA kosong");
+  if (!kaList.length) throw new Error("the KA list is empty");
   const kaIdx = new Map(kaList.map((k, i) => [k, i]));
   const pic = {};
   let picSource;
   if (PIC_LIST) {
-    picSource = "List RS PIC";
+    picSource = "Hospital PIC List";
     for (const [rs, name] of Object.entries(PIC_LIST)) { const u = META.nameToUser[name.toLowerCase()]; if (u) pic[rs] = u; }
   } else {
-    picSource = "KA yang paling sering menangani unit tersebut sebelum periode uji";
+    picSource = "the KA who most frequently handled the hospital before the test period";
     const g = new Map(); for (const r of (hist.length ? hist : RECS.filter((x) => x.isNew))) { if (!g.has(r.unit)) g.set(r.unit, []); g.get(r.unit).push(r.ka); }
     for (const [u, a] of g) pic[u] = mode(a);
   }
@@ -1807,9 +1813,9 @@ function simulate() {
   const moveTo = (c, to, reason) => {
     add(L, c, -1); cnt[c.ka] = (cnt[c.ka] || 1) - 1;
     const from = c.ka; c.ka = to; add(L, c, 1); cnt[to] = (cnt[to] || 0) + 1;
-    c.rule = "Dialihkan"; c.moved = { from, to, reason, by: "Otomatis" };
+    c.rule = "Dialihkan"; c.moved = { from, to, reason, by: "Automatic" };
     const prev = transferMap.get(c.r.cpr);
-    if (!prev || prev.to !== to) autoTransfers.push({ cpr: c.r.cpr, unit: c.unit, from, to, reason, by: "Otomatis" });
+    if (!prev || prev.to !== to) autoTransfers.push({ cpr: c.r.cpr, unit: c.unit, from, to, reason, by: "Automatic" });
   };
   // automatic rule 1: the KA is absent on the review-1 days of a CPR that has not been started
   const D = dataDate();
@@ -1819,7 +1825,7 @@ function simulate() {
     if (!notStarted(c) || !ABSENCES.length || !absent(c.ka, pendingOffs(c))) return;
     const a = absenceFor(c.ka, c.s1, Math.max(c.s1 + c.w1 - 1, D ?? 0));
     const { best } = bestKa(c, activeDays(c), c.ka);
-    if (best) moveTo(c, best, `${kaLabel(c.ka)} tidak hadir${a ? ` (${a.reason} ${fmtShort(a.from)}–${fmtShort(a.to)})` : ""}`);
+    if (best) moveTo(c, best, `${kaLabel(c.ka)} absent${a ? ` (${a.reason} ${fmtShort(a.from)}–${fmtShort(a.to)})` : ""}`);
   };
   const byCreate = new Map(), byArrive = new Map(), byKaOut = new Map(), byBack = new Map();
   const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
@@ -1874,7 +1880,7 @@ function simulate() {
       // automatic rule 2: on arrival (before work starts) the KA is over the limit and another present KA still has room
       if (!(c.transfer && c.transfer.by === "SPV") && notStarted(c) && peak(L, c.ka, review1Offs(c), 0) > maxPerDay) {
         const { best, bestPeak } = bestKa(c, activeDays(c), c.ka);
-        if (best && bestPeak <= maxPerDay) moveTo(c, best, `Beban ${kaLabel(c.ka)} melewati batas ${fmtNum(maxPerDay)} CPR/hari saat CPR tiba`);
+        if (best && bestPeak <= maxPerDay) moveTo(c, best, `${kaLabel(c.ka)} exceeded the limit of ${fmtNum(maxPerDay)} CPRs/day when the CPR arrived`);
       }
     }
     for (const c of byKaOut.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s2 = day + c.f2; add(L, c, 1); }
@@ -1893,7 +1899,7 @@ function simulate() {
   for (const c of assigned) rules[c.rule] = (rules[c.rule] || 0) + 1;
   SIM_KA = new Map(assigned.map((c) => [c.r.cpr, c.ka]));
   return {
-    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, histCount: f1Train.length, f1Method: f1Model ? "Linear Regression" : "median per rumah sakit",
+    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, histCount: f1Train.length, f1Method: f1Model ? "Linear Regression" : "median per hospital",
     kaList, workDays, actual: actualTbl ? summarize(actualTbl) : null, dss: summarize(dssTbl), rules, assigned, actualCount, dssCount,
     same: META.hasKa ? assigned.filter((c) => c.ka === c.r.ka).length / assigned.length : null, load: L, actualLoad: actualL, minDay, nDays, n: test.length,
     open: assigned.filter((c) => c.r.backOut === null).length, autoTransfers, f2P80
@@ -1903,9 +1909,9 @@ function simulate() {
 function cmpTile(k, a, b, unit, lowerIsBetter = true, dec = 1) {
   const t = el("div", { class: "tile" }); t.append(el("div", { class: "k" }, k));
   const cmp = el("div", { class: "cmp" });
-  cmp.append(el("span", {}, "Aktual"), el("b", {}, fmtNum(a, dec) + (unit || "")), el("span", {}, "DSS"), el("b", {}, fmtNum(b, dec) + (unit || "")));
+  cmp.append(el("span", {}, "Actual"), el("b", {}, fmtNum(a, dec) + (unit || "")), el("span", {}, "DSS"), el("b", {}, fmtNum(b, dec) + (unit || "")));
   t.append(cmp);
-  if (a) { const ch = ((b - a) / a) * 100, good = lowerIsBetter ? ch < 0 : ch > 0; t.append(el("div", { class: "delta " + (Math.abs(ch) < 0.5 ? "" : good ? "good" : "bad") }, (ch > 0 ? "▲ " : ch < 0 ? "▼ " : "") + fmtNum(Math.abs(ch), 0) + "% " + (good ? "lebih baik" : Math.abs(ch) < 0.5 ? "sama" : "lebih buruk"))); }
+  if (a) { const ch = ((b - a) / a) * 100, good = lowerIsBetter ? ch < 0 : ch > 0; t.append(el("div", { class: "delta " + (Math.abs(ch) < 0.5 ? "" : good ? "good" : "bad") }, (ch > 0 ? "▲ " : ch < 0 ? "▼ " : "") + fmtNum(Math.abs(ch), 0) + "% " + (good ? "better" : Math.abs(ch) < 0.5 ? "unchanged" : "worse"))); }
   return t;
 }
 let incState = { page: 0, q: "" };
@@ -1915,13 +1921,13 @@ function renderSim() {
     const step = (ok, text) => el("li", { style: ok ? "color:var(--good)" : "" }, (ok ? "✓ " : "○ ") + text);
     const list = el("ol", { class: "note", style: "list-style:none;padding:0;margin:6px 0 0;font-size:14px;line-height:1.9" });
     list.append(
-      step(PO_RECS.length > 0, PO_RECS.length ? `CPR_Cleaned (kinerja & riwayat forecast): ${fmtInt(PO_RECS.length)} CPR` : "Upload CPR_Cleaned di tab Kinerja KA (riwayat untuk forecast)"),
-      step(!IS_SAMPLE, IS_SAMPLE ? "Upload CPRHistory (data worklot)" : `CPRHistory: ${fmtInt(RECS.length)} CPR dari ${META.fileName || "file"}`),
-      step(!!PIC_LIST || META.hasKa, PIC_LIST ? `List RS PIC: ${fmtInt(Object.keys(PIC_LIST).length)} rumah sakit` : META.hasKa ? "List RS PIC (opsional untuk data ini)" : "Upload List RS PIC (daftar KA)"),
-      step(false, "Atur periode dan batas beban di atas, lalu klik Jalankan pembagian")
+      step(!!PIC_LIST || META.hasKa, PIC_LIST ? `Hospital PIC List: ${fmtInt(Object.keys(PIC_LIST).length)} hospitals` : META.hasKa ? "Hospital PIC List (optional for this data)" : "Upload the Hospital PIC List (list of KAs)"),
+      step(!IS_SAMPLE, IS_SAMPLE ? "Upload the CPR Queue (CPRHistory)" : `CPR Queue: ${fmtInt(RECS.length)} CPRs from ${META.fileName || "file"}`),
+      step(PO_RECS.length > 0, PO_RECS.length ? `PO Data (progress, performance and forecast history): ${fmtInt(PO_RECS.length)} CPRs` : "Upload PO Data (progress, KA performance and forecast history)"),
+      step(false, "Set the period and workload limit above, then select Run allocation")
     );
     const card = el("div", { class: "card", style: "grid-column:1/-1" });
-    card.append(el("h3", {}, "Belum ada pembagian"), list);
+    card.append(el("h3", {}, "No allocation has been run yet"), list);
     $("simTiles").replaceChildren(card); $("simResults").hidden = true; $("simNote").textContent = ""; $("runInfo").textContent = "";
     $("chKaCount").replaceChildren(); $("lgKaCount").replaceChildren(); $("tblInc").replaceChildren(); $("simCompare").textContent = "";
     $("subKaCount").textContent = "";
@@ -1930,28 +1936,28 @@ function renderSim() {
   $("simResults").hidden = false;
   const fresh = s.assigned.filter((c) => c.isNewAssign).length;
   $("simTiles").replaceChildren(
-    tile("CPR dibagikan", fmtInt(s.n), "", `dibuat ${fmtDay(s.start)} – ${fmtDay(s.end)}`),
-    tile("KA", fmtInt(s.kaList.length), "orang", `rata-rata ${fmtNum(s.n / s.kaList.length, 0)} CPR per KA`),
-    useLocks() ? tile("CPR baru dibagikan", fmtInt(fresh), "", "pada upload terakhir; CPR lain tetap di KA-nya") : tile("Beban tertinggi", fmtNum(s.dss.highest), "CPR", `satu KA dalam sehari · batas ${fmtNum(s.maxPerDay)}`),
-    tile("Perlu keputusan SPV", fmtInt(s.rules.Exception), "CPR", s.rules.Exception ? "Tidak ada KA yang bebannya muat" : "Semua CPR muat di bawah batas beban")
+    tile("CPRs allocated", fmtInt(s.n), "", `created ${fmtDay(s.start)} – ${fmtDay(s.end)}`),
+    tile("Key Accounts", fmtInt(s.kaList.length), "people", `average of ${fmtNum(s.n / s.kaList.length, 0)} CPRs per KA`),
+    useLocks() ? tile("New CPRs allocated", fmtInt(fresh), "", "in the latest run; other CPRs keep their KA") : tile("Peak workload", fmtNum(s.dss.highest), "CPRs", `one KA in one day · limit ${fmtNum(s.maxPerDay)}`),
+    tile("Supervisor decision required", fmtInt(s.rules.Exception), "CPRs", s.rules.Exception ? "No KA has sufficient capacity" : "All CPRs fit within the workload limit")
   );
   $("simCompare").textContent = s.actual
-    ? `Dibanding pembagian yang sebenarnya terjadi, selisih beban KA tersibuk dan tersepi turun dari ${fmtNum(s.actual.gap)} ke ${fmtNum(s.dss.gap)} CPR per hari (${fmtNum(((s.actual.gap - s.dss.gap) / s.actual.gap) * 100, 0)}% lebih merata).`
+    ? `Compared with the actual allocation, the workload gap between the busiest and least busy KA decreased from ${fmtNum(s.actual.gap)} to ${fmtNum(s.dss.gap)} CPRs per day (${fmtNum(((s.actual.gap - s.dss.gap) / s.actual.gap) * 100, 0)}% more balanced).`
     : "";
   // warn when the forecast has (almost) no history to learn from
   const warn = $("histWarn");
   warn.hidden = s.histCount >= 100;
   warn.replaceChildren(el("div"));
-  warn.firstChild.innerHTML = `<b>Perkiraan tiba di KA kurang bisa dipercaya.</b> Perkiraan dihitung dari riwayat CPR yang sudah pernah tiba di KA, dan saat ini hanya ada ${fmtInt(s.histCount)} CPR seperti itu sebelum ${fmtDay(s.start)}${s.histCount ? ` (median ${fmtNum(s.f1All, 0)} hari)` : " (dipakai angka default 2 hari)"}. Upload <b>CPR_Cleaned</b> sebagai data riwayat terlebih dahulu, lalu file CPRHistory, kemudian jalankan pembagian lagi.`;
+  warn.firstChild.innerHTML = `<b>The arrival forecast has limited reliability.</b> Forecasts are derived from CPRs that have previously reached the KA, and only ${fmtInt(s.histCount)} such CPRs exist before ${fmtDay(s.start)}${s.histCount ? ` (median ${fmtNum(s.f1All, 0)} days)` : " (a default of 2 days is used)"}. Please upload <b>PO Data</b> as historical data, then run the allocation again.`;
   const lg = (items) => items.map(([name, c]) => `<span><i style="background:${c}"></i>${name}</span>`).join("");
   const kas = s.kaList.slice().sort((a, b) => (s.dssCount[b] || 0) - (s.dssCount[a] || 0));
-  $("subKaCount").textContent = s.actual ? "Hasil DSS dibanding pembagian aktual" : "Hasil pembagian DSS";
-  $("lgKaCount").innerHTML = s.actual ? lg([["DSS", "var(--s1)"], ["Aktual", "var(--s2)"]]) : "";
+  $("subKaCount").textContent = s.actual ? "DSS allocation compared with the actual allocation" : "DSS allocation";
+  $("lgKaCount").innerHTML = s.actual ? lg([["DSS", "var(--s1)"], ["Actual", "var(--s2)"]]) : "";
   barChartH($("chKaCount"), kas.map(kaLabel), s.actual ? [
     { name: "DSS", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) },
-    { name: "Aktual", color: "var(--s2)", values: kas.map((k) => s.actualCount[k] || 0) }
-  ] : [{ name: "CPR", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) }], { dec: 0, label: "Jumlah CPR per KA" });
-  $("simNote").textContent = `Perkiraan tiba di KA (Forecast 1): ${s.f1Method === "Linear Regression" ? `Linear Regression yang dilatih dari ${fmtInt(s.histCount)} CPR sebelum periode ini (model terbaik di notebook)` : "median per rumah sakit, karena riwayat kurang dari 100 CPR"}. Perkiraan kembali ke KA (Forecast 2): median per rumah sakit. Lama review dihitung ${s.w1} hari (review 1) dan ${s.w2} hari (review 2). Batas beban ${fmtNum(s.maxPerDay)} CPR per KA per hari${s.userMax ? " (diisi manual)" : " (otomatis)"}.`;
+    { name: "Actual", color: "var(--s2)", values: kas.map((k) => s.actualCount[k] || 0) }
+  ] : [{ name: "CPR", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) }], { dec: 0, label: "Number of CPRs per KA" });
+  $("simNote").textContent = `Arrival at KA (Forecast 1): ${s.f1Method === "Linear Regression" ? `Linear Regression trained on ${fmtInt(s.histCount)} CPRs preceding this period (best-performing model in the analysis notebook)` : "median per hospital, because fewer than 100 historical CPRs are available"}. Return to KA (Forecast 2): median per hospital. Review duration is assumed to be ${s.w1} day${s.w1 === 1 ? "" : "s"} (review 1) and ${s.w2} day${s.w2 === 1 ? "" : "s"} (review 2). Workload limit: ${fmtNum(s.maxPerDay)} CPRs per KA per day${s.userMax ? " (set manually)" : " (automatic)"}.`;
   incState.page = 0; renderIncoming();
 }
 function incRows() {
@@ -1960,23 +1966,27 @@ function incRows() {
     .sort((a, b) => a.r.create - b.r.create || a.r.cpr.localeCompare(b.r.cpr));
 }
 const ruleKind = { "Vendor sama": "info", "PIC unit": "good", "Beban terendah": "warn", "Dialihkan": "serious", "Exception": "bad" };
+// rule names are stored in Indonesian (saved allocations use them); this is how they are shown
+const RULE_LABEL = { "Vendor sama": "Same vendor", "PIC unit": "Hospital PIC", "Beban terendah": "Lowest workload", "Dialihkan": "Reassigned", "Exception": "Exception" };
+const ruleLabel = (r) => RULE_LABEL[r] || r;
+const byLabel = (b) => (b === "Otomatis" ? "Automatic" : b === "SPV" ? "Supervisor" : b);
 function renderIncoming() {
   if (!SIM) return;
   const rows = incRows(), per = 50, pages = Math.max(1, Math.ceil(rows.length / per));
   incState.page = Math.min(incState.page, pages - 1);
-  $("incPage").textContent = `${incState.page + 1} / ${pages} · ${fmtInt(rows.length)} CPR`;
+  $("incPage").textContent = `${incState.page + 1} / ${pages} · ${fmtInt(rows.length)} CPRs`;
   renderTable($("tblInc"), [
-    { key: "cpr", label: "Nomor CPR", code: true, sortable: false, render: (c) => c.r.cpr },
-    { key: "unit", label: "RS", sortable: false },
+    { key: "cpr", label: "CPR number", code: true, sortable: false, render: (c) => c.r.cpr },
+    { key: "unit", label: "Hospital", sortable: false },
     { key: "vendor", label: "Vendor", sortable: false, render: (c) => c.r.vendorName ? c.r.vendorName.slice(0, 32) : c.vendor },
-    { key: "create", label: "Dibuat / submit", sortable: false, render: (c) => {
+    { key: "create", label: "Created / submitted", sortable: false, render: (c) => {
       const box = el("div"); box.append(el("div", {}, c.r.createAt ? fmtStampShort(c.r.createAt) : fmtDay(c.r.create)));
-      if (c.r.submitAt && c.r.submitAt !== c.r.createAt) box.append(el("div", { class: "note", style: "margin:0;font-size:11.5px" }, "submit " + fmtStampShort(c.r.submitAt)));
+      if (c.r.submitAt && c.r.submitAt !== c.r.createAt) box.append(el("div", { class: "note", style: "margin:0;font-size:11.5px" }, "submitted " + fmtStampShort(c.r.submitAt)));
       return box; } },
-    { key: "pred", label: "Tiba di KA", sortable: false, render: (c) => (c.r.kaIn !== null ? fmtDay(c.r.kaIn) : fmtDay(c.predArrival) + " (perkiraan)") },
+    { key: "pred", label: "Arrival at KA", sortable: false, render: (c) => (c.r.kaIn !== null ? fmtDay(c.r.kaIn) : fmtDay(c.predArrival) + " (forecast)") },
     { key: "ka", label: "KA", sortable: false, render: (c) => kaLabel(c.ka) },
-    { key: "rule", label: "Aturan", sortable: false, render: (c) => pill(c.rule, ruleKind[c.rule]) },
-    ...(useLocks() ? [{ key: "lk", label: "Pembagian", sortable: false, render: (c) => (c.isNewAssign ? pill("Baru", "info") : c.locked ? pill("Tetap", "muted") : pill("Belum disimpan", "warn")) }] : []),
+    { key: "rule", label: "Rule", sortable: false, render: (c) => pill(ruleLabel(c.rule), ruleKind[c.rule]) },
+    ...(useLocks() ? [{ key: "lk", label: "Assignment", sortable: false, render: (c) => (c.isNewAssign ? pill("New", "info") : c.locked ? pill("Fixed", "muted") : pill("Not saved", "warn")) }] : []),
   ], rows.slice(incState.page * per, incState.page * per + per));
 }
 $("incSearch").addEventListener("input", (e) => { incState.q = e.target.value; incState.page = 0; renderIncoming(); });
@@ -1984,11 +1994,11 @@ $("incPrev").addEventListener("click", () => { incState.page = Math.max(0, incSt
 $("incNext").addEventListener("click", () => { incState.page++; renderIncoming(); });
 $("incCopy").addEventListener("click", async () => {
   if (!SIM) return;
-  const lines = [["Nomor CPR", "RS", "Vendor ID", "Dibuat", "Perkiraan tiba KA", "Aktual tiba KA", "KA DSS", "Aturan", ...(META.hasKa ? ["KA aktual"] : [])].join("\t")];
-  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.vendor, c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), c.r.kaIn !== null ? dayToIso(c.r.kaIn) : "", kaLabel(c.ka), c.rule, ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
+  const lines = [["CPR number", "Hospital", "Vendor ID", "Created", "Forecast arrival at KA", "Actual arrival at KA", "DSS KA", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
+  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.vendor, c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), c.r.kaIn !== null ? dayToIso(c.r.kaIn) : "", kaLabel(c.ka), ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
   const text = lines.join("\n");
-  try { await navigator.clipboard.writeText(text); setStatus(`${fmtInt(lines.length - 1)} baris disalin. Tempel ke Excel dengan Ctrl+V.`); }
-  catch { const ta = el("textarea", { style: "position:fixed;left:-9999px" }); ta.value = text; document.body.append(ta); ta.select(); const ok = document.execCommand && document.execCommand("copy"); ta.remove(); setStatus(ok ? `${fmtInt(lines.length - 1)} baris disalin.` : "Browser menolak menyalin otomatis. Pilih tabel lalu salin manual."); }
+  try { await navigator.clipboard.writeText(text); setStatus(`${fmtInt(lines.length - 1)} rows copied. Paste into Excel with Ctrl+V.`); }
+  catch { const ta = el("textarea", { style: "position:fixed;left:-9999px" }); ta.value = text; document.body.append(ta); ta.select(); const ok = document.execCommand && document.execCommand("copy"); ta.remove(); setStatus(ok ? `${fmtInt(lines.length - 1)} rows copied.` : "The browser blocked automatic copying. Please select the table and copy it manually."); }
 });
 
 /* ---------- Kualitas data ---------- */
@@ -2000,10 +2010,10 @@ function renderQuality() {
   const unitsNoPic = PIC_LIST ? META.units.filter((u) => !PIC_LIST[u] && RECS.some((r) => r.unit === u && r.isNew)) : [];
   if (!META.hasKa) unknownPic.length = 0;
   $("dqTiles").replaceChildren(
-    tile("Baris di file terakhir", fmtInt(META.rawRows), "", META.format === "history" ? `${fmtInt(RECS.length)} CPR setelah digabung dengan data tersimpan` : `${fmtInt(META.duplicates || 0)} duplikat nomor CPR dilewati`),
-    META.hasKa ? tile("CPR proses KA", fmtInt(ka.length), "", `${fmtInt(RECS.length - ka.length)} CPR proses lama`) : tile("Kolom KA", "Tidak ada", "", "Mode operasional: KA ditentukan oleh DSS"),
-    tile("Tanggal lengkap", fmtNum((complete / Math.max(1, ka.length)) * 100, 0), "%", "CPR dengan 4 tanggal KA terisi"),
-    tile("List RS PIC", PIC_LIST ? fmtInt(Object.keys(PIC_LIST).length) : "–", PIC_LIST ? "RS" : "", PIC_LIST ? (unknownPic.length ? `PIC tidak dikenali: ${unknownPic.join(", ")}` : unitsNoPic.length ? `RS tanpa PIC: ${unitsNoPic.join(", ")}` : "Semua PIC cocok dengan data") : "Belum di-upload")
+    tile("Rows in latest file", fmtInt(META.rawRows), "", META.format === "history" ? `${fmtInt(RECS.length)} CPRs after merging with stored data` : `${fmtInt(META.duplicates || 0)} duplicate CPR numbers skipped`),
+    META.hasKa ? tile("KA-process CPRs", fmtInt(ka.length), "", `${fmtInt(RECS.length - ka.length)} legacy-process CPRs`) : tile("KA column", "None", "", "Operational mode: the KA is assigned by the DSS"),
+    tile("Complete dates", fmtNum((complete / Math.max(1, ka.length)) * 100, 0), "%", "CPRs with all 4 KA dates filled"),
+    tile("Hospital PIC List", PIC_LIST ? fmtInt(Object.keys(PIC_LIST).length) : "–", PIC_LIST ? "hospitals" : "", PIC_LIST ? (unknownPic.length ? `Unrecognized PIC: ${unknownPic.join(", ")}` : unitsNoPic.length ? `Hospitals without PIC: ${unitsNoPic.join(", ")}` : "All PICs match the data") : "Not uploaded")
   );
 }
 
@@ -2023,7 +2033,7 @@ function makeSample() {
     const rev1 = Math.min(6, logn(1, 0.9)), f2 = rnd() < 0.15 ? 9 + Math.floor(rnd() * 20) : logn(3.5, 0.7), rev2 = Math.min(8, logn(2, 0.9));
     const kaIn = create + f1, kaOut = kaIn + rev1, back = kaOut + f2, backOut = back + rev2;
     const iso = (d) => dayToIso(d);
-    rows.push({ [COL.cpr]: `cpr-demo-${String(i + 1).padStart(5, "0")}`, [COL.unit]: units[u], [COL.vendor]: String(2100000 + Math.floor(rnd() * 60)), [COL.vendorName]: `Vendor Contoh ${1 + Math.floor(rnd() * 60)}`,
+    rows.push({ [COL.cpr]: `cpr-demo-${String(i + 1).padStart(5, "0")}`, [COL.unit]: units[u], [COL.vendor]: String(2100000 + Math.floor(rnd() * 60)), [COL.vendorName]: `Sample Vendor ${1 + Math.floor(rnd() * 60)}`,
       [COL.ka]: kaPick[1], [COL.kaName]: kaPick[0], [COL.create]: iso(create), [COL.phIn]: iso(create), [COL.phOut]: iso(kaIn),
       [COL.kaIn]: iso(kaIn), [COL.kaOut]: iso(kaOut), [COL.back]: iso(back), [COL.backOut]: iso(backOut), [COL.capex]: rnd() < 0.4 ? "NR" : null });
   }
@@ -2043,89 +2053,89 @@ function actionItems() {
     const r = c.r; if (r.backOut !== null || r.done) continue;
     // without a progress update after the CPR entered KA, its status is unknown: not a problem yet
     if (!r.prog || D === null || D < (r.kaIn ?? r.create)) continue;
-    if (IGNORED[r.cpr]) { out.push({ c, type: "ignored", days: 0, status: `Diabaikan ${fmtStamp(IGNORED[r.cpr].at)}`, where: "–", canMove: false }); continue; }
-    const where = r.stage ? `${r.stage}${r.stageSince !== null && r.stageSince !== undefined ? " sejak " + fmtShort(r.stageSince) : ""}` : "–";
+    if (IGNORED[r.cpr]) { out.push({ c, type: "ignored", days: 0, status: `Dismissed ${fmtStamp(IGNORED[r.cpr].at)}`, where: "–", canMove: false }); continue; }
+    const where = r.stage ? `${r.stage}${r.stageSince !== null && r.stageSince !== undefined ? " since " + fmtShort(r.stageSince) : ""}` : "–";
     if (r.kaIn !== null && r.kaOut === null) {
-      const d = D - r.kaIn; if (d > 3) out.push({ c, type: "late", days: d, status: `Review 1 belum selesai ${d} hari`, where: "Key Account HO", canMove: true });
+      const d = D - r.kaIn; if (d > 3) out.push({ c, type: "late", days: d, status: `Review 1 not completed after ${d} days`, where: "Key Account HO", canMove: true });
     } else if (r.kaIn === null) {
       const due = r.create + (c.f1Hi ?? c.f1); const d = D - due;
-      if (d > STALE_DAYS) out.push({ c, type: "stale", days: d, status: `Belum tiba di KA ${d} hari setelah batas perkiraan, kemungkinan masih draft atau batal`, where, canMove: false });
-      else if (d > 0) out.push({ c, type: "pre", days: d, status: `Belum tiba di KA, lewat ${d} hari dari batas perkiraan`, where, canMove: true });
+      if (d > STALE_DAYS) out.push({ c, type: "stale", days: d, status: `Not at KA ${d} days after the forecast limit; possibly still in draft or cancelled`, where, canMove: false });
+      else if (d > 0) out.push({ c, type: "pre", days: d, status: `Not yet at KA, ${d} days past the forecast limit`, where, canMove: true });
     } else if (r.kaOut !== null && r.back === null) {
-      const d = D - r.kaOut; if (d > c.f2P80) out.push({ c, type: "post", days: d, status: `Menunggu approver ${d} hari (normalnya ≤ ${fmtNum(c.f2P80, 0)})`, where, canMove: false });
+      const d = D - r.kaOut; if (d > c.f2P80) out.push({ c, type: "post", days: d, status: `Awaiting approver for ${d} days (typically ≤ ${fmtNum(c.f2P80, 0)})`, where, canMove: false });
     }
   }
   return out.sort((a, b) => b.days - a.days);
 }
 const actKind = { late: "bad", pre: "warn", post: "serious", stale: "muted", ignored: "muted" };
-const actLabel = { late: "Terlambat review", pre: "Tertahan sebelum KA", post: "Tertahan di approver", stale: "Kemungkinan tidak aktif", ignored: "Diabaikan" };
+const actLabel = { late: "Review overdue", pre: "Delayed before KA", post: "Pending with approver", stale: "Possibly inactive", ignored: "Dismissed" };
 function kaLoadOn(ka, day) { if (!SIM) return null; const k = SIM.kaList.indexOf(ka); return k < 0 ? null : SIM.load[k][day - SIM.minDay] || 0; }
 function renderSpv() {
   const editable = canSave() && !IS_SAMPLE;
   $("absForm").hidden = !editable; $("trOpen").hidden = !editable;
   const kas = SIM ? SIM.kaList : META.kaList || [];
-  const fill = (sel, withAll) => { const cur = sel.value; sel.replaceChildren(...(withAll ? [el("option", { value: "" }, "Semua KA")] : []), ...kas.map((k) => el("option", { value: k }, kaLabel(k)))); if ([...sel.options].some((o) => o.value === cur)) sel.value = cur; };
+  const fill = (sel, withAll) => { const cur = sel.value; sel.replaceChildren(...(withAll ? [el("option", { value: "" }, "All KAs")] : []), ...kas.map((k) => el("option", { value: k }, kaLabel(k)))); if ([...sel.options].some((o) => o.value === cur)) sel.value = cur; };
   fill($("actKa"), true); fill($("absKa"), false);
   const today = toDay(new Date()), D = dataDate();
-  $("spvNote").textContent = SIM ? "" : "Jalankan pembagian dulu di tab Pembagian CPR agar daftar tindakan bisa dihitung.";
+  $("spvNote").textContent = SIM ? "" : "Please run the allocation in the CPR Allocation tab first so that the action list can be calculated.";
   $("asOfNote").textContent = progressDate() !== null
-    ? `Dihitung dari update progress terakhir (Data PO per ${fmtDay(progressDate())}). Upload Data PO terbaru agar daftar ini mutakhir.`
-    : "Belum ada update progress. Upload Data PO lewat tombol \"Update progress\" agar CPR yang terlambat atau tertahan bisa dihitung.";
+    ? `Based on the latest progress update (PO Data as of ${fmtDay(progressDate())}). Upload the latest PO Data to keep this list current.`
+    : "No progress update yet. Upload PO Data with the \"Update Progress\" button so that overdue or pending CPRs can be identified.";
   const items = actionItems();
   const week = Date.now() - 7 * 864e5;
   $("spvTiles").replaceChildren(
-    tile("CPR berjalan", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.backOut === null && !c.r.done && !IGNORED[c.r.cpr]).length : 0), "", "belum selesai review 2"),
-    tile("Belum ada update", fmtInt(SIM ? SIM.assigned.filter((c) => !c.r.prog && !IGNORED[c.r.cpr]).length : 0), "CPR", "belum ada di Data PO, status belum diketahui"),
-    tile("Selesai", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.done).length : 0), "CPR", "jadi PO, selesai review 2, atau ditolak"),
-    tile("Terlambat review 1", fmtInt(items.filter((x) => x.type === "late").length), "CPR", "lebih dari 3 hari di KA"),
-    tile("Tertahan sebelum KA", fmtInt(items.filter((x) => x.type === "pre").length), "CPR", "lewat batas perkiraan (P80)"),
-    tile("Tertahan di approver", fmtInt(items.filter((x) => x.type === "post").length), "CPR", "setelah review 1 KA"),
-    tile("Kemungkinan tidak aktif", fmtInt(items.filter((x) => x.type === "stale").length), "CPR", `> ${STALE_DAYS} hari, cek lalu abaikan`),
-    tile("KA tidak hadir hari ini", fmtInt(new Set(ABSENCES.filter((a) => today >= a.from && today <= a.to).map((a) => a.ka)).size), "orang", ""),
-    tile("Pengalihan 7 hari terakhir", fmtInt(TRANSFERS.filter((t) => Date.parse(t.at) >= week).length), "", `${fmtInt(TRANSFERS.filter((t) => t.by === "SPV").length)} oleh SPV sejak awal`)
+    tile("CPRs in progress", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.backOut === null && !c.r.done && !IGNORED[c.r.cpr]).length : 0), "", "review 2 not yet completed"),
+    tile("No update yet", fmtInt(SIM ? SIM.assigned.filter((c) => !c.r.prog && !IGNORED[c.r.cpr]).length : 0), "CPRs", "not yet in PO Data; status unknown"),
+    tile("Completed", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.done).length : 0), "CPRs", "converted into PO, review 2 completed, or rejected"),
+    tile("Review 1 overdue", fmtInt(items.filter((x) => x.type === "late").length), "CPRs", "more than 3 days at KA"),
+    tile("Delayed before KA", fmtInt(items.filter((x) => x.type === "pre").length), "CPRs", "past the forecast limit (P80)"),
+    tile("Pending with approver", fmtInt(items.filter((x) => x.type === "post").length), "CPRs", "after KA review 1"),
+    tile("Possibly inactive", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `> ${STALE_DAYS} days; review and dismiss`),
+    tile("KAs absent today", fmtInt(new Set(ABSENCES.filter((a) => today >= a.from && today <= a.to).map((a) => a.ka)).size), "people", ""),
+    tile("Reassignments (last 7 days)", fmtInt(TRANSFERS.filter((t) => Date.parse(t.at) >= week).length), "", `${fmtInt(TRANSFERS.filter((t) => t.by === "SPV").length)} by supervisor in total`)
   );
   const f = $("actFilter").value, fk = $("actKa").value;
-  // "Semua yang aktif" hides CPRs that are probably not active and CPRs the SPV ignored
+  // "All active items" hides CPRs that are probably not active and CPRs the SPV ignored
   const rows = items.filter((x) => (f ? x.type === f : x.type !== "stale" && x.type !== "ignored") && (!fk || x.c.ka === fk));
   $("actIgnoreAll").hidden = !(editable && f === "stale" && rows.length);
-  $("actIgnoreAll").textContent = `Abaikan semua yang tampil (${fmtInt(rows.length)})`;
+  $("actIgnoreAll").textContent = `Dismiss all shown (${fmtInt(rows.length)})`;
   ACT_ROWS = rows;
   renderTable($("tblAct"), [
-    { key: "cpr", label: "Nomor CPR", code: true, sortable: false, render: (x) => x.c.r.cpr },
-    { key: "unit", label: "RS", sortable: false, render: (x) => x.c.unit },
+    { key: "cpr", label: "CPR number", code: true, sortable: false, render: (x) => x.c.r.cpr },
+    { key: "unit", label: "Hospital", sortable: false, render: (x) => x.c.unit },
     { key: "ka", label: "KA", sortable: false, render: (x) => kaLabel(x.c.ka) },
-    { key: "type", label: "Kondisi", sortable: false, render: (x) => pill(actLabel[x.type], actKind[x.type]) },
-    { key: "status", label: "Keterangan", sortable: false, render: (x) => x.status },
-    { key: "where", label: "Posisi / tahap", sortable: false, render: (x) => x.where },
+    { key: "type", label: "Condition", sortable: false, render: (x) => pill(actLabel[x.type], actKind[x.type]) },
+    { key: "status", label: "Details", sortable: false, render: (x) => x.status },
+    { key: "where", label: "Current stage", sortable: false, render: (x) => x.where },
     { key: "act", label: "", sortable: false, render: (x) => {
       if (!editable) return "";
       const btn = (label, fn) => Object.assign(el("button", { class: "btn ghost", type: "button", style: "padding:4px 10px;margin-left:4px" }, label), { onclick: fn });
       const box = el("span");
-      if (x.canMove) box.append(btn("Alihkan", () => openTransfer(x.c.r.cpr)));
-      if (x.type === "ignored") box.append(btn("Kembalikan", () => setIgnored([x.c.r.cpr], false)));
-      else box.append(btn("Abaikan", () => setIgnored([x.c.r.cpr], true)));
+      if (x.canMove) box.append(btn("Reassign", () => openTransfer(x.c.r.cpr)));
+      if (x.type === "ignored") box.append(btn("Restore", () => setIgnored([x.c.r.cpr], false)));
+      else box.append(btn("Dismiss", () => setIgnored([x.c.r.cpr], true)));
       return box;
     } }
   ], rows);
   // absences
   renderTable($("tblAbs"), [
     { key: "ka", label: "KA", sortable: false, render: (a) => kaLabel(a.ka) },
-    { key: "from", label: "Dari", sortable: false, render: (a) => fmtDay(a.from) },
-    { key: "to", label: "Sampai", sortable: false, render: (a) => fmtDay(a.to) },
-    { key: "reason", label: "Alasan", sortable: false },
-    { key: "st", label: "Status", sortable: false, render: (a) => (today < a.from ? pill("Akan datang", "info") : today > a.to ? pill("Selesai", "muted") : pill("Sedang tidak hadir", "warn")) },
-    { key: "del", label: "", sortable: false, render: (a) => (editable ? Object.assign(el("button", { class: "btn ghost", type: "button", style: "padding:4px 10px" }, "Hapus"), { onclick: () => removeAbsence(a) }) : "") }
+    { key: "from", label: "From", sortable: false, render: (a) => fmtDay(a.from) },
+    { key: "to", label: "To", sortable: false, render: (a) => fmtDay(a.to) },
+    { key: "reason", label: "Reason", sortable: false },
+    { key: "st", label: "Status", sortable: false, render: (a) => (today < a.from ? pill("Upcoming", "info") : today > a.to ? pill("Ended", "muted") : pill("Currently absent", "warn")) },
+    { key: "del", label: "", sortable: false, render: (a) => (editable ? Object.assign(el("button", { class: "btn ghost", type: "button", style: "padding:4px 10px" }, "Delete"), { onclick: () => removeAbsence(a) }) : "") }
   ], ABSENCES.slice().sort((a, b) => b.from - a.from));
   // transfer history
   renderTable($("tblTr"), [
-    { key: "at", label: "Waktu", sortable: false, render: (t) => fmtStamp(t.at) },
-    { key: "cpr", label: "Nomor CPR", code: true, sortable: false },
-    { key: "unit", label: "RS", sortable: false, render: (t) => t.unit || "–" },
-    { key: "from", label: "Dari", sortable: false, render: (t) => kaLabel(t.from) },
-    { key: "to", label: "Ke", sortable: false, render: (t) => kaLabel(t.to) },
-    { key: "reason", label: "Alasan", sortable: false },
-    { key: "note", label: "Catatan", sortable: false, render: (t) => t.note || "" },
-    { key: "by", label: "Oleh", sortable: false, render: (t) => pill(t.by, t.by === "SPV" ? "info" : "muted") }
+    { key: "at", label: "Time", sortable: false, render: (t) => fmtStamp(t.at) },
+    { key: "cpr", label: "CPR number", code: true, sortable: false },
+    { key: "unit", label: "Hospital", sortable: false, render: (t) => t.unit || "–" },
+    { key: "from", label: "From", sortable: false, render: (t) => kaLabel(t.from) },
+    { key: "to", label: "To", sortable: false, render: (t) => kaLabel(t.to) },
+    { key: "reason", label: "Reason", sortable: false },
+    { key: "note", label: "Notes", sortable: false, render: (t) => t.note || "" },
+    { key: "by", label: "By", sortable: false, render: (t) => pill(byLabel(t.by), t.by === "SPV" ? "info" : "muted") }
   ], TRANSFERS.slice().reverse());
 }
 function openTransfer(cpr) {
@@ -2141,7 +2151,7 @@ function updateTransferForm() {
   const kas = SIM ? SIM.kaList : [];
   $("trTo").replaceChildren(...kas.filter((k) => !c || k !== c.ka).map((k) => {
     const ld = kaLoadOn(k, D), off = isAbsent(k, toDay(new Date()));
-    return el("option", { value: k }, `${kaLabel(k)} · beban ${fmtNum(ld ?? 0)}${off ? " · tidak hadir" : ""}`);
+    return el("option", { value: k }, `${kaLabel(k)} · workload ${fmtNum(ld ?? 0)}${off ? " · absent" : ""}`);
   }));
 }
 $("trCpr").addEventListener("input", updateTransferForm);
@@ -2149,32 +2159,32 @@ $("trOpen").addEventListener("click", () => openTransfer(""));
 $("trCancel").addEventListener("click", () => { $("trCard").hidden = true; });
 $("trSave").addEventListener("click", async () => {
   const cpr = $("trCpr").value.trim(), c = findAssigned(cpr), to = $("trTo").value;
-  if (!c) { $("trMsg").textContent = "Nomor CPR tidak ditemukan di pembagian saat ini."; return; }
-  if (c.r.back !== null || c.r.kaOut !== null) { $("trMsg").textContent = `CPR ini sudah di-approve KA pada ${c.r.kaOutAt ? fmtStampShort(c.r.kaOutAt) : fmtDay(c.r.kaOut)} (review 1 selesai)${c.r.backOut !== null ? ` dan review 2 selesai ${fmtDay(c.r.backOut)}` : ""}, jadi tidak dialihkan.`; return; }
-  if (!to || to === c.ka) { $("trMsg").textContent = "Pilih KA tujuan yang berbeda."; return; }
+  if (!c) { $("trMsg").textContent = "The CPR number was not found in the current allocation."; return; }
+  if (c.r.back !== null || c.r.kaOut !== null) { $("trMsg").textContent = `This CPR was approved by the KA on ${c.r.kaOutAt ? fmtStampShort(c.r.kaOutAt) : fmtDay(c.r.kaOut)} (review 1 completed)${c.r.backOut !== null ? ` and review 2 was completed on ${fmtDay(c.r.backOut)}` : ""}, so it cannot be reassigned.`; return; }
+  if (!to || to === c.ka) { $("trMsg").textContent = "Please select a different target KA."; return; }
   const t = { at: new Date().toISOString(), cpr, unit: c.unit, from: c.ka, to, reason: $("trReason").value, note: $("trNote").value.trim(), by: "SPV" };
   try {
     TRANSFERS.push(t); await saveTransfers();
-    await logEvent({ type: "Pengalihan", cpr: 1, note: `${cpr}: ${kaLabel(t.from)} → ${kaLabel(t.to)} (${t.reason})` });
+    await logEvent({ type: "Reassignment", cpr: 1, note: `${cpr}: ${kaLabel(t.from)} → ${kaLabel(t.to)} (${t.reason})` });
     $("trCard").hidden = true;
     await runSimulation();
-    setStatus(`${cpr} dialihkan dari ${kaLabel(t.from)} ke ${kaLabel(t.to)}.`);
-  } catch (err) { TRANSFERS.pop(); $("trMsg").textContent = "Tidak tersimpan: " + saveErrorText(err); }
+    setStatus(`${cpr} has been reassigned from ${kaLabel(t.from)} to ${kaLabel(t.to)}.`);
+  } catch (err) { TRANSFERS.pop(); $("trMsg").textContent = "Not saved: " + saveErrorText(err); }
 });
 $("absAdd").addEventListener("click", async () => {
   const ka = $("absKa").value, from = isoToDay($("absFrom").value), to = isoToDay($("absTo").value) ?? from;
-  if (!ka || from === null) { setStatus("Isi KA dan tanggal ketidakhadiran."); return; }
+  if (!ka || from === null) { setStatus("Please enter the KA and the absence dates."); return; }
   const a = { ka, from: Math.min(from, to), to: Math.max(from, to), reason: $("absReason").value, at: new Date().toISOString() };
   try {
     ABSENCES.push(a); await saveAbsences();
-    await logEvent({ type: "Ketidakhadiran", note: `${kaLabel(ka)}: ${a.reason} ${fmtDay(a.from)} – ${fmtDay(a.to)}` });
+    await logEvent({ type: "Absence", note: `${kaLabel(ka)}: ${a.reason} ${fmtDay(a.from)} – ${fmtDay(a.to)}` });
     await runSimulation();
-    setStatus(`${kaLabel(ka)} dicatat tidak hadir ${fmtDay(a.from)} – ${fmtDay(a.to)}. CPR miliknya yang belum dikerjakan dialihkan otomatis.`);
-  } catch (err) { ABSENCES.pop(); setStatus("Tidak tersimpan: " + saveErrorText(err)); }
+    setStatus(`${kaLabel(ka)} has been recorded as absent from ${fmtDay(a.from)} to ${fmtDay(a.to)}. CPRs assigned to this KA on which work has not started have been reassigned automatically.`);
+  } catch (err) { ABSENCES.pop(); setStatus("Not saved: " + saveErrorText(err)); }
 });
 async function removeAbsence(a) {
   ABSENCES = ABSENCES.filter((x) => x !== a);
-  try { await saveAbsences(); await logEvent({ type: "Ketidakhadiran", note: `dihapus: ${kaLabel(a.ka)} ${fmtDay(a.from)} – ${fmtDay(a.to)}` }); await runSimulation(); } catch (err) { setStatus("Tidak tersimpan: " + saveErrorText(err)); }
+  try { await saveAbsences(); await logEvent({ type: "Absence", note: `deleted: ${kaLabel(a.ka)} ${fmtDay(a.from)} – ${fmtDay(a.to)}` }); await runSimulation(); } catch (err) { setStatus("Not saved: " + saveErrorText(err)); }
 }
 for (const id of ["actFilter", "actKa"]) $(id).addEventListener("change", renderSpv);
 let ACT_ROWS = [];
@@ -2184,14 +2194,14 @@ async function setIgnored(cprs, on) {
   for (const cpr of cprs) { if (on) IGNORED[cpr] = { at: new Date().toISOString(), by: "SPV" }; else delete IGNORED[cpr]; }
   try {
     await saveIgnored();
-    await logEvent({ type: "Abaikan CPR", cpr: cprs.length, note: on ? `${cprs.length} CPR diabaikan (tidak dihitung ke beban KA)` : `${cprs.length} CPR dikembalikan` });
-    setStatus(on ? `${fmtInt(cprs.length)} CPR diabaikan dan tidak dihitung ke beban KA.` : `${fmtInt(cprs.length)} CPR dikembalikan.`);
-  } catch (err) { setStatus("Tidak tersimpan: " + saveErrorText(err)); }
+    await logEvent({ type: "Dismissed CPR", cpr: cprs.length, note: on ? `${cprs.length} CPRs dismissed (excluded from KA workload)` : `${cprs.length} CPRs restored` });
+    setStatus(on ? `${fmtInt(cprs.length)} CPRs dismissed and excluded from the KA workload.` : `${fmtInt(cprs.length)} CPRs restored.`);
+  } catch (err) { setStatus("Not saved: " + saveErrorText(err)); }
   await runSimulation({ save: false });
 }
 $("actIgnoreAll").addEventListener("click", () => {
   const cprs = ACT_ROWS.filter((x) => x.type === "stale").map((x) => x.c.r.cpr);
-  if (confirm(`Abaikan ${cprs.length} CPR yang kemungkinan tidak aktif? CPR ini tidak dihitung ke beban KA. Bisa dikembalikan dari pilihan "Sudah diabaikan".`)) setIgnored(cprs, true);
+  if (confirm(`Dismiss ${cprs.length} possibly inactive CPRs? They will be excluded from the KA workload and can be restored from the "Dismissed" view.`)) setIgnored(cprs, true);
 });
 
 /* ---------- Bukti & Akurasi ---------- */
@@ -2219,8 +2229,8 @@ function actualFromPo() {
 }
 function renderBukti() {
   const clear = () => { for (const id of ["bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
-  if (!SIM) { clear(); $("bkNote").textContent = "Jalankan pembagian dulu di tab Pembagian CPR."; return; }
-  $("bkNote").textContent = `Periode: CPR dibuat ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)} (${fmtInt(SIM.n)} CPR).`;
+  if (!SIM) { clear(); $("bkNote").textContent = "Please run the allocation in the CPR Allocation tab first."; return; }
+  $("bkNote").textContent = `Period: CPRs created ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)} (${fmtInt(SIM.n)} CPRs).`;
   // 1) forecast accuracy on CPRs that already arrived
   const ev = SIM.assigned.filter((c) => c.r.kaIn !== null && c.r.f1 !== null);
   const err = ev.map((c) => c.f1 - c.r.f1), errB = ev.map((c) => c.f1Base - c.r.f1);
@@ -2230,74 +2240,74 @@ function renderBukti() {
   const coverage = ev.length && ev[0].f1Lo !== null ? (inBand.length / ev.length) * 100 : null;
   const bias = median(err), biasMean = mean(err);
   $("bkFcTiles").replaceChildren(
-    tile("CPR dinilai", fmtInt(ev.length), "", "sudah benar-benar tiba di KA"),
-    tile("Rata-rata selisih (MAE)", fmtNum(mae), "hari", maeB !== null ? `cara sederhana: ${fmtNum(maeB)} hari (${mae < maeB ? "model lebih tepat" : "model belum lebih tepat"})` : ""),
-    tile("Tepat ±2 hari", fmtNum(within2, 0), "%", "perkiraan meleset paling banyak 2 hari"),
-    tile("Kecenderungan (median selisih)", (bias > 0 ? "+" : "") + fmtNum(bias, 0), "hari", (Math.abs(bias ?? 0) < 0.5 ? "seimbang" : bias > 0 ? "cenderung lebih lambat dari aktual" : "cenderung lebih cepat dari aktual") + ` · rata-rata ${fmtNum(biasMean)} (ditarik CPR yang tertahan lama)`),
-    tile("Masuk rentang P20–P80", fmtNum(coverage, 0), "%", "target minimal 60%")
+    tile("CPRs evaluated", fmtInt(ev.length), "", "have actually reached the KA"),
+    tile("Mean absolute error (MAE)", fmtNum(mae), "days", maeB !== null ? `baseline: ${fmtNum(maeB)} days (${mae < maeB ? "model is more accurate" : "model is not yet more accurate"})` : ""),
+    tile("Within ±2 days", fmtNum(within2, 0), "%", "forecast error of at most 2 days"),
+    tile("Bias (median error)", (bias > 0 ? "+" : "") + fmtNum(bias, 0), "days", (Math.abs(bias ?? 0) < 0.5 ? "balanced" : bias > 0 ? "tends to forecast later than actual" : "tends to forecast earlier than actual") + ` · mean ${fmtNum(biasMean)} (influenced by long-delayed CPRs)`),
+    tile("Within P20–P80 range", fmtNum(coverage, 0), "%", "target of at least 60%")
   );
   const byWeek = new Map();
   for (let i = 0; i < ev.length; i++) { const wk = ev[i].r.kaIn - weekday(ev[i].r.kaIn); if (!byWeek.has(wk)) byWeek.set(wk, [[], []]); byWeek.get(wk)[0].push(Math.abs(err[i])); byWeek.get(wk)[1].push(Math.abs(errB[i])); }
   const weeks = [...byWeek.keys()].sort((a, b) => a - b).filter((w) => byWeek.get(w)[0].length >= 3);
-  $("lgFc").innerHTML = '<span><i class="line" style="background:var(--s1)"></i>Model (Linear Regression)</span><span><i class="line" style="background:var(--s2)"></i>Cara sederhana (median per RS)</span>';
+  $("lgFc").innerHTML = '<span><i class="line" style="background:var(--s1)"></i>Model (Linear Regression)</span><span><i class="line" style="background:var(--s2)"></i>Baseline (median per hospital)</span>';
   lineChart($("chFc"), weeks, [
     { name: "Model", color: "var(--s1)", values: weeks.map((w) => mean(byWeek.get(w)[0])) },
-    { name: "Median per RS", color: "var(--s2)", values: weeks.map((w) => mean(byWeek.get(w)[1])) }
-  ], { tickLabel: fmtShort, tipLabel: (w) => "Minggu " + fmtDay(w) + " · rata-rata selisih (hari)", label: "Rata-rata selisih perkiraan per minggu" });
+    { name: "Median per hospital", color: "var(--s2)", values: weeks.map((w) => mean(byWeek.get(w)[1])) }
+  ], { tickLabel: fmtShort, tipLabel: (w) => "Week of " + fmtDay(w) + " · mean absolute error (days)", label: "Mean absolute forecast error per week" });
   // 2) workload
-  const a = SIM.actual || actualFromPo(), d = SIM.dss, pct = (x, y) => (x ? fmtNum(((x - y) / x) * 100, 0) + "% lebih baik" : "–");
+  const a = SIM.actual || actualFromPo(), d = SIM.dss, pct = (x, y) => (x ? fmtNum(((x - y) / x) * 100, 0) + "% better" : "–");
   const share = (arr) => { const t = arr.reduce((x, y) => x + y, 0) || 1; return `${fmtNum((Math.min(...arr) / t) * 100, 0)}% – ${fmtNum((Math.max(...arr) / t) * 100, 0)}%`; };
   const counts = Object.values(SIM.dssCount), countsA = a ? Object.values(a.counts || SIM.actualCount) : [];
-  $("bkLoadDesc").textContent = SIM.actual ? "Sebelum = pembagian yang sebenarnya terjadi (KA asli di file). Sesudah = pembagian oleh dashboard untuk CPR yang sama."
-    : a && a.sameCprs ? `Sebelum = siapa yang sebenarnya mengerjakan ${fmtInt(a.n)} CPR yang sama (KA asli dari CPR_Cleaned). Sesudah = pembagian dashboard untuk CPR tersebut. Ini perbandingan yang adil karena CPR-nya sama.`
-    : a ? `Sebelum = pembagian nyata ${fmtInt(a.n)} CPR yang dibuat ${fmtDay(a.from)} – ${fmtDay(a.to)} (KA asli dari CPR_Cleaned). Sesudah = pembagian dashboard periode ini. CPR-nya berbeda, jadi perhatikan baris rata-rata beban: kalau volumenya berbeda jauh, bandingkan dengan hati-hati.`
-    : "Upload CPR_Cleaned di tab Kinerja KA untuk membandingkan dengan kondisi sebelum dashboard.";
+  $("bkLoadDesc").textContent = SIM.actual ? "Before = the actual allocation (actual KA in the file). After = the dashboard allocation for the same CPRs."
+    : a && a.sameCprs ? `Before = the KAs who actually processed the same ${fmtInt(a.n)} CPRs (actual KA from PO Data). After = the dashboard allocation for those CPRs. This is a like-for-like comparison because the CPRs are identical.`
+    : a ? `Before = the actual allocation of ${fmtInt(a.n)} CPRs created ${fmtDay(a.from)} – ${fmtDay(a.to)} (actual KA from PO Data). After = the dashboard allocation for this period. Because the CPRs differ, refer to the average workload row: if volumes differ substantially, interpret the comparison with caution.`
+    : "Upload PO Data to compare with the situation before the dashboard was introduced.";
   const rowsL = [
-    ["Rata-rata beban per KA per hari (volume)", a && (a.avg ?? null), mean(SIM.load.flatMap((arr) => SIM.workDays.map((dd) => arr[dd - SIM.minDay] || 0)))],
-    ["Selisih beban KA tersibuk − tersepi (CPR/hari)", a && a.gap, d.gap],
-    ["Sebaran beban antar KA (std)", a && a.std, d.std],
-    [`Hari ada KA di atas batas ${fmtNum(SIM.maxPerDay)}`, a && a.over, d.over],
-    ["Beban tertinggi satu KA dalam sehari", a && a.highest, d.highest],
-    ["Porsi CPR per KA: paling sedikit – paling banyak", a ? share(countsA) : null, share(counts)]
+    ["Average workload per KA per day (volume)", a && (a.avg ?? null), mean(SIM.load.flatMap((arr) => SIM.workDays.map((dd) => arr[dd - SIM.minDay] || 0)))],
+    ["Gap between busiest and least busy KA (CPRs/day)", a && a.gap, d.gap],
+    ["Workload dispersion across KAs (std. dev.)", a && a.std, d.std],
+    [`Days with a KA above the limit of ${fmtNum(SIM.maxPerDay)}`, a && a.over, d.over],
+    ["Highest single-KA workload in one day", a && a.highest, d.highest],
+    ["Share of CPRs per KA: lowest – highest", a ? share(countsA) : null, share(counts)]
   ];
   renderTable($("tblBkLoad"), [
-    { key: 0, label: "Ukuran", sortable: false, render: (r) => r[0] },
-    { key: 1, label: "Sebelum", num: true, sortable: false, render: (r) => (r[1] === null || r[1] === undefined ? "–" : typeof r[1] === "number" ? fmtNum(r[1], Number.isInteger(r[1]) ? 0 : 1) : r[1]) },
-    { key: 2, label: "Sesudah (dashboard)", num: true, sortable: false, render: (r) => (typeof r[2] === "number" ? fmtNum(r[2], Number.isInteger(r[2]) ? 0 : 1) : r[2]) },
-    { key: 3, label: "Perubahan", num: true, sortable: false, render: (r) => (r[0].startsWith("Rata-rata beban") ? "pembanding volume" : typeof r[1] === "number" && typeof r[2] === "number" ? pct(r[1], r[2]) : "–") }
+    { key: 0, label: "Measure", sortable: false, render: (r) => r[0] },
+    { key: 1, label: "Before", num: true, sortable: false, render: (r) => (r[1] === null || r[1] === undefined ? "–" : typeof r[1] === "number" ? fmtNum(r[1], Number.isInteger(r[1]) ? 0 : 1) : r[1]) },
+    { key: 2, label: "After (dashboard)", num: true, sortable: false, render: (r) => (typeof r[2] === "number" ? fmtNum(r[2], Number.isInteger(r[2]) ? 0 : 1) : r[2]) },
+    { key: 3, label: "Change", num: true, sortable: false, render: (r) => (r[0].startsWith("Average workload") ? "volume reference" : typeof r[1] === "number" && typeof r[2] === "number" ? pct(r[1], r[2]) : "–") }
   ], rowsL);
   // 3) lead time to PO, before vs after the dashboard went live (first "Pembagian" in the upload log)
-  const live = UPLOAD_LOG.filter((x) => x.type === "Pembagian").map((x) => toDay(x.at.slice(0, 10))).sort((x, y) => x - y)[0] ?? null;
+  const live = UPLOAD_LOG.filter((x) => logType(x.type) === "Allocation").map((x) => toDay(x.at.slice(0, 10))).sort((x, y) => x - y)[0] ?? null;
   const po = PO_RECS.filter((r) => r.po !== null);
   if (!po.length) {
-    $("bkPoDesc").textContent = "Upload data CPR yang sudah jadi PO di tab Kinerja KA untuk mengukur ini.";
+    $("bkPoDesc").textContent = "Upload PO Data to measure this indicator.";
   } else {
     const before = live !== null ? po.filter((r) => r.create < live) : po, after = live !== null ? po.filter((r) => r.create >= live) : [];
     const med = (l, k) => median(l.map((r) => r[k]));
-    $("bkPoDesc").textContent = live !== null ? `Dashboard mulai dipakai ${fmtDay(live)} (pembagian pertama). Sebelum = CPR dibuat sebelum tanggal itu, sesudah = CPR dibuat sejak tanggal itu.` : "Belum ada pembagian yang tersimpan, jadi semua data dihitung sebagai kondisi sebelum dashboard.";
+    $("bkPoDesc").textContent = live !== null ? `The dashboard was first used on ${fmtDay(live)} (first allocation). Before = CPRs created before that date; after = CPRs created on or after that date.` : "No allocation has been saved yet, so all data is treated as the pre-dashboard baseline.";
     $("bkPoTiles").replaceChildren(
-      tile("CPR dibuat → PO, sebelum", fmtNum(med(before, "toPo")), "hari", `median dari ${fmtInt(before.length)} CPR`),
-      tile("CPR dibuat → PO, sesudah", after.length >= 20 ? fmtNum(med(after, "toPo")) : "–", after.length >= 20 ? "hari" : "", after.length >= 20 ? `median dari ${fmtInt(after.length)} CPR` : `baru ${fmtInt(after.length)} CPR jadi PO sejak dipakai; tunggu minimal 20`),
-      tile("Tiba di KA → PO, sebelum", fmtNum(med(before, "kaToPo")), "hari", "median"),
-      tile("Tiba di KA → PO, sesudah", after.length >= 20 ? fmtNum(med(after, "kaToPo")) : "–", after.length >= 20 ? "hari" : "", "median")
+      tile("CPR created → PO, before", fmtNum(med(before, "toPo")), "days", `median of ${fmtInt(before.length)} CPRs`),
+      tile("CPR created → PO, after", after.length >= 20 ? fmtNum(med(after, "toPo")) : "–", after.length >= 20 ? "days" : "", after.length >= 20 ? `median of ${fmtInt(after.length)} CPRs` : `only ${fmtInt(after.length)} CPRs converted into POs since adoption; at least 20 required`),
+      tile("Arrival at KA → PO, before", fmtNum(med(before, "kaToPo")), "days", "median"),
+      tile("Arrival at KA → PO, after", after.length >= 20 ? fmtNum(med(after, "kaToPo")) : "–", after.length >= 20 ? "days" : "", "median")
     );
     const byM = new Map(); for (const r of po) { const x = dayToDate(r.po), k = x.getUTCFullYear() * 12 + x.getUTCMonth(); if (!byM.has(k)) byM.set(k, []); byM.get(k).push(r); }
     const months = [...byM.keys()].sort((x, y) => x - y).slice(-18);
-    $("bkPoSub").textContent = "18 bulan terakhir." + (live !== null ? ` Dashboard mulai dipakai ${fmtDay(live)}.` : "");
-    $("lgPo").innerHTML = '<span><i class="line" style="background:var(--s1)"></i>CPR dibuat → PO</span><span><i class="line" style="background:var(--s3)"></i>Tiba di KA → PO</span>';
+    $("bkPoSub").textContent = "Last 18 months." + (live !== null ? ` The dashboard was first used on ${fmtDay(live)}.` : "");
+    $("lgPo").innerHTML = '<span><i class="line" style="background:var(--s1)"></i>CPR created → PO</span><span><i class="line" style="background:var(--s3)"></i>Arrival at KA → PO</span>';
     lineChart($("chPo"), months, [
-      { name: "CPR dibuat → PO", color: "var(--s1)", values: months.map((k) => median(byM.get(k).map((r) => r.toPo))) },
-      { name: "Tiba di KA → PO", color: "var(--s3)", values: months.map((k) => median(byM.get(k).map((r) => r.kaToPo))) }
-    ], { tickLabel: (k) => `${MONTHS[k % 12]} ${String(Math.floor(k / 12)).slice(2)}`, tipLabel: (k) => `${MONTHS[k % 12]} ${Math.floor(k / 12)} · median hari`, label: "Median hari ke PO per bulan" });
+      { name: "CPR created → PO", color: "var(--s1)", values: months.map((k) => median(byM.get(k).map((r) => r.toPo))) },
+      { name: "Arrival at KA → PO", color: "var(--s3)", values: months.map((k) => median(byM.get(k).map((r) => r.kaToPo))) }
+    ], { tickLabel: (k) => `${MONTHS[k % 12]} ${String(Math.floor(k / 12)).slice(2)}`, tipLabel: (k) => `${MONTHS[k % 12]} ${Math.floor(k / 12)} · median days`, label: "Median days to PO per month" });
   }
   // 4) SPV effort
   const inPeriod = new Set(SIM.assigned.map((c) => c.r.cpr));
-  const spvMoves = TRANSFERS.filter((t) => t.by === "SPV" && inPeriod.has(t.cpr)).length, autoMoves = SIM.assigned.filter((c) => c.moved || (c.transfer && c.transfer.by === "Otomatis")).length;
+  const spvMoves = TRANSFERS.filter((t) => t.by === "SPV" && inPeriod.has(t.cpr)).length, autoMoves = SIM.assigned.filter((c) => c.moved || (c.transfer && (c.transfer.by === "Otomatis" || c.transfer.by === "Automatic"))).length;
   $("bkSpvTiles").replaceChildren(
-    tile("Dibagikan otomatis", fmtNum(((SIM.n - spvMoves) / SIM.n) * 100, 0), "%", `${fmtInt(SIM.n - spvMoves)} dari ${fmtInt(SIM.n)} CPR tanpa campur tangan SPV`),
-    tile("Pengalihan otomatis", fmtInt(autoMoves), "CPR", "karena KA tidak hadir atau beban berlebih"),
-    tile("Pengalihan oleh SPV", fmtInt(spvMoves), "CPR", "keputusan manual, tercatat dengan alasan"),
-    tile("Waktu hitung pembagian", fmtNum((SIM.ms || 0) / 1000, 1), "detik", `untuk ${fmtInt(SIM.n)} CPR`)
+    tile("Allocated automatically", fmtNum(((SIM.n - spvMoves) / SIM.n) * 100, 0), "%", `${fmtInt(SIM.n - spvMoves)} of ${fmtInt(SIM.n)} CPRs without supervisor intervention`),
+    tile("Automatic reassignments", fmtInt(autoMoves), "CPRs", "due to KA absence or excess workload"),
+    tile("Supervisor reassignments", fmtInt(spvMoves), "CPRs", "manual decisions, recorded with reasons"),
+    tile("Allocation computation time", fmtNum((SIM.ms || 0) / 1000, 1), "seconds", `for ${fmtInt(SIM.n)} CPRs`)
   );
 }
 
