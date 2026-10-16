@@ -184,6 +184,7 @@ details.more[open] > summary::before { content: "▾ "; }
           Hospital PIC List
           <input type="file" id="filePic" accept=".xlsx,.xls,.csv">
         </label>
+        <label class="file-btn" id="picKeepWrap" hidden title="Untick to upload a new Hospital PIC List"><input type="checkbox" id="picKeep" checked style="position:static;width:auto;height:auto;opacity:1;pointer-events:auto;margin:0"> <span>Same PIC list (<span id="picCount"></span> hospitals)</span></label>
       </div>
     </div>
     <div class="tabs" role="tablist">
@@ -777,7 +778,7 @@ $("filePic").addEventListener("change", async (e) => {
     const list = {};
     for (const r of rows) { const rs = r.RS ?? r.rs ?? r["Rumah Sakit"]; const pic = r.PIC ?? r.pic; if (rs && pic) list[String(rs).trim()] = String(pic).trim(); }
     if (!Object.keys(list).length) { setStatus("The Hospital PIC List could not be read: the file must contain RS and PIC columns."); return; }
-    PIC_LIST = list;
+    PIC_LIST = list; $("picKeep").checked = true;
     if (!META.hasKa && !IS_SAMPLE) { deriveMeta(); populateControls({}); }
     setStatus(`Hospital PIC List read: ${Object.keys(list).length} hospitals. Processing …`);
     let saved = "";
@@ -1012,7 +1013,7 @@ function renderAuth() {
   $("authUser").textContent = ACCESS === "admin" ? "Access: administrator" : ACCESS === "view" ? "Access: view only" : "";
   $("btnLogin").textContent = ACCESS !== "none" ? "Sign out" : "Enter access code";
   // only admins upload
-  $("lblCpr").hidden = !IS_ADMIN; $("lblPic").hidden = !IS_ADMIN; $("lblProg").hidden = !IS_ADMIN;
+  $("lblCpr").hidden = !IS_ADMIN; $("lblPic").hidden = !IS_ADMIN; $("lblProg").hidden = !IS_ADMIN; renderPicControl();
 }
 if (SB) {
   $("btnLogin").addEventListener("click", () => {
@@ -1120,7 +1121,17 @@ async function clearAlloc() {
   for (const d of snap.docs) await DB.doc("alloc/" + d.id).delete();
   LOCKED = new Map();
 }
+// Hospital PIC List is uploaded once; afterwards a tick box keeps it, untick to upload a new one
+function renderPicControl() {
+  const canUpload = !SB || IS_ADMIN;
+  const has = !!PIC_LIST;
+  $("picKeepWrap").hidden = !has || !canUpload;
+  $("picCount").textContent = has ? fmtInt(Object.keys(PIC_LIST).length) : "";
+  $("lblPic").hidden = !canUpload || (has && $("picKeep").checked);
+}
+$("picKeep").addEventListener("change", renderPicControl);
 function renderSaveBadge() {
+  renderPicControl();
   const b = $("saveBadge"); if (!b) return;
   let text, kind;
   if (!DB_READY) { text = "Checking storage …"; kind = "muted"; }
