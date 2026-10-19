@@ -402,9 +402,9 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="tblLog"></table></div>
     <div class="tiles" id="dqTiles"></div>
     <div id="histCard" hidden>
-      <div class="section-title"><h2>CPR queue file (CPRHistory)</h2><p>One row per approval step, consolidated into one record per CPR.</p></div>
+      <div class="section-title"><h2>CPR queue file (CPRHistory)</h2><p>Used only as the queue into Key Account HO: the CPR, its hospital, its creation date, and the date it is sent to KA (Approval Date).</p></div>
       <div class="card">
-        <div class="filters" style="margin:0 0 10px;border:0;padding:0">
+        <div class="filters" hidden style="margin:0 0 10px;border:0;padding:0">
           <div class="field"><label for="roleKa">Role for Key Account HO (Sequence 3)</label><select id="roleKa"></select></div>
           <div class="field"><label for="roleBack">Role for PurchasingHO (Sequence 8)</label><select id="roleBack"></select></div>
           <div class="field"><label for="histMode">Meaning of the Approval Date column</label><select id="histMode"><option value="selesai">Date the role approved (consistent with CPR_Cleaned)</option><option value="masuk">Date the CPR reached the role</option></select></div>
@@ -888,7 +888,11 @@ function unitMapFromRecs() {
   for (const r of [...PO_RECS, ...RECS]) { const code = String(r.cpr).split("-")[1]; if (!code || !r.unit || r.unit === "(kosong)") continue; if (!g.has(code)) g.set(code, []); g.get(code).push(r.unit); }
   const out = {}; for (const [k, a] of g) out[k] = mode(a); return out;
 }
-function pivotHistory(rows, roleKa, roleBack) {
+function pivotHistory(rows) {
+  // CPRHistory is only the queue into Key Account HO: its Approval Date is the moment the CPR is sent
+  // to KA (Sequence 3). It never says that Sequence 3 or Sequence 8 is done - that comes only from PO Data.
+  //   create = first Submit Date of the requester row (Sequence 0), else of any row
+  //   kaIn   = latest Approval Date of the CPR = entry into the KA queue
   const known = IS_SAMPLE ? {} : unitMapFromRecs();
   const byCpr = new Map();
   for (const r of rows) { const id = r[HCOL.cpr]; if (!id) continue; if (!byCpr.has(id)) byCpr.set(id, []); byCpr.get(id).push(r); }
@@ -896,62 +900,20 @@ function pivotHistory(rows, roleKa, roleBack) {
   for (const [id, list] of byCpr) {
     const last = list[list.length - 1];
     if (/reject|cancel|batal|tolak/i.test(String(last[HCOL.status] ?? ""))) { dropped++; continue; }
-    const pick = (role) => list.filter((x) => normRole(x[HCOL.role]) === role);
-    const minDay = (a, col) => { const v = a.map((x) => toDay(x[col])).filter((d) => d !== null); return v.length ? Math.min(...v) : null; };
-    const maxDay = (a, col) => { const v = a.map((x) => toDay(x[col])).filter((d) => d !== null); return v.length ? Math.max(...v) : null; };
     const req = list.filter((x) => normRole(x[HCOL.role]) === "requester" || Number(x[HCOL.seq]) === 0);
-    const kaRows = roleKa ? pick(roleKa) : [], backRows = roleBack ? pick(roleBack) : [];
-    // arrival at a role = the latest approval of an earlier step (lower Sequence); this is the "approval date = masuk ke KA" of the step before
-    const arrival = (rowsOfRole) => {
-      if (!rowsOfRole.length) return null;
-      const seq = Math.min(...rowsOfRole.map((x) => Number(x[HCOL.seq] ?? 0)));
-      const prev = list.filter((x) => Number(x[HCOL.seq] ?? 0) < seq).map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort();
-      return prev.length ? prev[prev.length - 1] : stamps(rowsOfRole, HCOL.submit)[0] || null;
-    };
-    // CPRHistory is the KA queue: a CPR without a Key Account row entered KA on its latest Approval Date
+    const created = (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null;
     const queueAt = list.map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort().slice(-1)[0] || null;
     const code = String(id).split("-")[1] || String(last[HCOL.unit]);
     const assetUnit = String(last[HCOL.asset] ?? "").split(".")[0].trim();
-    const kaUser = kaRows.length ? String(kaRows[kaRows.length - 1][HCOL.user] ?? "").trim() || null : null;
-    const stamps = (a, col) => a.map((x) => toStamp(x[col])).filter(Boolean).sort();
-    if (HIST_MODE === "masuk") {
-      // "Approval Date" = the moment the CPR reached this role. Time at a role ends when the next role receives it.
-      const tl = list.filter((x) => toStamp(x[HCOL.approve])).sort((a, b) => { const sa = toStamp(a[HCOL.approve]), sb = toStamp(b[HCOL.approve]); return sa < sb ? -1 : sa > sb ? 1 : Number(a[HCOL.seq] || 0) - Number(b[HCOL.seq] || 0); });
-      const span = (role, from) => {
-        const i = tl.findIndex((x, k) => k >= from && normRole(x[HCOL.role]) === role); if (!role || i < 0) return [null, null, -1];
-        let j = i + 1; while (j < tl.length && normRole(tl[j][HCOL.role]) === role) j++;
-        return [toStamp(tl[i][HCOL.approve]), j < tl.length ? toStamp(tl[j][HCOL.approve]) : null, i];
-      };
-      const [kIn, kOut, ki] = span(roleKa, 0), [bIn, bOut] = span(roleBack, Math.max(0, ki));
-      const kaRow = ki >= 0 ? tl[ki] : null, now = tl[tl.length - 1];
-      const kaUserM = kaRow ? String(kaRow[HCOL.user] ?? "").trim() || null : null;
-      const d = (st) => (st ? toDay(st.slice(0, 10)) : null);
-      recs.push(finishRec({
-        cpr: String(id), unit: known[code] || assetUnit || String(last[HCOL.unit]), vendor: "(kosong)", vendorName: String(last[HCOL.subject] ?? "").slice(0, 60),
-        ka: kaUserM, kaName: kaUserM,
-        create: minDay(req.length ? req : list, HCOL.submit), phIn: null, phOut: null,
-        kaIn: d(kIn ?? (kaRows.length ? null : queueAt)), kaOut: d(kOut), back: d(bIn), backOut: d(bOut),
-        capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
-        createAt: (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null, submitAt: null,
-        kaInAt: kIn ?? (kaRows.length ? null : queueAt), kaOutAt: kOut, backAt: bIn, backOutAt: bOut,
-        stage: now && normRole(now[HCOL.role]) !== "requester" ? String(now[HCOL.role] ?? "").trim() || null : null, stageSince: now ? d(toStamp(now[HCOL.approve])) : null
-      }));
-      continue;
-    }
-    // waiting stage: the last approval step that has a submit date but no approval yet
-    const pending = list.filter((x) => toDay(x[HCOL.submit]) !== null && toDay(x[HCOL.approve]) === null && normRole(x[HCOL.role]) !== "requester");
-    const waitRow = pending[pending.length - 1];
     recs.push(finishRec({
       cpr: String(id), unit: known[code] || assetUnit || String(last[HCOL.unit]), vendor: "(kosong)", vendorName: String(last[HCOL.subject] ?? "").slice(0, 60),
-      ka: kaUser, kaName: kaUser,
-      create: minDay(req.length ? req : list, HCOL.submit), phIn: null, phOut: null,
-      kaIn: toDay(((kaRows.length ? arrival(kaRows) : queueAt) || "").slice(0, 10) || null), kaOut: maxDay(kaRows, HCOL.approve),
-      back: toDay((arrival(backRows) || "").slice(0, 10) || null), backOut: maxDay(backRows, HCOL.approve),
+      ka: null, kaName: null,
+      create: created ? toDay(created.slice(0, 10)) : null, phIn: null, phOut: null,
+      kaIn: queueAt ? toDay(queueAt.slice(0, 10)) : null, kaOut: null, back: null, backOut: null,
       capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
-      createAt: (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null, submitAt: null,
-      kaInAt: kaRows.length ? arrival(kaRows) : queueAt, kaOutAt: stamps(kaRows, HCOL.approve).slice(-1)[0] || null,
-      backAt: arrival(backRows), backOutAt: stamps(backRows, HCOL.approve).slice(-1)[0] || null,
-      stage: waitRow ? String(waitRow[HCOL.role] ?? "").trim() || null : null, stageSince: waitRow ? toDay(waitRow[HCOL.submit]) : null
+      createAt: created, submitAt: null,
+      kaInAt: queueAt, kaOutAt: null, backAt: null, backOutAt: null,
+      stage: null, stageSince: null
     }));
   }
   return { recs, dropped, cprs: byCpr.size };
@@ -984,20 +946,18 @@ function renderHistInfo() {
   const res = HIST.result;
   $("histMode").value = HIST_MODE;
   $("histNote").textContent = `${fmtInt(HIST.rows.length)} rows → ${fmtInt(res.cprs)} CPRs (${fmtInt(res.dropped)} rejected/cancelled CPRs excluded). `
-    + (HIST_MODE === "masuk" ? "Approval Date is interpreted as the date the CPR reached the role; the KA review is considered complete when the next role receives the CPR. " : "Approval Date is interpreted as the date the role approved; the date a CPR reached the KA is the Approval Date of the preceding step. CPRs without a Key Account row are queued at the KA as of their latest Approval Date. ")
-    + (!HIST.roleKa ? "No Key Account role was found, so the queue entry date is taken from the latest Approval Date. " : "")
-    + (!HIST.roleBack ? "No PurchasingHO role was found; the return-to-KA date will be filled from PO Data. " : "")
+    + "Approval Date = the date the CPR is sent to Key Account HO for Sequence 3. This file never marks Sequence 3 or Sequence 8 as completed; all progress after entry comes from PO Data. "
     + "This file contains no Vendor ID, so the same-vendor rule does not apply to CPRs from this file.";
   renderTable($("tblRoles"), [
     { key: "role", label: "Role in file", sortable: false },
     { key: "n", label: "Rows", num: true, sortable: false },
-    { key: "use", label: "Used as", sortable: false, render: (r) => r.role === HIST.roleKa ? pill("Key Account HO", "info") : r.role === HIST.roleBack ? pill("PurchasingHO", "info") : r.role === "requester" ? pill("CPR created", "muted") : "–" }
+    { key: "use", label: "Used as", sortable: false, render: (r) => (r.role === "requester" ? pill("CPR created", "muted") : pill("Queue entry date (Approval Date)", "info")) }
   ], roles.map((role) => ({ role, n: counts.get(role) })));
 }
 async function applyHistory(rows, fileName, roleKa, roleBack) {
   const roles = [...new Set(rows.map((r) => normRole(r[HCOL.role])))];
   roleKa = roleKa ?? guessRole(roles, "ka"); roleBack = roleBack ?? guessRole(roles, "back");
-  const result = pivotHistory(rows, roleKa, roleBack);
+  const result = pivotHistory(rows);
   HIST = { rows, fileName, roleKa, roleBack, result };
   const feedHasKa = result.recs.some((r) => r.ka);
   const base = IS_SAMPLE ? [] : RECS;
