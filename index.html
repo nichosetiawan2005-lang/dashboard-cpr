@@ -309,8 +309,8 @@ body.locked #loginForm .btn { width: 100%; }
       <p class="note" id="poInfo"></p>
     </div>
     <p class="note" id="kaNote"></p>
-    <div class="section-title"><h2>Average KA processing time per CPR</h2><p>Review 1 = from receipt by the KA until approval. Review 2 = from the CPR's return to the KA until approval. Time spent waiting for other approvers is excluded.</p></div>
-    <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Review 1</span><span><i style="background:var(--s2)"></i>Review 2</span></div><div class="chart" id="chKa"></div></div>
+    <div class="section-title"><h2>Average KA processing time per CPR</h2><p>Sequence 3 = from receipt by the KA until approval. Sequence 8 = from the CPR's return to the KA until approval. Time spent waiting for other approvers is excluded.</p></div>
+    <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Sequence 3</span><span><i style="background:var(--s2)"></i>Sequence 8</span></div><div class="chart" id="chKa"></div></div>
     <div class="section-title"><h2>By KA</h2><p>Workload = number of CPRs under review on a given working day.</p></div>
     <div class="tbl-wrap"><table id="tblKa"></table></div>
     <details class="more">
@@ -334,13 +334,13 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="section-title"><h2>CPRs requiring action</h2><p id="asOfNote"></p></div>
     <div class="filters" style="margin-top:0">
       <div class="field"><label for="actFilter">Show</label><select id="actFilter">
-        <option value="">All active items</option><option value="late">Overdue in KA review 1</option><option value="pre">Delayed before reaching KA</option><option value="post">Pending with approver (after KA)</option><option value="stale">Possibly inactive (&gt; 30 days)</option><option value="ignored">Dismissed</option></select></div>
+        <option value="">All active items</option><option value="late">Overdue in KA Sequence 3</option><option value="pre">Delayed before reaching KA</option><option value="post">Pending with approver (after KA)</option><option value="stale">Possibly inactive (&gt; 30 days)</option><option value="ignored">Dismissed</option></select></div>
       <div class="field"><label for="actKa">KA</label><select id="actKa"></select></div>
       <button class="btn ghost" id="actIgnoreAll" type="button" hidden>Dismiss all shown</button>
     </div>
     <div class="tbl-wrap" style="max-height:460px;overflow:auto"><table id="tblAct"></table></div>
     <p class="note">"Possibly inactive" refers to a CPR that has not reached the KA more than 30 days after its expected arrival (typically still in Draft with the requester, returned, or cancelled). Such CPRs are excluded from "All active items". Select "Dismiss" when a CPR is no longer being processed: it is removed from this list and from the KA workload, and can be restored at any time.</p>
-    <p class="note">Rule: a CPR may be reassigned only if work has not yet started on it (not yet arrived, or arrived but review 1 not completed). CPRs pending with an approver are not reassigned; follow up with the approver at the stated stage.</p>
+    <p class="note">Rule: a CPR may be reassigned only if work has not yet started on it (not yet arrived, or arrived but Sequence 3 not completed). CPRs pending with an approver are not reassigned; follow up with the approver at the stated stage.</p>
 
     <div class="card" id="trCard" hidden style="margin-top:12px;border-color:var(--accent)">
       <h3>Reassign CPR</h3>
@@ -349,7 +349,7 @@ body.locked #loginForm .btn { width: 100%; }
         <div class="field"><label>Current KA</label><div id="trFrom" style="padding:7px 0;font-weight:600">–</div></div>
         <div class="field"><label for="trTo">Reassign to</label><select id="trTo"></select></div>
         <div class="field"><label for="trReason">Reason</label><select id="trReason">
-          <option>KA workload exceeded</option><option>KA absent (leave/sick/business travel)</option><option>Review overdue</option><option>Supervisor request</option><option>Other</option></select></div>
+          <option>KA workload exceeded</option><option>KA absent (leave/sick/business travel)</option><option>Sequence 3 overdue</option><option>Supervisor request</option><option>Other</option></select></div>
         <div class="field" style="flex:1;min-width:200px"><label for="trNote">Notes</label><input type="text" id="trNote" placeholder="optional"></div>
         <button class="btn" type="button" id="trSave">Save reassignment</button>
         <button class="btn ghost" type="button" id="trCancel">Cancel</button>
@@ -405,8 +405,8 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="section-title"><h2>CPR queue file (CPRHistory)</h2><p>One row per approval step, consolidated into one record per CPR.</p></div>
       <div class="card">
         <div class="filters" style="margin:0 0 10px;border:0;padding:0">
-          <div class="field"><label for="roleKa">Role for Key Account HO (review 1)</label><select id="roleKa"></select></div>
-          <div class="field"><label for="roleBack">Role for PurchasingHO (review 2)</label><select id="roleBack"></select></div>
+          <div class="field"><label for="roleKa">Role for Key Account HO (Sequence 3)</label><select id="roleKa"></select></div>
+          <div class="field"><label for="roleBack">Role for PurchasingHO (Sequence 8)</label><select id="roleBack"></select></div>
           <div class="field"><label for="histMode">Meaning of the Approval Date column</label><select id="histMode"><option value="selesai">Date the role approved (consistent with CPR_Cleaned)</option><option value="masuk">Date the CPR reached the role</option></select></div>
         </div>
         <p class="note" id="histNote" style="margin:0 0 8px"></p>
@@ -1439,7 +1439,7 @@ async function loadKinerjaFile(file, rows, columns) {
 }
 /* ---------- Progress CPR (Data PO export) ----------
    CPRHistory only says when a CPR entered the KA queue. The Data PO export says what happened after:
-   KA approved (review 1), PurchasingHO received / approved (review 2), PO created, or rejected.
+   KA approved (Sequence 3), PurchasingHO received / approved (Sequence 8), PO created, or rejected.
    progress/meta      file name, upload time, data date, number of chunks
    progress/chunk-N   [cpr, kaIn, kaOut, back, backOut, po, status] per CPR, 1000 per document */
 let PROG = new Map(), PROG_META = null;
@@ -1594,25 +1594,25 @@ function renderKa() {
   }).sort((a, b) => (b.totAvg ?? 0) - (a.totAvg ?? 0));
   const withWork = rows.filter((r) => r.n > 0);
   barChartH($("chKa"), withWork.map((r) => `${r.name} (${r.n})`), [
-    { name: "Average review 1 (days)", color: "var(--s1)", values: withWork.map((r) => r.r1avg) },
-    { name: "Average review 2 (days)", color: "var(--s2)", values: withWork.map((r) => r.r2avg) }
-  ], { stacked: true, dec: 1, label: "Average review time per KA" });
+    { name: "Average Sequence 3 (days)", color: "var(--s1)", values: withWork.map((r) => r.r1avg) },
+    { name: "Average Sequence 8 (days)", color: "var(--s2)", values: withWork.map((r) => r.r2avg) }
+  ], { stacked: true, dec: 1, label: "Average Sequence 3 + Sequence 8 time per KA" });
   renderTable($("tblKa"), [
     { key: "name", label: "Key Account" },
     { key: "n", label: "CPRs processed", num: true, render: (r) => fmtInt(r.n) },
-    { key: "r1avg", label: "Review 1 (days)", num: true, render: (r) => fmtNum(r.r1avg) },
-    { key: "r2avg", label: "Review 2 (days)", num: true, render: (r) => fmtNum(r.r2avg) },
+    { key: "r1avg", label: "Sequence 3 (days)", num: true, render: (r) => fmtNum(r.r1avg) },
+    { key: "r2avg", label: "Sequence 8 (days)", num: true, render: (r) => fmtNum(r.r2avg) },
     { key: "totAvg", label: "Total (days)", num: true, render: (r) => fmtNum(r.totAvg) },
     { key: "perDay", label: "Completed/day (avg)", num: true, render: (r) => fmtNum(r.perDay) },
     { key: "perDayP90", label: "Busiest day (P90)", num: true, render: (r) => fmtNum(r.perDayP90, 0) },
-    { key: "r1h", label: "Review 1 (hours, median)", num: true, render: (r) => fmtNum(r.r1h) },
-    { key: "r2h", label: "Review 2 (hours, median)", num: true, render: (r) => fmtNum(r.r2h) },
+    { key: "r1h", label: "Sequence 3 (hours, median)", num: true, render: (r) => fmtNum(r.r1h) },
+    { key: "r2h", label: "Sequence 8 (hours, median)", num: true, render: (r) => fmtNum(r.r2h) },
     { key: "loadAvg", label: "Avg workload/day", num: true, render: (r) => fmtNum(r.loadAvg) },
     { key: "loadPeak", label: "Peak workload", num: true, render: (r) => fmtNum(r.loadPeak) }
   ], rows, kaSort);
   renderLoadTable(view);
 }
-// CPR reviews finished per working day (review 1 approvals + review 2 approvals) and hours per review
+// CPR reviews finished per working day (Sequence 3 approvals + Sequence 8 approvals) and hours per review
 function workStats(list) {
   const perDay = new Map();
   for (const r of list) for (const d of [r.kaOut, r.backOut]) if (d !== null && d !== undefined && weekday(d) < 5) perDay.set(d, (perDay.get(d) || 0) + 1);
@@ -1644,21 +1644,21 @@ function renderKaFromPo(view) {
   }).sort((a, b) => (b.totAvg ?? 0) - (a.totAvg ?? 0));
   const withWork = rows.filter((r) => r.n > 0);
   barChartH($("chKa"), withWork.map((r) => `${r.name} (${r.n})`), [
-    { name: "Average review 1 (days)", color: "var(--s1)", values: withWork.map((r) => r.r1avg) },
-    { name: "Average review 2 (days)", color: "var(--s2)", values: withWork.map((r) => r.r2avg) }
-  ], { stacked: true, dec: 1, label: "Average review time per KA" });
+    { name: "Average Sequence 3 (days)", color: "var(--s1)", values: withWork.map((r) => r.r1avg) },
+    { name: "Average Sequence 8 (days)", color: "var(--s2)", values: withWork.map((r) => r.r2avg) }
+  ], { stacked: true, dec: 1, label: "Average Sequence 3 + Sequence 8 time per KA" });
   renderTable($("tblKa"), [
     { key: "name", label: "Key Account" },
     { key: "n", label: "CPRs converted to PO", num: true, render: (r) => fmtInt(r.n) },
-    { key: "r1avg", label: "Review 1 (days)", num: true, render: (r) => fmtNum(r.r1avg) },
-    { key: "r2avg", label: "Review 2 (days)", num: true, render: (r) => fmtNum(r.r2avg) },
-    { key: "totAvg", label: "Total review (days)", num: true, render: (r) => fmtNum(r.totAvg) },
+    { key: "r1avg", label: "Sequence 3 (days)", num: true, render: (r) => fmtNum(r.r1avg) },
+    { key: "r2avg", label: "Sequence 8 (days)", num: true, render: (r) => fmtNum(r.r2avg) },
+    { key: "totAvg", label: "Total Seq. 3 + Seq. 8 (days)", num: true, render: (r) => fmtNum(r.totAvg) },
     { key: "kaToPo", label: "Arrival at KA → PO (days)", num: true, render: (r) => fmtNum(r.kaToPo) },
     { key: "toPo", label: "CPR created → PO (days)", num: true, render: (r) => fmtNum(r.toPo) },
     { key: "perDay", label: "Completed/day (avg)", num: true, render: (r) => fmtNum(r.perDay) },
     { key: "perDayP90", label: "Busiest day (P90)", num: true, render: (r) => fmtNum(r.perDayP90, 0) },
-    { key: "r1h", label: "Review 1 (hours, median)", num: true, render: (r) => fmtNum(r.r1h) },
-    { key: "r2h", label: "Review 2 (hours, median)", num: true, render: (r) => fmtNum(r.r2h) },
+    { key: "r1h", label: "Sequence 3 (hours, median)", num: true, render: (r) => fmtNum(r.r1h) },
+    { key: "r2h", label: "Sequence 8 (hours, median)", num: true, render: (r) => fmtNum(r.r2h) },
     { key: "loadAvg", label: "Avg workload/day", num: true, render: (r) => fmtNum(r.loadAvg) }
   ], rows, kaSort);
   renderLoadTable(view);
@@ -1670,7 +1670,7 @@ function renderLoadTable(view) {
   $("loadDesc").textContent = (view.useActual
     ? "Actual allocation: the actual KA and actual dates. Used for validation only, since operational data will not contain a KA column. "
     : "DSS allocation: each CPR is assigned to a KA when created; forecast dates are replaced with actual dates once the CPR arrives or returns. ")
-    + `Value = number of CPRs under KA review on that working day (review 1 = ${SIM.w1} day${SIM.w1 === 1 ? "" : "s"}, review 2 = ${SIM.w2} day${SIM.w2 === 1 ? "" : "s"}); a CPR sharing a vendor is counted as ${fmtNum(SIM.vf)}.`;
+    + `Value = number of CPRs under KA review on that working day (Sequence 3 = ${SIM.w1} day${SIM.w1 === 1 ? "" : "s"}, Sequence 8 = ${SIM.w2} day${SIM.w2 === 1 ? "" : "s"}); a CPR sharing a vendor is counted as ${fmtNum(SIM.vf)}.`;
   $("overLegend").textContent = `Red outline = above the limit of ${fmtNum(SIM.maxPerDay)} CPRs per day`;
   const kas = SIM.kaList.map((ka, k) => ({ ka, k })).sort((a, b) => kaLabel(a.ka).localeCompare(kaLabel(b.ka)));
   if (!view.days.length) { table.replaceChildren(el("tbody")); return; }
@@ -1884,7 +1884,7 @@ function simulate() {
   const transferMap = useLocks() ? lastTransfers() : new Map();
   const absent = (ka, offs) => offs.some((o) => isAbsent(ka, o + minDay));
   const review1Offs = (c) => { const out = []; for (let i = 0; i < c.w1; i++) out.push(off(c.s1 + i)); return out; };
-  const notStarted = (c) => c.r.kaOut === null && c.r.back === null; // review 1 not done and not in review 2
+  const notStarted = (c) => c.r.kaOut === null && c.r.back === null; // Sequence 3 not done and not in Sequence 8
   // best KA for a CPR: lowest peak load among KAs that are present on its review days
   const bestKa = (c, days, exclude) => {
     let best = null, bestPeak = Infinity;
@@ -2038,7 +2038,7 @@ function renderSim() {
     { name: "DSS", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) },
     { name: "Actual", color: "var(--s2)", values: kas.map((k) => s.actualCount[k] || 0) }
   ] : [{ name: "CPR", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) }], { dec: 0, label: "Number of CPRs per KA" });
-  $("simNote").textContent = `Arrival at KA (Forecast 1): ${s.f1Method === "Linear Regression" ? `Linear Regression trained on ${fmtInt(s.histCount)} CPRs preceding this period (best-performing model in the analysis notebook)` : "median per hospital, because fewer than 100 historical CPRs are available"}. Return to KA (Forecast 2): median per hospital. Review duration is assumed to be ${s.w1} day${s.w1 === 1 ? "" : "s"} (review 1) and ${s.w2} day${s.w2 === 1 ? "" : "s"} (review 2). Workload limit: ${fmtNum(s.maxPerDay)} CPRs per KA per day${s.userMax ? " (set manually)" : " (automatic)"}.`;
+  $("simNote").textContent = `Arrival at KA (Forecast 1): ${s.f1Method === "Linear Regression" ? `Linear Regression trained on ${fmtInt(s.histCount)} CPRs preceding this period (best-performing model in the analysis notebook)` : "median per hospital, because fewer than 100 historical CPRs are available"}. Return to KA (Forecast 2): median per hospital. Review duration is assumed to be ${s.w1} day${s.w1 === 1 ? "" : "s"} (Sequence 3) and ${s.w2} day${s.w2 === 1 ? "" : "s"} (Sequence 8). Workload limit: ${fmtNum(s.maxPerDay)} CPRs per KA per day${s.userMax ? " (set manually)" : " (automatic)"}.`;
   incState.page = 0; renderIncoming();
 }
 const assignLabel = (c) => (c.isNewAssign ? "New" : c.locked ? "Fixed" : "Not saved");
@@ -2076,12 +2076,12 @@ function progressStatus(c) {
   if (IGNORED[r.cpr]) return ["Dismissed", "muted"];
   if (p && isRejected(p)) return ["Rejected", "muted"];
   if (p && p.po !== null) return ["Completed (PO)", "good"];
-  if (r.backOut !== null) return ["Review 2 completed", "good"];
+  if (r.backOut !== null) return ["Sequence 8 completed", "good"];
   if (!p) return ["No update yet", "muted"];
   if (r.kaIn === null) return ["Before KA", "warn"];
-  if (r.kaOut === null) return ["At KA – Review 1", "info"];
+  if (r.kaOut === null) return ["At KA – Sequence 3", "info"];
   if (r.back === null) return ["With approver", "serious"];
-  return ["At KA – Review 2", "info"];
+  return ["At KA – Sequence 8", "info"];
 }
 /* ---------- CPR tracking panel: click a CPR number to see its journey ---------- */
 const cprLink = (cpr) => Object.assign(el("button", { class: "linkbtn", type: "button", title: "Track this CPR" }, cpr), { onclick: () => openTrack(cpr) });
@@ -2105,10 +2105,10 @@ function openTrack(cpr) {
   const steps = [
     ["CPR created", r.submitAt && r.submitAt !== r.createAt ? "submitted " + fmtStampShort(r.submitAt) : "", r.create, null, r.createAt],
     ["Arrived at Key Account", c.f1Lo !== null && c.f1Lo !== undefined ? `forecast range ${fmtDay(r.create + c.f1Lo)} – ${fmtDay(r.create + c.f1Hi)}` : "", arrive, arriveEst],
-    ["Review 1 approved by KA", "", r.kaOut, kaOutEst],
+    ["Sequence 3 approved by KA", "", r.kaOut, kaOutEst],
     ["With other approvers", r.stage && r.back === null && r.kaOut !== null ? `currently: ${r.stage}` : r.back !== null ? "until the CPR returned to KA" : "", r.back !== null ? r.back : null, null, null, r.kaOut !== null && r.back === null],
-    ["Returned to KA (Review 2)", "", r.back, backEst],
-    ["Review 2 approved", "", r.backOut, (r.back ?? backEst) + w2],
+    ["Returned to KA (Sequence 8)", "", r.back, backEst],
+    ["Sequence 8 approved", "", r.backOut, (r.back ?? backEst) + w2],
     ["PO created", "", p && p.po !== null ? p.po : null, null]
   ];
   const rejected = p && isRejected(p);
@@ -2240,7 +2240,7 @@ function actionItems() {
     if (IGNORED[r.cpr]) { out.push({ c, type: "ignored", days: 0, status: `Dismissed ${fmtStamp(IGNORED[r.cpr].at)}`, where: "–", canMove: false }); continue; }
     const where = r.stage ? `${r.stage}${r.stageSince !== null && r.stageSince !== undefined ? " since " + fmtShort(r.stageSince) : ""}` : "–";
     if (r.kaIn !== null && r.kaOut === null) {
-      const d = D - r.kaIn; if (d > 3) out.push({ c, type: "late", days: d, status: `Review 1 not completed after ${d} days`, where: "Key Account HO", canMove: true });
+      const d = D - r.kaIn; if (d > 3) out.push({ c, type: "late", days: d, status: `Sequence 3 not completed after ${d} days`, where: "Key Account HO", canMove: true });
     } else if (r.kaIn === null) {
       const due = r.create + (c.f1Hi ?? c.f1); const d = D - due;
       if (d > STALE_DAYS) out.push({ c, type: "stale", days: d, status: `Not at KA ${d} days after the forecast limit; possibly still in draft or cancelled`, where, canMove: false });
@@ -2252,7 +2252,7 @@ function actionItems() {
   return out.sort((a, b) => b.days - a.days);
 }
 const actKind = { late: "bad", pre: "warn", post: "serious", stale: "muted", ignored: "muted" };
-const actLabel = { late: "Review overdue", pre: "Delayed before KA", post: "Pending with approver", stale: "Possibly inactive", ignored: "Dismissed" };
+const actLabel = { late: "Sequence 3 overdue", pre: "Delayed before KA", post: "Pending with approver", stale: "Possibly inactive", ignored: "Dismissed" };
 function kaLoadOn(ka, day) { if (!SIM) return null; const k = SIM.kaList.indexOf(ka); return k < 0 ? null : SIM.load[k][day - SIM.minDay] || 0; }
 function renderSpv() {
   const editable = canSave() && !IS_SAMPLE;
@@ -2268,12 +2268,12 @@ function renderSpv() {
   const items = actionItems();
   const week = Date.now() - 7 * 864e5;
   $("spvTiles").replaceChildren(
-    tile("CPRs in progress", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.backOut === null && !c.r.done && !IGNORED[c.r.cpr]).length : 0), "", "review 2 not yet completed"),
+    tile("CPRs in progress", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.backOut === null && !c.r.done && !IGNORED[c.r.cpr]).length : 0), "", "Sequence 8 not yet completed"),
     tile("No update yet", fmtInt(SIM ? SIM.assigned.filter((c) => !c.r.prog && !IGNORED[c.r.cpr]).length : 0), "CPRs", "not yet in PO Data; status unknown"),
-    tile("Completed", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.done).length : 0), "CPRs", "converted into PO, review 2 completed, or rejected"),
-    tile("Review 1 overdue", fmtInt(items.filter((x) => x.type === "late").length), "CPRs", "more than 3 days at KA"),
+    tile("Completed", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.done).length : 0), "CPRs", "converted into PO, Sequence 8 completed, or rejected"),
+    tile("Sequence 3 overdue", fmtInt(items.filter((x) => x.type === "late").length), "CPRs", "more than 3 days at KA"),
     tile("Delayed before KA", fmtInt(items.filter((x) => x.type === "pre").length), "CPRs", "past the forecast limit (P80)"),
-    tile("Pending with approver", fmtInt(items.filter((x) => x.type === "post").length), "CPRs", "after KA review 1"),
+    tile("Pending with approver", fmtInt(items.filter((x) => x.type === "post").length), "CPRs", "after KA Sequence 3"),
     tile("Possibly inactive", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `> ${STALE_DAYS} days; review and dismiss`),
     tile("KAs absent today", fmtInt(new Set(ABSENCES.filter((a) => today >= a.from && today <= a.to).map((a) => a.ka)).size), "people", ""),
     tile("Reassignments (last 7 days)", fmtInt(TRANSFERS.filter((t) => Date.parse(t.at) >= week).length), "", `${fmtInt(TRANSFERS.filter((t) => t.by === "SPV").length)} by supervisor in total`)
@@ -2344,7 +2344,7 @@ $("trCancel").addEventListener("click", () => { $("trCard").hidden = true; });
 $("trSave").addEventListener("click", async () => {
   const cpr = $("trCpr").value.trim(), c = findAssigned(cpr), to = $("trTo").value;
   if (!c) { $("trMsg").textContent = "The CPR number was not found in the current allocation."; return; }
-  if (c.r.back !== null || c.r.kaOut !== null) { $("trMsg").textContent = `This CPR was approved by the KA on ${c.r.kaOutAt ? fmtStampShort(c.r.kaOutAt) : fmtDay(c.r.kaOut)} (review 1 completed)${c.r.backOut !== null ? ` and review 2 was completed on ${fmtDay(c.r.backOut)}` : ""}, so it cannot be reassigned.`; return; }
+  if (c.r.back !== null || c.r.kaOut !== null) { $("trMsg").textContent = `This CPR was approved by the KA on ${c.r.kaOutAt ? fmtStampShort(c.r.kaOutAt) : fmtDay(c.r.kaOut)} (Sequence 3 completed)${c.r.backOut !== null ? ` and Sequence 8 was completed on ${fmtDay(c.r.backOut)}` : ""}, so it cannot be reassigned.`; return; }
   if (!to || to === c.ka) { $("trMsg").textContent = "Please select a different target KA."; return; }
   const t = { at: new Date().toISOString(), cpr, unit: c.unit, from: c.ka, to, reason: $("trReason").value, note: $("trNote").value.trim(), by: "SPV" };
   try {
