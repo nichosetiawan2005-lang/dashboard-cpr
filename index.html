@@ -369,10 +369,10 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="card" id="savedCard"><p class="note" id="savedInfo" style="margin:0">Checking stored data …</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
         <button class="btn ghost" type="button" id="btnResetAlloc">Reallocate all CPRs</button>
-        <button class="btn ghost" type="button" id="btnClearSaved">Delete all stored data</button>
+        <button class="btn ghost" type="button" id="btnClearSaved" title="The activity log and reassignment log are kept">Delete all stored data</button>
       </div>
     </div>
-    <div class="section-title"><h2>Activity log</h2><p>Every upload and allocation run is recorded here, with the most recent first.</p></div>
+    <div class="section-title"><h2>Activity log</h2><p>Every upload and allocation run is recorded here, with the most recent first. The log is kept even when all stored data is deleted.</p></div>
     <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="tblLog"></table></div>
     <div class="tiles" id="dqTiles"></div>
     <div id="histCard" hidden>
@@ -1204,13 +1204,13 @@ async function logEvent(entry) {
   if (!DB || !canSave()) return;
   try {
     const d = await DB.doc("log/uploads").get();
-    const items = [{ at: new Date().toISOString(), ...entry }, ...(d.exists ? d.data().items || [] : [])].slice(0, 500);
+    const items = [{ at: new Date().toISOString(), ...entry }, ...(d.exists ? d.data().items || [] : [])].slice(0, 2000);
     await DB.doc("log/uploads").set({ items }); UPLOAD_LOG = items; renderLog();
   } catch {}
 }
 function renderLog() {
   const t = $("tblLog"); if (!t) return;
-  const kind = { "CPR queue": "info", "PO data": "good", "Hospital PIC List": "muted", "Allocation": "warn", "Reassignment": "serious", "Absence": "muted", "Progress update": "good", "Dismissed CPR": "muted" };
+  const kind = { "CPR queue": "info", "PO data": "good", "Hospital PIC List": "muted", "Allocation": "warn", "Reassignment": "serious", "Absence": "muted", "Progress update": "good", "Dismissed CPR": "muted", "Data deleted": "bad" };
   renderTable(t, [
     { key: "at", label: "Time", sortable: false, render: (r) => fmtStamp(r.at) },
     { key: "type", label: "Type", sortable: false, render: (r) => pill(logType(r.type), kind[logType(r.type)] || "muted") },
@@ -1255,13 +1255,15 @@ $("btnClearSaved").addEventListener("click", async () => {
   if (!DB || !confirmTwice($("btnClearSaved"), "Click again to delete all stored data")) return;
   try {
     setStatus("Deleting stored data …");
+    // the activity log and the reassignment log are history: they are kept, and the deletion itself is recorded
+    await logEvent({ type: "Data deleted", cpr: RECS.length || null, total: 0, note: `All stored data deleted (${fmtInt(RECS.length)} queued CPRs, ${fmtInt(PO_RECS.length)} PO records). Activity log and reassignment log kept.` });
     const meta = await DB.doc("cpr/meta").get();
     const n = meta.exists ? meta.data().chunks || 0 : 0;
     for (let i = 0; i < n; i++) await DB.doc("cpr/chunk-" + i).delete();
     await DB.doc("cpr/meta").delete(); await DB.doc("settings/pic").delete(); await DB.doc("settings/params").delete();
     const pm = await DB.doc("po/meta").get(); const pn = pm.exists ? pm.data().chunks || 0 : 0;
     for (let i = 0; i < pn; i++) await DB.doc("po/chunk-" + i).delete();
-    await DB.doc("po/meta").delete(); await DB.doc("log/uploads").delete(); await DB.doc("spv/transfers").delete(); await DB.doc("spv/absences").delete();
+    await DB.doc("po/meta").delete(); await DB.doc("spv/absences").delete();
     const gm = await DB.doc("progress/meta").get(); const gn = gm.exists ? gm.data().chunks || 0 : 0;
     for (let i = 0; i < gn; i++) await DB.doc("progress/chunk-" + i).delete();
     await DB.doc("progress/meta").delete(); await DB.doc("spv/ignored").delete();
