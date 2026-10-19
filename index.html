@@ -1717,6 +1717,8 @@ function solveLinear(A, b) {
   return M.map((row, i) => (Math.abs(row[i]) < 1e-12 ? 0 : row[n] / row[i]));
 }
 function fitF1Model(train) {
+  // cap = 95th percentile of the history: no forecast may go beyond what 95% of past CPRs needed
+  const cap = Math.max(1, quantile(train.map((r) => r.f1), 0.95) ?? 30);
   const group = (key) => { const g = new Map(); for (const r of train) { const k = key(r); if (k === null) continue; if (!g.has(k)) g.set(k, []); g.get(k).push(r.f1); } return g; };
   const toMap = (g, fn) => new Map([...g].map(([k, a]) => [k, fn(a)]));
   const allMed = median(train.map((r) => r.f1)), allMean = mean(train.map((r) => r.f1));
@@ -1732,14 +1734,21 @@ function fitF1Model(train) {
   const k = 7, XtX = Array.from({ length: k }, () => new Array(k).fill(0)), Xty = new Array(k).fill(0);
   for (const r of train) { const x = features(r), y = Math.log1p(r.f1); for (let i = 0; i < k; i++) { Xty[i] += x[i] * y; for (let j = 0; j < k; j++) XtX[i][j] += x[i] * x[j]; } }
   const coef = solveLinear(XtX, Xty);
+  if (coef.some((c) => !isFinite(c))) return null;
   const predLog = (r) => features(r).reduce((s, v, i) => s + v * coef[i], 0);
   // spread of past errors (in log days) gives a P20-P80 range around each forecast
   const res = train.map((r) => Math.log1p(r.f1) - predLog(r));
   const q20 = quantile(res, 0.2), q80 = quantile(res, 0.8);
+  // safety check: if the fitted model is worse than the simple median per hospital on its own history
+  // (for example when two features carry the same information), the median per hospital is used instead
+  const fit = (r) => Math.min(cap, Math.max(0, Math.expm1(predLog(r))));
+  const maeModel = mean(train.map((r) => Math.abs(fit(r) - r.f1))), maeMedian = mean(train.map((r) => Math.abs((unitMedAll.get(r.unit) ?? allMed) - r.f1)));
+  if (!(maeModel <= maeMedian * 1.05)) return null;
   return {
     n: train.length,
-    predict: (r) => Math.max(0, Math.expm1(predLog(r))),
-    range: (r) => [Math.max(0, Math.expm1(predLog(r) + q20)), Math.max(0, Math.expm1(predLog(r) + q80))]
+    cap,
+    predict: (r) => Math.min(cap, Math.max(0, Math.expm1(predLog(r)))),
+    range: (r) => [Math.min(cap, Math.max(0, Math.expm1(predLog(r) + q20))), Math.min(cap, Math.max(0, Math.expm1(predLog(r) + q80)))]
   };
 }
 
@@ -1818,7 +1827,9 @@ function simulate() {
   // falls back to the median per hospital when there is too little history
   const f1Train = POOL.filter((r) => r.create !== null && r.create < start && r.f1 !== null);
   const f1Model = f1Train.length >= 100 ? fitF1Model(f1Train) : null;
-  const f1Pred = (r) => Math.round(f1Model ? f1Model.predict(r) : f1Unit[r.unit] ?? f1All);
+  // the median fallbacks are capped the same way (95th percentile of the history)
+  const f1Cap = Math.max(1, quantile(base.map((r) => r.f1), 0.95) ?? 30), f2Cap = Math.max(1, quantile(baseF2.map((r) => r.f2), 0.95) ?? 30);
+  const f1Pred = (r) => Math.round(f1Model ? f1Model.predict(r) : Math.min(f1Cap, f1Unit[r.unit] ?? f1All));
   const f1Range = (r) => (f1Model ? f1Model.range(r).map(Math.round) : [null, null]);
   // P80 of "KA approve -> back to KA": beyond this a CPR counts as stuck at the approvers
   const f2P80 = quantile(baseF2.map((r) => r.f2), 0.8) ?? 7;
@@ -1919,7 +1930,7 @@ function simulate() {
     const c = {
       r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2, transfer: tr || null,
       f1Lo: lo, f1Hi: hi, f1Base: Math.round(f1Unit[r.unit] ?? f1All), f2P80,
-      f1: f1Pred(r), f2: Math.round(f2Unit[r.unit] ?? f2All), // forecasts always use the latest model; only the KA is locked
+      f1: f1Pred(r), f2: Math.round(Math.min(f2Cap, f2Unit[r.unit] ?? f2All)), // forecasts always use the latest model; only the KA is locked
       lock: lock && kaList.includes(lock.ka) ? lock : null
     };
     c.predArrival = r.create + c.f1; c.s1 = c.predArrival; c.s2 = c.s1 + w1 + c.f2;
