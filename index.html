@@ -129,6 +129,32 @@ td.cellwrap { white-space: normal; min-width: 130px; max-width: 180px; }
 .pill.bad { background: var(--bad-bg); color: var(--bad); }
 .pill.info { background: var(--info-bg); color: var(--accent-ink); }
 .pill.muted { background: color-mix(in srgb, var(--faint) 15%, transparent); color: var(--muted); }
+/* CPR tracking panel */
+.linkbtn { border: 0; background: none; padding: 0; font: inherit; color: var(--accent-ink); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+#track { border: 1px solid var(--line-strong); border-radius: 12px; padding: 0; width: min(600px, calc(100vw - 32px)); background: var(--panel); color: var(--fg); box-shadow: 0 16px 48px rgba(0,0,0,.25); }
+#track::backdrop { background: rgba(10, 14, 20, .45); }
+.tr-head { padding: 18px 20px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; }
+.tr-head h3 { font-family: var(--font-data); font-size: 15px; }
+.tr-sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+.tr-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; margin-top: 10px; }
+.tr-meta b { font-weight: 600; }
+.tr-body { padding: 16px 20px 20px; max-height: 70vh; overflow: auto; }
+.tl { list-style: none; margin: 0; padding: 0; }
+.tl li { position: relative; display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; padding-bottom: 16px; }
+.tl li::before { content: ""; position: absolute; left: 6px; top: 16px; bottom: 0; width: 2px; background: var(--line); }
+.tl li:last-child::before { display: none; }
+.tl li.done::before { background: var(--accent); }
+.tl .dot { width: 14px; height: 14px; border-radius: 50%; margin-top: 2px; border: 2px solid var(--line-strong); background: var(--panel); position: relative; z-index: 1; }
+.tl li.done .dot { background: var(--accent); border-color: var(--accent); }
+.tl li.now .dot { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
+.tl li.bad .dot { background: var(--bad); border-color: var(--bad); }
+.tl .lbl2 { font-weight: 600; font-size: 13.5px; }
+.tl .det { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.tl .when { text-align: right; font-size: 12.5px; white-space: nowrap; }
+.tl .when small { display: block; font-size: 11px; color: var(--muted); }
+.tl .when small.late { color: var(--warn); }
+.tr-hist { font-size: 12.5px; margin: 6px 0 0; padding-left: 18px; }
+.tr-hist li { margin-bottom: 4px; }
 .tbl-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .tbl-tools input { padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--panel); min-width: 0; width: 260px; max-width: 100%; }
 .pager { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); }
@@ -390,6 +416,12 @@ body.locked #loginForm .btn { width: 100%; }
   </section>
 </div>
 <div class="tip" id="tip" hidden></div>
+<dialog id="track" aria-labelledby="trTitle">
+  <div class="tr-head"><div><h3 id="trTitle"></h3><div class="tr-sub" id="trSub"></div><div class="tr-meta" id="trMeta"></div></div>
+    <button class="btn ghost" type="button" id="trClose" style="align-self:flex-start;padding:4px 10px">Close</button></div>
+  <div class="tr-body"><ol class="tl" id="trLine"></ol>
+    <div class="section-title" style="margin:6px 0 4px"><h2 style="font-size:14px">Assignment history</h2></div><ul class="tr-hist" id="trHist"></ul></div>
+</dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
@@ -2051,6 +2083,63 @@ function progressStatus(c) {
   if (r.back === null) return ["With approver", "serious"];
   return ["At KA – Review 2", "info"];
 }
+/* ---------- CPR tracking panel: click a CPR number to see its journey ---------- */
+const cprLink = (cpr) => Object.assign(el("button", { class: "linkbtn", type: "button", title: "Track this CPR" }, cpr), { onclick: () => openTrack(cpr) });
+function openTrack(cpr) {
+  const c = findAssigned(cpr); if (!c) return;
+  const r = c.r, p = r.prog, D = dataDate(), w1 = SIM.w1, w2 = SIM.w2;
+  const [statusText, statusKind] = progressStatus(c);
+  $("trTitle").textContent = r.cpr;
+  $("trSub").textContent = [r.vendorName, c.unit].filter(Boolean).join(" · ");
+  $("trMeta").replaceChildren(
+    el("span", {}, "Key Account: "), el("b", {}, kaLabel(c.ka)),
+    el("span", {}, "Rule: " + ruleLabel(c.rule)),
+    pill(statusText, statusKind),
+    el("span", { class: "note", style: "margin:0" }, D !== null ? `Data as of ${fmtDay(D)}` : "")
+  );
+  // one step = [label, detail, actual day or null, estimated day or null]
+  const arrive = actualArrival(r);
+  const arriveEst = c.predArrival;
+  const kaOutEst = (arrive ?? r.kaIn ?? arriveEst) + w1;
+  const backEst = c.s2;
+  const steps = [
+    ["CPR created", r.submitAt && r.submitAt !== r.createAt ? "submitted " + fmtStampShort(r.submitAt) : "", r.create, null, r.createAt],
+    ["Arrived at Key Account", c.f1Lo !== null && c.f1Lo !== undefined ? `forecast range ${fmtDay(r.create + c.f1Lo)} – ${fmtDay(r.create + c.f1Hi)}` : "", arrive, arriveEst],
+    ["Review 1 approved by KA", "", r.kaOut, kaOutEst],
+    ["With other approvers", r.stage && r.back === null && r.kaOut !== null ? `currently: ${r.stage}` : r.back !== null ? "until the CPR returned to KA" : "", r.back !== null ? r.back : null, null, null, r.kaOut !== null && r.back === null],
+    ["Returned to KA (Review 2)", "", r.back, backEst],
+    ["Review 2 approved", "", r.backOut, (r.back ?? backEst) + w2],
+    ["PO created", "", p && p.po !== null ? p.po : null, null]
+  ];
+  const rejected = p && isRejected(p);
+  let reachedNow = false;
+  const items = steps.map(([label, det, actual, est, stamp, forceNow]) => {
+    const li = el("li"), done = actual !== null && actual !== undefined;
+    let cls = done ? "done" : "";
+    if (!done && !reachedNow && !rejected && !(p && p.po !== null)) { cls = "now"; reachedNow = true; }
+    if (forceNow) cls = "now";
+    li.className = cls;
+    const mid = el("div"); mid.append(el("div", { class: "lbl2" }, label)); if (det) mid.append(el("div", { class: "det" }, det));
+    const when = el("div", { class: "when" });
+    if (done) { when.append(el("div", {}, stamp ? fmtStampShort(stamp) : fmtDay(actual))); when.append(el("small", {}, label === "CPR created" ? "" : "actual")); }
+    else if (forceNow) { when.append(el("div", {}, fmtDay(r.stageSince ?? r.kaOut))); when.append(el("small", {}, "since")); }
+    else if (est !== null && est !== undefined && !rejected) { when.append(el("div", {}, fmtDay(est))); const late = p && D !== null && est < D; when.append(el("small", { class: late ? "late" : "" }, late ? "estimated · overdue" : "estimated")); }
+    else when.append(el("div", { class: "det" }, "–"));
+    li.append(el("span", { class: "dot" }), mid, when);
+    return li;
+  });
+  if (rejected) { const li = el("li", { class: "bad" }); li.append(el("span", { class: "dot" }), el("div", { class: "lbl2" }, "Rejected"), el("div", { class: "when" }, "")); items.push(li); }
+  $("trLine").replaceChildren(...items);
+  // assignment history: first assignment + every reassignment of this CPR
+  const lock = LOCKED.get(r.cpr), hist = [];
+  hist.push(el("li", {}, `Assigned to ${kaLabel(lock ? lock.ka : c.ka)} by the DSS (${ruleLabel(lock ? lock.rule : c.rule)})${lock && lock.on !== undefined && lock.on !== null ? " on " + fmtDay(lock.on) : ""}`));
+  for (const t of TRANSFERS.filter((t) => t.cpr === r.cpr)) hist.push(el("li", {}, `${fmtStamp(t.at)}: ${kaLabel(t.from)} → ${kaLabel(t.to)} · ${t.reason}${t.note ? " (" + t.note + ")" : ""} · by ${byLabel(t.by)}`));
+  if (IGNORED[r.cpr]) hist.push(el("li", {}, `Dismissed on ${fmtStamp(IGNORED[r.cpr].at)}`));
+  $("trHist").replaceChildren(...hist);
+  $("track").showModal();
+}
+$("trClose").addEventListener("click", () => $("track").close());
+$("track").addEventListener("click", (e) => { if (e.target === $("track")) $("track").close(); }); // click outside closes
 // actual arrival = "Date Received CPR by Key Account HO" from PO Data only (empty until PO Data confirms it)
 // return to KA: the actual date from PO Data, else Forecast 2; an estimate already past the data date is marked overdue
 function returnText(c) {
@@ -2069,7 +2158,7 @@ function renderIncoming() {
   incState.page = Math.min(incState.page, pages - 1);
   $("incPage").textContent = `${incState.page + 1} / ${pages} · ${fmtInt(rows.length)} CPRs`;
   renderTable($("tblInc"), [
-    { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (c) => c.r.cpr },
+    { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (c) => cprLink(c.r.cpr) },
     { key: "unit", label: "Hospital", sortable: false },
     { key: "desc", label: "Description", wrap: true, sortable: false, render: (c) => c.r.vendorName ? String(c.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 60) : "–" },
     { key: "create", label: "Created", sortable: false, render: (c) => (c.r.createAt ? fmtStampShort(c.r.createAt) : fmtDay(c.r.create)) },
@@ -2196,7 +2285,7 @@ function renderSpv() {
   $("actIgnoreAll").textContent = `Dismiss all shown (${fmtInt(rows.length)})`;
   ACT_ROWS = rows;
   renderTable($("tblAct"), [
-    { key: "cpr", label: "CPR number", code: true, sortable: false, render: (x) => x.c.r.cpr },
+    { key: "cpr", label: "CPR number", code: true, sortable: false, render: (x) => cprLink(x.c.r.cpr) },
     { key: "unit", label: "Hospital", sortable: false, render: (x) => x.c.unit },
     { key: "ka", label: "KA", sortable: false, render: (x) => kaLabel(x.c.ka) },
     { key: "type", label: "Condition", sortable: false, render: (x) => pill(actLabel[x.type], actKind[x.type]) },
