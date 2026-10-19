@@ -1965,7 +1965,8 @@ async function ensureModels(start, onStatus) {
     let sel = savedSel;
     if (!sel) {
       const tuneTrain = hist.filter((r) => dateOf(r) < valStart), tuneVal = hist.filter((r) => dateOf(r) >= valStart && r.isNew === 1);
-      if (tuneTrain.length < 100 || tuneVal.length < 20) sel = { chosen: { family: "Linear Regression", setting: "alpha=0", valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length };
+      // too little older history to compare models fairly: use the model the notebook chose
+      if (tuneTrain.length < 1000 || tuneVal.length < 50) sel = { chosen: label === "arrival" ? { family: "Linear Regression", setting: "alpha=0", valMae: null } : { family: "XGBoost", setting: "max_depth=2, learning_rate=0.1", valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true };
       else { onStatus && onStatus(`Selecting the best ${label} model (Linear Regression vs XGBoost) …`); await new Promise((r) => setTimeout(r, 10)); sel = chooseModel(tuneTrain, tuneVal, stats, feats); }
     }
     // retrain the chosen setting on all history
@@ -2289,9 +2290,9 @@ function renderSim() {
     : "";
   // warn when the forecast has (almost) no history to learn from
   const warn = $("histWarn");
-  warn.hidden = s.histCount >= 100;
+  warn.hidden = !!(s.models && s.models.f1);
   warn.replaceChildren(el("div"));
-  warn.firstChild.innerHTML = `<b>The arrival forecast has limited reliability.</b> Forecasts are derived from CPRs that have previously reached the KA, and only ${fmtInt(s.histCount)} such CPRs exist before ${fmtDay(s.start)}${s.histCount ? ` (median ${fmtNum(s.f1All, 0)} days)` : " (a default of 2 days is used)"}. Please upload <b>PO Data</b> as historical data, then run the allocation again.`;
+  warn.firstChild.innerHTML = `<b>The forecast model is not active yet.</b> The models learn from the PO Data / CPR_Cleaned history stored for forecasting, and fewer than 100 usable CPRs are stored (data uploaded before this version is not included). Estimates now use the median per hospital, which can be much longer than the model. Please upload <b>CPR_Cleaned</b> (2023–2026 history, the same file as the analysis notebook) and the latest <b>PO Data</b> again, then select Run allocation.`;
   const lg = (items) => items.map(([name, c]) => `<span><i style="background:${c}"></i>${name}</span>`).join("");
   const kas = s.kaList.slice().sort((a, b) => (s.dssCount[b] || 0) - (s.dssCount[a] || 0));
   $("subKaCount").textContent = s.actual ? "DSS allocation compared with the actual allocation" : "DSS allocation";
@@ -2363,8 +2364,8 @@ function openTrack(cpr) {
   // one step = [label, detail, actual day or null, estimated day or null]
   const arrive = actualArrival(r);
   const arriveEst = c.predArrival;
-  const kaOutEst = (arrive ?? r.kaIn ?? arriveEst) + w1;
-  const backEst = c.s2;
+  const kaOutEst = (arrive ?? arriveEst) + w1;
+  const backEst = estReturn(c);
   const steps = [
     ["CPR created", r.submitAt && r.submitAt !== r.createAt ? "submitted " + fmtStampShort(r.submitAt) : "", r.create, null, r.createAt],
     ["Arrived at Key Account", c.f1Lo !== null && c.f1Lo !== undefined ? `forecast range ${fmtDay(r.create + c.f1Lo)} – ${fmtDay(r.create + c.f1Hi)}` : "", arrive, arriveEst],
@@ -2404,11 +2405,14 @@ function openTrack(cpr) {
 $("trClose").addEventListener("click", () => $("track").close());
 $("track").addEventListener("click", (e) => { if (e.target === $("track")) $("track").close(); }); // click outside closes
 // actual arrival = "Date Received CPR by Key Account HO" from PO Data only (empty until PO Data confirms it)
+// estimated return to KA shown in the tables: actual approval (PO Data) or (arrival + Sequence 3 days), plus Forecast 2;
+// arrival = the PO Data date when confirmed, else the Forecast 1 estimate (same basis as the Estimated Arrival column)
+const estReturn = (c) => (c.r.back !== null ? c.r.back : (c.r.kaOut !== null ? c.r.kaOut : (actualArrival(c.r) ?? c.predArrival) + c.w1) + c.f2);
 // return to KA: the actual date from PO Data, else Forecast 2; an estimate already past the data date is marked overdue
 function returnText(c) {
   const box = el("div");
-  const D = dataDate(), late = c.r.back === null && c.r.prog && D !== null && c.s2 < D && !c.r.done;
-  box.append(el("div", {}, fmtDay(c.r.back !== null ? c.r.back : c.s2)));
+  const D = dataDate(), late = c.r.back === null && c.r.prog && D !== null && estReturn(c) < D && !c.r.done;
+  box.append(el("div", {}, fmtDay(estReturn(c))));
   if (c.r.back !== null) box.append(el("div", { class: "note", style: "margin:0;font-size:11px" }, "actual"));
   if (late) box.append(el("div", { style: "font-size:11px;color:var(--warn)" }, "overdue"));
   return box;
@@ -2442,7 +2446,7 @@ $("incNext").addEventListener("click", () => { incState.page++; renderIncoming()
 $("incCopy").addEventListener("click", async () => {
   if (!SIM) return;
   const lines = [["CPR Number", "Hospital", "Description", "Created", "Estimated Arrival at Key Account", "Actual Arrival at Key Account", "Estimated Return to Key Account", "Key Account", "Status", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
-  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), actualArrival(c.r) !== null ? dayToIso(actualArrival(c.r)) : "", dayToIso(c.r.back !== null ? c.r.back : c.s2), kaLabel(c.ka), progressStatus(c)[0], ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
+  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), actualArrival(c.r) !== null ? dayToIso(actualArrival(c.r)) : "", dayToIso(estReturn(c)), kaLabel(c.ka), progressStatus(c)[0], ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
   const text = lines.join("\n");
   try { await navigator.clipboard.writeText(text); setStatus(`${fmtInt(lines.length - 1)} rows copied. Paste into Excel with Ctrl+V.`); }
   catch { const ta = el("textarea", { style: "position:fixed;left:-9999px" }); ta.value = text; document.body.append(ta); ta.select(); const ok = document.execCommand && document.execCommand("copy"); ta.remove(); setStatus(ok ? `${fmtInt(lines.length - 1)} rows copied.` : "The browser blocked automatic copying. Please select the table and copy it manually."); }
