@@ -416,6 +416,18 @@ body.locked #loginForm .btn { width: 100%; }
   </section>
 </div>
 <div class="tip" id="tip" hidden></div>
+<dialog id="guard" aria-labelledby="gdTitle" style="border:1px solid var(--line-strong);border-radius:12px;padding:22px;width:min(440px,calc(100vw - 32px));background:var(--panel);color:var(--fg)">
+  <form id="gdForm" method="dialog">
+    <h3 id="gdTitle" style="font-size:16px"></h3>
+    <p class="note" id="gdText" style="margin:8px 0 14px;color:var(--fg)"></p>
+    <div class="field"><label for="gdCode" id="gdLabel">Administrator access code</label><input type="password" id="gdCode" autocomplete="off" required></div>
+    <p class="note" id="gdMsg" style="color:var(--bad);min-height:16px"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+      <button class="btn ghost" type="button" id="gdCancel">Cancel</button>
+      <button class="btn danger" type="submit" id="gdOk" style="background:var(--bad);border-color:var(--bad);color:#fff">Confirm</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="track" aria-labelledby="trTitle">
   <div class="tr-head"><div><h3 id="trTitle"></h3><div class="tr-sub" id="trSub"></div><div class="tr-meta" id="trMeta"></div></div>
     <button class="btn ghost" type="button" id="trClose" style="align-self:flex-start;padding:4px 10px">Close</button></div>
@@ -1242,7 +1254,7 @@ async function logEvent(entry) {
 }
 function renderLog() {
   const t = $("tblLog"); if (!t) return;
-  const kind = { "CPR queue": "info", "PO data": "good", "Hospital PIC List": "muted", "Allocation": "warn", "Reassignment": "serious", "Absence": "muted", "Progress update": "good", "Dismissed CPR": "muted", "Data deleted": "bad" };
+  const kind = { "CPR queue": "info", "PO data": "good", "Hospital PIC List": "muted", "Allocation": "warn", "Reassignment": "serious", "Absence": "muted", "Progress update": "good", "Dismissed CPR": "muted", "Data deleted": "bad", "Reallocate all": "serious" };
   renderTable(t, [
     { key: "at", label: "Time", sortable: false, render: (r) => fmtStamp(r.at) },
     { key: "type", label: "Type", sortable: false, render: (r) => pill(logType(r.type), kind[logType(r.type)] || "muted") },
@@ -1272,6 +1284,33 @@ function renderSavedInfo() {
   info.textContent = `File: ${META.fileName || "–"} · ${fmtInt(RECS.length)} CPRs · saved ${fmtStamp(SAVED_AT)} · Hospital PIC List: ${PIC_LIST ? fmtInt(Object.keys(PIC_LIST).length) + " hospitals" : "not uploaded"} · `
     + (META.hasKa ? "Validation mode: the allocation is recalculated on every run and is not locked." : `${fmtInt(LOCKED.size)} CPRs have a fixed KA from previous allocations.`);
 }
+// destructive actions: a confirmation window + the administrator access code typed again
+// (without the online database there is no code, so the word CONFIRM is typed instead)
+async function codeIsAdmin(code) {
+  try {
+    const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/rpc/cpr_access_level`, { method: "POST", headers: { ...sbHeaders(), "x-access-code": code }, body: "{}" });
+    return res.ok && (await res.json()) === "admin";
+  } catch { return false; }
+}
+function confirmWithCode(title, text, okLabel) {
+  return new Promise((resolve) => {
+    const dlg = $("guard");
+    $("gdTitle").textContent = title; $("gdText").textContent = text; $("gdOk").textContent = okLabel || "Confirm";
+    $("gdLabel").textContent = SB ? "Administrator access code" : "Type CONFIRM to continue";
+    $("gdCode").value = ""; $("gdMsg").textContent = "";
+    const done = (ok) => { dlg.close(); $("gdForm").onsubmit = null; $("gdCancel").onclick = null; resolve(ok); };
+    $("gdCancel").onclick = () => done(false);
+    dlg.oncancel = () => done(false);
+    $("gdForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const code = $("gdCode").value.trim();
+      $("gdMsg").textContent = "Checking …";
+      const ok = SB ? await codeIsAdmin(code) : code === "CONFIRM";
+      if (ok) done(true); else $("gdMsg").textContent = SB ? "Incorrect administrator code. Nothing was changed." : "Please type CONFIRM exactly.";
+    };
+    dlg.showModal(); setTimeout(() => $("gdCode").focus(), 0);
+  });
+}
 // destructive buttons need a second click within 5 seconds
 function confirmTwice(btn, text) {
   if (btn.dataset.armed === "1") { btn.dataset.armed = ""; btn.textContent = btn.dataset.label; btn.classList.remove("danger"); return true; }
@@ -1280,11 +1319,11 @@ function confirmTwice(btn, text) {
   return false;
 }
 $("btnResetAlloc").addEventListener("click", async () => {
-  if (!DB || !confirmTwice($("btnResetAlloc"), "Click again: existing KAs will be cleared and all CPRs reallocated")) return;
-  try { setStatus("Clearing previous allocation …"); await clearAlloc(); await runSimulation(); } catch (err) { setStatus("Failed: " + (err.message || err.code)); }
+  if (!DB || !(await confirmWithCode("Reallocate all CPRs?", "All saved Key Account assignments will be cleared and every CPR in the selected period will be allocated again using the current settings. CPRs already being processed may move to a different KA. Supervisor reassignments are kept. This cannot be undone.", "Reallocate all"))) return;
+  try { setStatus("Clearing previous allocation …"); await logEvent({ type: "Reallocate all", cpr: LOCKED.size, note: `${fmtInt(LOCKED.size)} saved assignments cleared and reallocated (confirmed with administrator code)` }); await clearAlloc(); await runSimulation(); } catch (err) { setStatus("Failed: " + (err.message || err.code)); }
 });
 $("btnClearSaved").addEventListener("click", async () => {
-  if (!DB || !confirmTwice($("btnClearSaved"), "Click again to delete all stored data")) return;
+  if (!DB || !(await confirmWithCode("Delete all stored data?", "The CPR queue, PO Data, Hospital PIC List, allocations, absences and dismissed CPRs will be deleted. The activity log and reassignment log are kept. This cannot be undone.", "Delete all data"))) return;
   try {
     setStatus("Deleting stored data …");
     // the activity log and the reassignment log are history: they are kept, and the deletion itself is recorded
@@ -1785,8 +1824,8 @@ function showRunInfo() {
   const tiles = $("simTiles"); tiles.classList.remove("flash"); void tiles.offsetWidth; tiles.classList.add("flash");
 }
 $("sReset").addEventListener("click", async () => {
-  if (!DB || !confirmTwice($("sReset"), "Click again: all CPRs will be reallocated")) return;
-  try { setStatus("Clearing previous allocation …"); await clearAlloc(); await runSimulation(); setStatus("All CPRs have been reallocated using the current settings."); }
+  if (!DB || !(await confirmWithCode("Reallocate all CPRs?", "All saved Key Account assignments will be cleared and every CPR in the selected period will be allocated again using the current settings. CPRs already being processed may move to a different KA. Supervisor reassignments are kept. This cannot be undone.", "Reallocate all"))) return;
+  try { setStatus("Clearing previous allocation …"); await logEvent({ type: "Reallocate all", cpr: LOCKED.size, note: `${fmtInt(LOCKED.size)} saved assignments cleared and reallocated (confirmed with administrator code)` }); await clearAlloc(); await runSimulation(); setStatus("All CPRs have been reallocated using the current settings."); }
   catch (err) { setStatus("Failed: " + (err.message || err.code)); }
 });
 $("sRun").addEventListener("click", () => runSimulation());
