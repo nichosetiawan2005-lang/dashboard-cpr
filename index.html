@@ -1970,7 +1970,8 @@ function simulate() {
       if (!c.ka) continue; add(L, c, -1); c.s1 = day; c.s2 = day + c.w1 + c.f2; add(L, c, 1);
       checkAbsence(c);
       // automatic rule 2: on arrival (before work starts) the KA is over the limit and another present KA still has room
-      if (!(c.transfer && c.transfer.by === "SPV") && notStarted(c) && peak(L, c.ka, review1Offs(c), 0) > maxPerDay) {
+      // only for CPRs given a KA in this run: a KA saved in an earlier allocation never moves because of workload
+      if (!c.locked && !(c.transfer && c.transfer.by === "SPV") && notStarted(c) && peak(L, c.ka, review1Offs(c), 0) > maxPerDay) {
         const { best, bestPeak } = bestKa(c, activeDays(c), c.ka);
         if (best && bestPeak <= maxPerDay) moveTo(c, best, `${kaLabel(c.ka)} exceeded the limit of ${fmtNum(maxPerDay)} CPRs/day when the CPR arrived`);
       }
