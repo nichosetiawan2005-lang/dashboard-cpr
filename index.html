@@ -379,6 +379,7 @@ body.locked #loginForm .btn { width: 100%; }
     <p class="note" id="bkNote"></p>
     <div class="section-title"><h2>1. Is the forecast accurate?</h2><p>Each CPR that has actually reached the KA is compared with its forecast. Forecasts are produced only from data preceding the period, so this is an out-of-sample test.</p></div>
     <div class="tiles" id="bkFcTiles"></div>
+    <div class="card" style="margin-top:12px"><h3>Model selection</h3><div class="sub">Same procedure as the analysis notebook: each candidate is trained on older history and tested on the 3 months before the period (2026-process CPRs); the lowest validation MAE is chosen and retrained on all history.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
     <div class="card" style="margin-top:12px"><h3>Mean absolute forecast error per week</h3><div class="sub">Lower values indicate higher accuracy. Compared against a simple baseline (median per hospital).</div><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
     <div class="section-title"><h2>2. Is the KA workload more evenly distributed?</h2><p id="bkLoadDesc"></p></div>
     <div class="tbl-wrap"><table id="tblBkLoad"></table></div>
@@ -1093,6 +1094,7 @@ async function initDb() {
     if (pic.exists) PIC_LIST = pic.data().list || null;
     try { await loadPo(); } catch {}
     try { await loadProgress(); } catch {}
+    try { await loadTrain(); await loadModelChoice(); } catch {}
     await loadLog(); renderLog(); await loadSpv();
     if (!meta.exists) { renderSavedInfo(); renderQuality(); renderKa(); return; }
     setStatus("Loading stored data …");
@@ -1298,6 +1300,9 @@ $("btnClearSaved").addEventListener("click", async () => {
     const gm = await DB.doc("progress/meta").get(); const gn = gm.exists ? gm.data().chunks || 0 : 0;
     for (let i = 0; i < gn; i++) await DB.doc("progress/chunk-" + i).delete();
     await DB.doc("progress/meta").delete(); await DB.doc("spv/ignored").delete();
+    const tm = await DB.doc("train/meta").get(); const tn = tm.exists ? tm.data().chunks || 0 : 0;
+    for (let i = 0; i < tn; i++) await DB.doc("train/chunk-" + i).delete();
+    await DB.doc("train/meta").delete(); await DB.doc("settings/models").delete();
     await clearAlloc();
     location.reload();
   } catch (err) { setStatus("Deletion failed: " + (err.message || err.code)); }
@@ -1525,6 +1530,7 @@ async function loadProgress() {
 // read a Data PO file as progress: adds to the saved progress, returns a short summary
 async function updateProgress(file, rows) {
   const { map, maxDay } = buildProgress(rows);
+  updateTrain(rows);   // forecast history
   const doneBefore = new Set(RECS.filter((r) => r.done).map((r) => r.cpr));
   const stepBefore = new Map(RECS.map((r) => [r.cpr, [r.kaOut, r.back, r.backOut].join("|")]));
   for (const [cpr, p] of map) PROG.set(cpr, p); // newer file wins
@@ -1538,7 +1544,7 @@ async function updateProgress(file, rows) {
   let saved = "";
   if (DB && canSave()) {
     try {
-      await saveProgress(); if (RECS.length && !IS_SAMPLE) await saveData();
+      await saveProgress(); await saveTrain(); if (RECS.length && !IS_SAMPLE) await saveData();
       await logEvent({ type: "Progress update", file: file.name, rows: rows.length, cpr: inWorklot.length, note: `${changed} CPRs changed stage, ${finished} CPRs completed (converted into PO / rejected), ${noUpdate} queued CPRs not yet in PO Data` });
     } catch (err) { saved = ` Progress could not be saved: ${saveErrorText(err)}.`; }
   }
@@ -1715,40 +1721,281 @@ function solveLinear(A, b) {
   }
   return M.map((row, i) => (Math.abs(row[i]) < 1e-12 ? 0 : row[n] / row[i]));
 }
-function fitF1Model(train) {
-  // cap = 95th percentile of the history: no forecast may go beyond what 95% of past CPRs needed
-  const cap = Math.max(1, quantile(train.map((r) => r.f1), 0.95) ?? 30);
-  const group = (key) => { const g = new Map(); for (const r of train) { const k = key(r); if (k === null) continue; if (!g.has(k)) g.set(k, []); g.get(k).push(r.f1); } return g; };
-  const toMap = (g, fn) => new Map([...g].map(([k, a]) => [k, fn(a)]));
-  const allMed = median(train.map((r) => r.f1)), allMean = mean(train.map((r) => r.f1));
-  const unitMedAll = toMap(group((r) => r.unit), median), unitMeanAll = toMap(group((r) => r.unit), mean);
-  const unitMedNew = toMap(group((r) => (r.create >= NEW_PROCESS_FROM ? r.unit : null)), median);
-  // capex category is left out: the daily CPRHistory export has no such column (test MAE 3.38 vs 3.33 days with it)
-  const features = (r) => {
-    const medAll = unitMedAll.get(r.unit) ?? allMed;
-    return [1, medAll, unitMeanAll.get(r.unit) ?? allMean, unitMedNew.get(r.unit) ?? medAll, r.create >= NEW_PROCESS_FROM ? 1 : 0,
-      weekday(r.create), dayToDate(r.create).getUTCMonth() + 1];
+/* ---------- Forecast models: same method as the analysis notebook (Untitled1.ipynb) ----------
+   Training data = PO Data / CPR_Cleaned history: one record per CPR (first row of the file, like drop_duplicates).
+   Forecast 1 = days from CPR created to "Date Received CPR by Key Account HO"
+   Forecast 2 = days from "Date Approved CPR by Key Account HO" to "Date Received CPR by PurchasingHO"
+   Both learn log(1 + days). Candidates = Linear Regression (alpha 0, 0.1, 1, 10, 100) and XGBoost
+   (300 trees, max_depth 2/3/4, learning_rate 0.03/0.1, absolute error). The model with the lowest MAE on the
+   validation window (the 3 months before the period, 2026-process CPRs only) is chosen, then retrained on all history. */
+let TRAIN = new Map(), TRAIN_META = null;
+const TRAIN_FIELDS = ["cpr", "unit", "create", "kaIn", "kaOut", "back", "isNew", "capex", "text"];
+const ITEM_COL = "Item Description", SUBJECT_COL = "Subject";
+const cleanText = (subject, item) => (String(subject ?? "") + " " + String(item ?? "")).toLowerCase().split("ecat:").join("");
+function updateTrain(rows) {
+  const seen = new Set(); let added = 0;
+  for (const r of rows) {
+    const cpr = r[COL.cpr]; if (!cpr || seen.has(cpr)) continue;   // first row of the CPR, like drop_duplicates
+    seen.add(cpr);
+    if (!TRAIN.has(String(cpr))) added++;
+    const unit = r[COL.unit] ? String(r[COL.unit]).trim() : null;
+    TRAIN.set(String(cpr), {
+      cpr: String(cpr), unit, create: toDay(r[COL.create]), kaIn: toDay(r[COL.kaIn]), kaOut: toDay(r[COL.kaOut]), back: toDay(r[COL.back]),
+      isNew: r[COL.ka] !== null && r[COL.ka] !== undefined && String(r[COL.ka]).trim() !== "" ? 1 : 0,   // 1 = 2026 KA process
+      capex: r[COL.capex] !== null && r[COL.capex] !== undefined && String(r[COL.capex]).trim() !== "" ? String(r[COL.capex]) : null,
+      text: cleanText(r[SUBJECT_COL], r[ITEM_COL]).slice(0, 300)
+    });
+  }
+  TRAIN_META = { count: TRAIN.size, savedAt: new Date().toISOString(), version: (TRAIN_META ? TRAIN_META.version || 0 : 0) + 1 };
+  MODELS = null;
+  return added;
+}
+async function saveTrain() {
+  if (!DB || !canSave()) return;
+  const rows = [...TRAIN.values()].map((t) => TRAIN_FIELDS.map((k) => t[k] ?? null));
+  const n = Math.ceil(rows.length / CHUNK);
+  const old = await DB.doc("train/meta").get(); const oldN = old.exists ? old.data().chunks || 0 : 0;
+  for (let i = 0; i < n; i++) await DB.doc("train/chunk-" + i).set({ rows: rows.slice(i * CHUNK, (i + 1) * CHUNK) });
+  for (let i = n; i < oldN; i++) await DB.doc("train/chunk-" + i).delete();
+  await DB.doc("train/meta").set({ ...TRAIN_META, chunks: n });
+}
+async function loadTrain() {
+  if (!DB) return;
+  const meta = await DB.doc("train/meta").get(); if (!meta.exists) return;
+  TRAIN_META = meta.data();
+  const chunks = await Promise.all(Array.from({ length: TRAIN_META.chunks || 0 }, (_, i) => DB.doc("train/chunk-" + i).get()));
+  TRAIN = new Map();
+  for (const c of chunks) for (const a of c.exists ? c.data().rows : []) { const t = {}; TRAIN_FIELDS.forEach((k, i) => { t[k] = a[i]; }); TRAIN.set(t.cpr, t); }
+}
+
+// ---- numpy-style helpers ----
+const roundHalfEven = (x) => { const f = Math.floor(x), d = x - f; if (d > 0.5) return f + 1; if (d < 0.5) return f; return f % 2 === 0 ? f : f + 1; };
+const monthOf = (d) => dayToDate(d).getUTCMonth() + 1;
+function nanMedian(a) { const v = a.filter((x) => x !== null && x !== undefined && !isNaN(x)); return v.length ? median(v) : NaN; }
+function groupStat(rows, key, val, fn) { const g = new Map(); for (const r of rows) { const k = key(r); if (k === null || k === undefined) continue; if (!g.has(k)) g.set(k, []); g.get(k).push(val(r)); } return new Map([...g].map(([k, a]) => [k, fn(a)])); }
+
+// ---- similarity_before: TF-IDF (sklearn defaults, min_df=2) of Subject + Item, max cosine to CPRs created earlier ----
+function similarityBefore(docs) {   // docs: [{day, text}] -> Float64Array of similarities
+  const n = docs.length, toks = docs.map((d) => (d.text.match(/[\p{L}\p{N}_]+/gu) || []).filter((w) => w.length >= 2));
+  const df = new Map(); for (const t of toks) for (const w of new Set(t)) df.set(w, (df.get(w) || 0) + 1);
+  const vocab = new Map(); for (const [w, c] of df) if (c >= 2) vocab.set(w, Math.log((1 + n) / (1 + c)) + 1);
+  const vecs = toks.map((t) => {
+    const tf = new Map(); for (const w of t) if (vocab.has(w)) tf.set(w, (tf.get(w) || 0) + 1);
+    let norm = 0; const v = []; for (const [w, c] of tf) { const x = c * vocab.get(w); v.push([w, x]); norm += x * x; }
+    norm = Math.sqrt(norm); return norm ? v.map(([w, x]) => [w, x / norm]) : [];
+  });
+  const sim = new Float64Array(n), order = docs.map((d, i) => i).filter((i) => docs[i].day !== null && docs[i].day !== undefined).sort((a, b) => docs[a].day - docs[b].day);
+  const post = new Map(), score = new Float64Array(n); let added = 0;
+  for (let s = 0; s < order.length;) {
+    let e = s; while (e < order.length && docs[order[e]].day === docs[order[s]].day) e++;
+    for (let q = s; q < e; q++) {
+      const i = order[q]; if (!added) continue;
+      const touched = [];
+      for (const [w, x] of vecs[i]) for (const [j, y] of post.get(w) || []) { if (score[j] === 0) touched.push(j); score[j] += x * y; }
+      let best = 0; for (const j of touched) { if (score[j] > best) best = score[j]; score[j] = 0; }
+      sim[i] = best;
+    }
+    for (let q = s; q < e; q++) { const i = order[q]; for (const [w, x] of vecs[i]) { if (!post.has(w)) post.set(w, []); post.get(w).push([i, x]); } added++; }
+    s = e;
+  }
+  return sim;
+}
+
+// ---- Linear Regression (sklearn Ridge, intercept not penalised) ----
+function fitRidge(X, y, alpha) {
+  const n = X.length, k = X[0].length, xm = new Array(k).fill(0); let ym = 0;
+  for (let i = 0; i < n; i++) { ym += y[i]; for (let j = 0; j < k; j++) xm[j] += X[i][j]; }
+  ym /= n; for (let j = 0; j < k; j++) xm[j] /= n;
+  const A = Array.from({ length: k }, () => new Array(k).fill(0)), b = new Array(k).fill(0);
+  for (let i = 0; i < n; i++) { const yc = y[i] - ym; for (let a = 0; a < k; a++) { const xa = X[i][a] - xm[a]; b[a] += xa * yc; for (let c = a; c < k; c++) A[a][c] += xa * (X[i][c] - xm[c]); } }
+  for (let a = 0; a < k; a++) { for (let c = 0; c < a; c++) A[a][c] = A[c][a]; A[a][a] += alpha; }
+  const w = solveLinear(A, b), b0 = ym - xm.reduce((s, v, j) => s + v * w[j], 0);
+  return (x) => b0 + x.reduce((s, v, j) => s + v * w[j], 0);
+}
+
+// ---- XGBoost (reg:absoluteerror, tree_method hist, max_bin 256, lambda 1, min_child_weight 1) ----
+function fitXgb(X, y, depth, eta, nTrees = 300) {
+  const n = X.length, k = X[0].length;
+  // bins per feature: unique values, or 256 quantile cuts
+  const cuts = []; const B = [];
+  for (let j = 0; j < k; j++) {
+    const vals = [...new Set(X.map((r) => r[j]))].sort((a, b) => a - b);
+    let c;
+    if (vals.length <= 256) c = vals.slice(0, -1).map((v, i) => (v + vals[i + 1]) / 2);
+    else { const sorted = Float64Array.from(X.map((r) => r[j])).sort(); c = Array.from({ length: 255 }, (_, i) => sorted[Math.min(n - 1, Math.floor(((i + 1) / 256) * n))]); }
+    c = [...new Set(c)]; cuts.push(c);
+    const col = new Uint16Array(n); for (let i = 0; i < n; i++) { let lo = 0, hi = c.length; const v = X[i][j]; while (lo < hi) { const m = (lo + hi) >> 1; if (v <= c[m]) hi = m; else lo = m + 1; } col[i] = lo; } B.push(col);
+  }
+  const base = median(y), pred = new Float64Array(n).fill(base), trees = [];
+  const node = new Int32Array(n);
+  for (let t = 0; t < nTrees; t++) {
+    const g = new Float64Array(n); for (let i = 0; i < n; i++) g[i] = Math.sign(pred[i] - y[i]);
+    node.fill(0); const splits = []; let nNodes = 1;
+    for (let d = 0; d < depth; d++) {
+      const level = []; // best split per node of this level
+      const G = new Float64Array(nNodes), H = new Float64Array(nNodes);
+      for (let i = 0; i < n; i++) if (node[i] >= 0) { G[node[i]] += g[i]; H[node[i]] += 1; }
+      const best = Array.from({ length: nNodes }, () => ({ gain: 0, f: -1, bin: -1 }));
+      for (let j = 0; j < k; j++) {
+        const nb = cuts[j].length + 1, hg = new Float64Array(nNodes * nb), hh = new Float64Array(nNodes * nb), col = B[j];
+        for (let i = 0; i < n; i++) { const m = node[i]; if (m < 0) continue; hg[m * nb + col[i]] += g[i]; hh[m * nb + col[i]] += 1; }
+        for (let m = 0; m < nNodes; m++) {
+          if (H[m] < 2) continue;
+          let gl = 0, hl = 0; const parent = (G[m] * G[m]) / (H[m] + 1);
+          for (let b = 0; b < nb - 1; b++) {
+            gl += hg[m * nb + b]; hl += hh[m * nb + b]; const gr = G[m] - gl, hr = H[m] - hl;
+            if (hl < 1 || hr < 1) continue;
+            const gain = 0.5 * ((gl * gl) / (hl + 1) + (gr * gr) / (hr + 1) - parent);
+            if (gain > best[m].gain + 1e-12) best[m] = { gain, f: j, bin: b };
+          }
+        }
+      }
+      // apply splits: children get ids 2m, 2m+1 in the next level; nodes that do not split become leaves (-1 - leafId)
+      const next = new Int32Array(nNodes).fill(-1);
+      let childCount = 0; const map = [];
+      for (let m = 0; m < nNodes; m++) if (best[m].f >= 0) { map[m] = childCount; childCount += 2; }
+      for (let i = 0; i < n; i++) { const m = node[i]; if (m < 0) continue; if (best[m].f < 0) { node[i] = -1 - (splits.length * 1000 + m); continue; } node[i] = map[m] + (B[best[m].f][i] <= best[m].bin ? 0 : 1); }
+      splits.push(best.map((b, m) => (b.f >= 0 ? { f: b.f, thr: cuts[b.f][b.bin], child: map[m] } : null)));
+      nNodes = childCount; if (!nNodes) break;
+      void next;
+    }
+    // leaves: value = eta * median of residuals in the leaf (XGBoost refreshes L1 leaves to the median)
+    // leaf id: a final leaf keeps its node number, a node that stopped early gets 100000 + its code
+    const leafId = new Int32Array(n); for (let i = 0; i < n; i++) leafId[i] = node[i] >= 0 ? node[i] : 100000 - 1 - node[i];
+    const leafRes = new Map();
+    for (let i = 0; i < n; i++) { let a = leafRes.get(leafId[i]); if (!a) { a = []; leafRes.set(leafId[i], a); } a.push(y[i] - pred[i]); }
+    const leafVal = new Map();
+    for (const [id, a] of leafRes) { const v = Float64Array.from(a).sort(), h = v.length >> 1; leafVal.set(id, eta * (v.length % 2 ? v[h] : (v[h - 1] + v[h]) / 2)); }
+    for (let i = 0; i < n; i++) pred[i] += leafVal.get(leafId[i]);
+    trees.push({ splits, leafVal, depthUsed: splits.length });
+  }
+  const walk = (tr, x) => {
+    let m = 0;
+    for (let d = 0; d < tr.splits.length; d++) { const s = tr.splits[d][m]; if (!s) return tr.leafVal.get(100000 + d * 1000 + m) ?? 0; m = s.child + (x[s.f] <= s.thr ? 0 : 1); }
+    return tr.leafVal.get(m) ?? 0;
   };
-  // ordinary least squares: (X'X) b = X'y
-  const k = 7, XtX = Array.from({ length: k }, () => new Array(k).fill(0)), Xty = new Array(k).fill(0);
-  for (const r of train) { const x = features(r), y = Math.log1p(r.f1); for (let i = 0; i < k; i++) { Xty[i] += x[i] * y; for (let j = 0; j < k; j++) XtX[i][j] += x[i] * x[j]; } }
-  const coef = solveLinear(XtX, Xty);
-  if (coef.some((c) => !isFinite(c))) return null;
-  const predLog = (r) => features(r).reduce((s, v, i) => s + v * coef[i], 0);
-  // spread of past errors (in log days) gives a P20-P80 range around each forecast
-  const res = train.map((r) => Math.log1p(r.f1) - predLog(r));
-  const q20 = quantile(res, 0.2), q80 = quantile(res, 0.8);
-  // safety check: if the fitted model is worse than the simple median per hospital on its own history
-  // (for example when two features carry the same information), the median per hospital is used instead
-  const fit = (r) => Math.min(cap, Math.max(0, Math.expm1(predLog(r))));
-  const maeModel = mean(train.map((r) => Math.abs(fit(r) - r.f1))), maeMedian = mean(train.map((r) => Math.abs((unitMedAll.get(r.unit) ?? allMed) - r.f1)));
-  if (!(maeModel <= maeMedian * 1.05)) return null;
-  return {
-    n: train.length,
-    cap,
-    predict: (r) => Math.min(cap, Math.max(0, Math.expm1(predLog(r)))),
-    range: (r) => [Math.min(cap, Math.max(0, Math.expm1(predLog(r) + q20))), Math.min(cap, Math.max(0, Math.expm1(predLog(r) + q80)))]
+  return (x) => trees.reduce((s, tr) => s + walk(tr, x), base);
+}
+
+// ---- features (same names and fill rules as the notebook) ----
+function f1Stats(L) {
+  const allMed = median(L.map((r) => r.y)), allMean = mean(L.map((r) => r.y));
+  return { allMed, allMean,
+    unitMed: groupStat(L, (r) => r.unit, (r) => r.y, median), unitMean: groupStat(L, (r) => r.unit, (r) => r.y, mean),
+    unitMedNew: groupStat(L.filter((r) => r.isNew === 1), (r) => r.unit, (r) => r.y, median),
+    capexMed: groupStat(L, (r) => r.capex ?? "Kosong", (r) => r.y, median) };
+}
+function f1Features(r, st) {   // unit_median_all, unit_mean_all, unit_median_new, new_process, create_day_of_week, create_month, capex_median, has_category, similarity_before
+  const medAll = st.unitMed.get(r.unit) ?? st.allMed;
+  return [medAll, st.unitMean.get(r.unit) ?? st.allMean, st.unitMedNew.get(r.unit) ?? medAll, r.isNew, weekday(r.create), monthOf(r.create),
+    st.capexMed.get(r.capex ?? "Kosong") ?? st.allMed, r.capex ? 1 : 0, r.sim ?? 0];
+}
+function f2Stats(L) {
+  const allMed = median(L.map((r) => r.y)), allMean = mean(L.map((r) => r.y));
+  return { allMed, allMean, unitMed: groupStat(L, (r) => r.unit, (r) => r.y, median), unitMean: groupStat(L, (r) => r.unit, (r) => r.y, mean),
+    unitMedNew: groupStat(L.filter((r) => r.isNew === 1), (r) => r.unit, (r) => r.y, median) };
+}
+function f2Features(r, st) {   // f2_unit_median_all, f2_unit_mean_all, f2_unit_median_new, new_process, approve_day_of_week, approve_month, recent_median_all, recent_median_unit
+  const medAll = st.unitMed.get(r.unit) ?? st.allMed;
+  return [medAll, st.unitMean.get(r.unit) ?? st.allMean, st.unitMedNew.get(r.unit) ?? medAll, r.isNew, weekday(r.approve), monthOf(r.approve), r.recentAll, r.recentUnit];
+}
+// "recent speed": median duration of CPRs that came back to KA in the 14 days (all units) / 30 days (same unit) before the approval day
+function recentSpeed(all) {
+  const done = all.filter((t) => t.back !== null && t.back !== undefined).sort((a, b) => a.back - b.back);
+  const byUnit = new Map(); for (const t of done) { if (!byUnit.has(t.unit)) byUnit.set(t.unit, []); byUnit.get(t.unit).push(t); }
+  const overall = nanMedian(all.map((t) => t.y2));
+  const windowMedian = (list, day, days) => {
+    let lo = 0, hi = list.length; while (lo < hi) { const m = (lo + hi) >> 1; if (list[m].back < day - days) lo = m + 1; else hi = m; }
+    const vals = []; for (let i = lo; i < list.length && list[i].back < day; i++) vals.push(list[i].y2);
+    return vals.length ? nanMedian(vals) : NaN;
   };
+  return (unit, day) => {
+    let a = windowMedian(done, day, 14); if (isNaN(a)) a = overall;
+    let u = windowMedian(byUnit.get(unit) || [], day, 30); if (isNaN(u)) u = a;
+    return [a, u];
+  };
+}
+
+// ---- model selection (lowest validation MAE), as in the notebook ----
+const CANDIDATES = [
+  ...[0, 0.1, 1, 10, 100].map((a) => ({ family: "Linear Regression", setting: `alpha=${a}`, fit: (X, y) => fitRidge(X, y, a) })),
+  ...[2, 3, 4].flatMap((d) => [0.03, 0.1].map((lr) => ({ family: "XGBoost", setting: `max_depth=${d}, learning_rate=${lr}`, fit: (X, y) => fitXgb(X, y, d, lr) })))
+];
+const findCandidate = (sel) => CANDIDATES.find((c) => c.family === sel.family && c.setting === sel.setting);
+function chooseModel(tuneTrain, tuneVal, stats, feats) {
+  const st = stats(tuneTrain), X = tuneTrain.map((r) => feats(r, st)), y = tuneTrain.map((r) => Math.log1p(r.y)), Xv = tuneVal.map((r) => feats(r, st));
+  const rows = [];
+  for (const c of CANDIDATES) {
+    const f = c.fit(X, y);
+    const mae = mean(Xv.map((x, i) => Math.abs(Math.max(0, Math.expm1(f(x))) - tuneVal[i].y)));
+    rows.push({ family: c.family, setting: c.setting, valMae: mae });
+  }
+  const bestPerFamily = ["Linear Regression", "XGBoost"].map((fam) => rows.filter((r) => r.family === fam).sort((a, b) => a.valMae - b.valMae)[0]);
+  const chosen = bestPerFamily.slice().sort((a, b) => a.valMae - b.valMae)[0];
+  return { chosen, bestPerFamily, nTune: tuneTrain.length, nVal: tuneVal.length };
+}
+const threeMonthsBefore = (day) => { const d = dayToDate(day); return toDay(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 3, d.getUTCDate())).toISOString()); };
+
+// MODELS = { key, f1: {...}, f2: {...} } - kept in memory; the chosen setting is saved so other visits skip the tuning
+let MODELS = null;
+const choiceKey = (start) => `${TRAIN_META ? TRAIN_META.version : 0}|${TRAIN.size}|${start}`;   // tuning depends only on the history
+const modelKey = (start) => `${choiceKey(start)}|${RECS.length}`;
+async function ensureModels(start, onStatus) {
+  if (start === null || TRAIN.size < 100) { MODELS = null; return; }
+  const key = modelKey(start);
+  if (MODELS && MODELS.key === key) return;
+  const all = [...TRAIN.values()].map((t) => ({ ...t, y: diff(t.kaIn, t.create), y2: diff(t.back, t.kaOut) }));
+  // similarity over every CPR text: history + queue CPRs that are not in the history file
+  const docs = all.map((t) => ({ day: t.create, text: t.text }));
+  const queueOnly = IS_SAMPLE ? [] : RECS.filter((r) => !TRAIN.has(r.cpr));
+  for (const r of queueOnly) docs.push({ day: r.create, text: cleanText(r.vendorName, "") });
+  onStatus && onStatus("Preparing forecast features …"); await new Promise((r) => setTimeout(r, 10));
+  const sim = similarityBefore(docs);
+  all.forEach((t, i) => { t.sim = sim[i]; });
+  const simByCpr = new Map(all.map((t) => [t.cpr, t.sim])); queueOnly.forEach((r, i) => simByCpr.set(r.cpr, sim[all.length + i]));
+  const recent = recentSpeed(all);
+  // Forecast 1 history: created before the period start
+  const f1All = all.filter((t) => t.y !== null && t.create !== null && t.create < start);
+  // Forecast 2 history: KA approved before the period start
+  const f2All = all.filter((t) => t.y2 !== null && t.kaOut !== null && t.kaOut < start).map((t) => { const [a, u] = recent(t.unit, t.kaOut); return { ...t, y: t.y2, approve: t.kaOut, recentAll: a, recentUnit: u }; });
+  const valStart = threeMonthsBefore(start);
+  const saved = MODEL_CHOICE && MODEL_CHOICE.key === choiceKey(start) ? MODEL_CHOICE : null;
+  const pick = async (label, hist, dateOf, stats, feats, savedSel) => {
+    if (hist.length < 100) return null;
+    let sel = savedSel;
+    if (!sel) {
+      const tuneTrain = hist.filter((r) => dateOf(r) < valStart), tuneVal = hist.filter((r) => dateOf(r) >= valStart && r.isNew === 1);
+      if (tuneTrain.length < 100 || tuneVal.length < 20) sel = { chosen: { family: "Linear Regression", setting: "alpha=0", valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length };
+      else { onStatus && onStatus(`Selecting the best ${label} model (Linear Regression vs XGBoost) …`); await new Promise((r) => setTimeout(r, 10)); sel = chooseModel(tuneTrain, tuneVal, stats, feats); }
+    }
+    // retrain the chosen setting on all history
+    const st = stats(hist), X = hist.map((r) => feats(r, st)), y = hist.map((r) => Math.log1p(r.y));
+    const f = findCandidate(sel.chosen).fit(X, y);
+    const res = hist.map((r, i) => y[i] - f(X[i]));   // residuals in log days: P20-P80 range
+    return { ...sel, n: hist.length, st, f, q20: quantile(res, 0.2), q80: quantile(res, 0.8) };
+  };
+  const f1 = await pick("arrival", f1All, (r) => r.create, f1Stats, f1Features, saved && saved.f1);
+  const f2 = await pick("return", f2All, (r) => r.approve, f2Stats, f2Features, saved && saved.f2);
+  MODELS = { key, f1, f2, simByCpr, recent, valStart };
+  const strip = (m) => (m ? { chosen: m.chosen, bestPerFamily: m.bestPerFamily, nTune: m.nTune, nVal: m.nVal } : null);
+  MODEL_CHOICE = { key: choiceKey(start), f1: strip(f1), f2: strip(f2) };
+  if (!saved && DB && canSave()) { try { await DB.doc("settings/models").set(MODEL_CHOICE); } catch {} }
+}
+let MODEL_CHOICE = null;
+async function loadModelChoice() { if (!DB) return; try { const d = await DB.doc("settings/models").get(); MODEL_CHOICE = d.exists ? d.data() : null; } catch { MODEL_CHOICE = null; } }
+// prediction for one queue CPR (rounded like np.round)
+function predictF1(r) {
+  const m = MODELS && MODELS.f1; if (!m) return null;
+  const t = TRAIN.get(r.cpr);
+  const row = { unit: r.unit, create: r.create, isNew: 1, capex: t ? t.capex : null, sim: MODELS.simByCpr.get(r.cpr) ?? 0 };
+  const lg = m.f(f1Features(row, m.st));
+  return { days: roundHalfEven(Math.max(0, Math.expm1(lg))), lo: roundHalfEven(Math.max(0, Math.expm1(lg + m.q20))), hi: roundHalfEven(Math.max(0, Math.expm1(lg + m.q80))) };
+}
+function predictF2(r, approveDay) {
+  const m = MODELS && MODELS.f2; if (!m) return null;
+  const [a, u] = MODELS.recent(r.unit, approveDay);
+  const row = { unit: r.unit, isNew: 1, approve: approveDay, recentAll: a, recentUnit: u };
+  return roundHalfEven(Math.max(0, Math.expm1(m.f(f2Features(row, m.st)))));
 }
 
 /* ---------- Simulation (DSS allocation) ---------- */
@@ -1756,6 +2003,7 @@ async function runSimulation(opts = {}) {
   const btn = $("sRun"); btn.disabled = true; btn.textContent = "Calculating …";
   await new Promise((r) => setTimeout(r, 20));
   const t0 = performance.now();
+  try { await ensureModels(isoToDay($("sFrom").value), (m) => { btn.textContent = m; setStatus(m); }); } catch (err) { MODELS = null; }
   try { SIM = simulate(); SIM.ms = performance.now() - t0; syncLoadDates(); } catch (err) { SIM = null; SIM_KA = new Map(); }
   btn.disabled = false; btn.textContent = "Run allocation";
   if (SIM && opts.save !== false && canSave() && !IS_SAMPLE) {
@@ -1822,14 +2070,11 @@ function simulate() {
   const unitMed = (list, key) => { const g = new Map(); for (const r of list) { if (r[key] === null) continue; if (!g.has(r.unit)) g.set(r.unit, []); g.get(r.unit).push(r[key]); } const out = {}; for (const [u, a] of g) out[u] = median(a); return out; };
   const f1Unit = unitMed(base, "f1"), f2Unit = unitMed(baseF2, "f2");
   const f1All = median(base.map((r) => r.f1)) ?? 2, f2All = median(baseF2.map((r) => r.f2)) ?? 4;
-  // Forecast 1 = Linear Regression fitted on every CPR created before the period (all years, like the notebook);
-  // falls back to the median per hospital when there is too little history
-  const f1Train = POOL.filter((r) => r.create !== null && r.create < start && r.f1 !== null);
-  const f1Model = f1Train.length >= 100 ? fitF1Model(f1Train) : null;
-  // the median fallbacks are capped the same way (95th percentile of the history)
-  const f1Cap = Math.max(1, quantile(base.map((r) => r.f1), 0.95) ?? 30), f2Cap = Math.max(1, quantile(baseF2.map((r) => r.f2), 0.95) ?? 30);
-  const f1Pred = (r) => Math.round(f1Model ? f1Model.predict(r) : Math.min(f1Cap, f1Unit[r.unit] ?? f1All));
-  const f1Range = (r) => (f1Model ? f1Model.range(r).map(Math.round) : [null, null]);
+  // Forecast 1 and 2 = the model chosen by validation MAE (see ensureModels); median per hospital when there is no PO Data history
+  const useModels = MODELS && MODELS.key === modelKey(start);
+  const f1Pred = (r) => { const p = useModels ? predictF1(r) : null; return p ? p.days : Math.round(f1Unit[r.unit] ?? f1All); };
+  const f1Range = (r) => { const p = useModels ? predictF1(r) : null; return p ? [p.lo, p.hi] : [null, null]; };
+  const f2Pred = (r, approveDay) => { const p = useModels ? predictF2(r, approveDay) : null; return p !== null ? p : Math.round(f2Unit[r.unit] ?? f2All); };
   // P80 of "KA approve -> back to KA": beyond this a CPR counts as stuck at the approvers
   const f2P80 = quantile(baseF2.map((r) => r.f2), 0.8) ?? 7;
   const w1 = Math.max(1, Math.round(median(base.map((r) => r.rev1)) ?? 1));
@@ -1929,10 +2174,13 @@ function simulate() {
     const c = {
       r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2, transfer: tr || null,
       f1Lo: lo, f1Hi: hi, f1Base: Math.round(f1Unit[r.unit] ?? f1All), f2P80,
-      f1: f1Pred(r), f2: Math.round(Math.min(f2Cap, f2Unit[r.unit] ?? f2All)), // forecasts always use the latest model; only the KA is locked
+      f1: f1Pred(r), f2: null, // forecasts always use the latest model; only the KA is locked
       lock: lock && kaList.includes(lock.ka) ? lock : null
     };
-    c.predArrival = r.create + c.f1; c.s1 = c.predArrival; c.s2 = c.s1 + w1 + c.f2;
+    c.predArrival = r.create + c.f1;
+    // Forecast 2 starts at the KA approval: the actual date from PO Data, else arrival + Sequence 3 duration
+    c.f2 = f2Pred(r, r.kaOut !== null ? r.kaOut : (r.kaIn ?? c.predArrival) + w1);
+    c.s1 = c.predArrival; c.s2 = c.s1 + w1 + c.f2;
     push(byCreate, r.create, c); if (r.kaIn !== null) push(byArrive, r.kaIn, c); if (r.kaOut !== null) push(byKaOut, r.kaOut, c); if (r.back !== null) push(byBack, r.back, c);
   }
   const vendorHolder = (vendor, day) => { if (!hasVendor(vendor)) return null; for (const x of byVendor.get(vendor) || []) if (holding(x, day)) return x.ka; return null; };
@@ -1991,7 +2239,10 @@ function simulate() {
   for (const c of assigned) rules[c.rule] = (rules[c.rule] || 0) + 1;
   SIM_KA = new Map(assigned.map((c) => [c.r.cpr, c.ka]));
   return {
-    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, histCount: f1Train.length, f1Method: f1Model ? "Linear Regression" : "median per hospital",
+    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All,
+    histCount: useModels && MODELS.f1 ? MODELS.f1.n : 0, models: useModels ? MODELS : null,
+    f1Method: useModels && MODELS.f1 ? `${MODELS.f1.chosen.family} (${MODELS.f1.chosen.setting})` : "median per hospital",
+    f2Method: useModels && MODELS.f2 ? `${MODELS.f2.chosen.family} (${MODELS.f2.chosen.setting})` : "median per hospital",
     kaList, workDays, actual: actualTbl ? summarize(actualTbl) : null, dss: summarize(dssTbl), rules, assigned, actualCount, dssCount,
     same: META.hasKa ? assigned.filter((c) => c.ka === c.r.ka).length / assigned.length : null, load: L, actualLoad: actualL, minDay, nDays, n: test.length,
     open: assigned.filter((c) => c.r.backOut === null).length, autoTransfers, f2P80
@@ -2049,7 +2300,8 @@ function renderSim() {
     { name: "DSS", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) },
     { name: "Actual", color: "var(--s2)", values: kas.map((k) => s.actualCount[k] || 0) }
   ] : [{ name: "CPR", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) }], { dec: 0, label: "Number of CPRs per KA" });
-  $("simNote").textContent = `Arrival at KA (Forecast 1): ${s.f1Method === "Linear Regression" ? `Linear Regression trained on ${fmtInt(s.histCount)} CPRs preceding this period (best-performing model in the analysis notebook)` : "median per hospital, because fewer than 100 historical CPRs are available"}. Return to KA (Forecast 2): median per hospital. Review duration is assumed to be ${s.w1} day${s.w1 === 1 ? "" : "s"} (Sequence 3) and ${s.w2} day${s.w2 === 1 ? "" : "s"} (Sequence 8). Workload limit: ${fmtNum(s.maxPerDay)} CPRs per KA per day${s.userMax ? " (set manually)" : " (automatic)"}.`;
+  const mtxt = (m, what) => (m ? `${m.chosen.family} (${m.chosen.setting})${m.chosen.valMae !== null && m.chosen.valMae !== undefined ? `, chosen by the lowest validation MAE (${fmtNum(m.chosen.valMae, 2)} days)` : ""}, trained on ${fmtInt(m.n)} CPRs from PO Data` : `median per hospital, because fewer than 100 CPRs with ${what} are available in PO Data`);
+  $("simNote").textContent = `Arrival at KA (Forecast 1): ${mtxt(s.models && s.models.f1, "an arrival date")}. Return to KA (Forecast 2): ${mtxt(s.models && s.models.f2, "a return date")}. Review duration is assumed to be ${s.w1} day${s.w1 === 1 ? "" : "s"} (Sequence 3) and ${s.w2} day${s.w2 === 1 ? "" : "s"} (Sequence 8). Workload limit: ${fmtNum(s.maxPerDay)} CPRs per KA per day${s.userMax ? " (set manually)" : " (automatic)"}.`;
   incState.page = 0; renderIncoming();
 }
 const assignLabel = (c) => (c.isNewAssign ? "New" : c.locked ? "Fixed" : "Not saved");
@@ -2423,8 +2675,21 @@ function actualFromPo() {
     highest: Math.max(...tbl.flat()), counts, n: list.length, from, to, sameCprs, avg: mean(tbl.flat()) };
 }
 function renderBukti() {
-  const clear = () => { for (const id of ["bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
+  const clear = () => { for (const id of ["tblModels", "bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
   if (!SIM) { clear(); $("bkNote").textContent = "Please run the allocation in the CPR Allocation tab first."; return; }
+  const mRows = [];
+  for (const [label, m] of [["Forecast 1 · arrival at KA", SIM.models && SIM.models.f1], ["Forecast 2 · return to KA", SIM.models && SIM.models.f2]]) {
+    if (!m) { mRows.push({ fc: label, model: "Median per hospital", setting: "–", mae: null, chosen: true }); continue; }
+    if (!m.bestPerFamily.length) mRows.push({ fc: label, model: m.chosen.family, setting: m.chosen.setting, mae: null, chosen: true });
+    for (const b of m.bestPerFamily) mRows.push({ fc: label, model: b.family, setting: b.setting, mae: b.valMae, chosen: b.family === m.chosen.family && b.setting === m.chosen.setting });
+  }
+  renderTable($("tblModels"), [
+    { key: "fc", label: "Forecast", sortable: false },
+    { key: "model", label: "Model", sortable: false },
+    { key: "setting", label: "Best setting", sortable: false },
+    { key: "mae", label: "Validation MAE (days)", num: true, sortable: false, render: (r) => (r.mae === null ? "–" : fmtNum(r.mae, 2)) },
+    { key: "chosen", label: "", sortable: false, render: (r) => (r.chosen ? pill("Chosen", "good") : "") }
+  ], mRows);
   $("bkNote").textContent = `Period: CPRs created ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)} (${fmtInt(SIM.n)} CPRs).`;
   // 1) forecast accuracy on CPRs that already arrived
   const ev = SIM.assigned.filter((c) => c.r.kaIn !== null && c.r.f1 !== null && (META.hasKa || actualArrival(c.r) !== null));
@@ -2444,7 +2709,7 @@ function renderBukti() {
   const byWeek = new Map();
   for (let i = 0; i < ev.length; i++) { const wk = ev[i].r.kaIn - weekday(ev[i].r.kaIn); if (!byWeek.has(wk)) byWeek.set(wk, [[], []]); byWeek.get(wk)[0].push(Math.abs(err[i])); byWeek.get(wk)[1].push(Math.abs(errB[i])); }
   const weeks = [...byWeek.keys()].sort((a, b) => a - b).filter((w) => byWeek.get(w)[0].length >= 3);
-  $("lgFc").innerHTML = '<span><i class="line" style="background:var(--s1)"></i>Model (Linear Regression)</span><span><i class="line" style="background:var(--s2)"></i>Baseline (median per hospital)</span>';
+  $("lgFc").innerHTML = `<span><i class="line" style="background:var(--s1)"></i>Model (${SIM.f1Method})</span>` + '<span><i class="line" style="background:var(--s2)"></i>Baseline (median per hospital)</span>';
   lineChart($("chFc"), weeks, [
     { name: "Model", color: "var(--s1)", values: weeks.map((w) => mean(byWeek.get(w)[0])) },
     { name: "Median per hospital", color: "var(--s2)", values: weeks.map((w) => mean(byWeek.get(w)[1])) }
