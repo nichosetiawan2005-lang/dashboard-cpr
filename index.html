@@ -874,10 +874,13 @@ $("filePic").addEventListener("change", async (e) => {
    CPRs whose last status is rejected / cancelled are dropped. */
 // match hospital names loosely: "RSU SW" = "RSUSW", "RSU KD" = "RSUSKD", "CLINIC SOE" = "SOE"
 const picKey = (x) => String(x ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^CLINIC/, "").replace(/^RSUS(?=.)/, "RSU");
+// same hospital, different code in the data and in the PIC list
+const UNIT_ALIAS = { RSUKD: "SHKD", RSUS: "RSULV" };   // RSUSKD = SHKD, RSUS = RSUS LV
 function picNameFor(unit) {
   if (!PIC_LIST) return null;
   if (PIC_LIST[unit]) return PIC_LIST[unit];
-  const k = picKey(unit); if (!k) return null;
+  let k = picKey(unit); if (!k) return null;
+  k = UNIT_ALIAS[k] || k;
   for (const [rs, name] of Object.entries(PIC_LIST)) if (picKey(rs) === k) return name;
   return null;
 }
@@ -913,14 +916,15 @@ function pivotHistory(rows) {
   const recs = []; let dropped = 0;
   for (const [id, list] of byCpr) {
     const last = list[list.length - 1];
-    if (/reject|cancel|batal|tolak/i.test(String(last[HCOL.status] ?? ""))) { dropped++; continue; }
+    if (/reject|cancel|batal|tolak|draft/i.test(String(last[HCOL.status] ?? ""))) { dropped++; continue; }
     const req = list.filter((x) => normRole(x[HCOL.role]) === "requester" || Number(x[HCOL.seq]) === 0);
     const created = (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null;
     // entry into KA = last Approval Date BEFORE the Key Account row (Sequence 3). Rows after it
     // (division head, purchasing HO, ...) are ignored here - their progress comes from PO Data.
     const kaRow = list.find((x) => normRole(x[HCOL.role]).replace(/[^a-z]/g, "").includes("keyaccount"));
-    const beforeKa = kaRow ? list.filter((x) => Number(x[HCOL.seq]) < Number(kaRow[HCOL.seq])) : list;
-    const queueAt = beforeKa.map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort().slice(-1)[0] || null;
+    // no Key Account row yet = the CPR has not reached KA: the arrival is forecast
+    const beforeKa = kaRow ? list.filter((x) => Number(x[HCOL.seq]) < Number(kaRow[HCOL.seq])) : [];
+    const queueAt = kaRow ? (beforeKa.map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort().slice(-1)[0] || toStamp(kaRow[HCOL.submit]) || null) : null;
     const code = String(id).split("-")[1] || String(last[HCOL.unit]);
     const assetUnit = String(last[HCOL.asset] ?? "").split(".")[0].trim();
     recs.push(finishRec({
@@ -965,7 +969,7 @@ function renderHistInfo() {
   }
   const res = HIST.result;
   $("histMode").value = HIST_MODE;
-  $("histNote").textContent = `${fmtInt(HIST.rows.length)} rows → ${fmtInt(res.cprs)} CPRs (${fmtInt(res.dropped)} rejected/cancelled CPRs excluded). `
+  $("histNote").textContent = `${fmtInt(HIST.rows.length)} rows → ${fmtInt(res.cprs)} CPRs (${fmtInt(res.dropped)} rejected/cancelled/draft CPRs excluded). `
     + "Approval Date of the last step before Key Account HO = the date the CPR is sent to KA for Sequence 3. Steps from Key Account HO onward are not used. This file never marks Sequence 3 or Sequence 8 as completed; all progress after entry comes from PO Data. "
     + "This file contains no Vendor ID, so the same-vendor rule does not apply to CPRs from this file.";
   renderTable($("tblRoles"), [
@@ -1974,14 +1978,14 @@ async function ensureModels(start, onStatus) {
   const simByCpr = new Map(all.map((t) => [t.cpr, t.sim])); queueOnly.forEach((r, i) => simByCpr.set(r.cpr, sim[all.length + i]));
   const recent = recentSpeed(all);
   // Forecast 1 history: created before the period start
-  // If that holds fewer than 100 CPRs of the new (KA HO) process, learn from all history except the queue CPRs themselves.
-  const inQueue = new Set(IS_SAMPLE ? [] : RECS.map((r) => r.cpr));
+  // If that holds fewer than 100 CPRs of the new (KA HO) process, learn from all history
+  // (CPRs still waiting for KA are never in the history, so their forecast is unaffected).
   const enoughNew = (list) => list.filter((t) => t.isNew === 1).length >= 100;
   let f1All = all.filter((t) => t.y !== null && t.create !== null && t.create < start);
-  if (!enoughNew(f1All)) f1All = all.filter((t) => t.y !== null && t.create !== null && !inQueue.has(t.cpr));
+  if (!enoughNew(f1All)) f1All = all.filter((t) => t.y !== null && t.create !== null);
   // Forecast 2 history: KA approved before the period start (same fallback)
   let f2Base = all.filter((t) => t.y2 !== null && t.kaOut !== null && t.kaOut < start);
-  if (!enoughNew(f2Base)) f2Base = all.filter((t) => t.y2 !== null && t.kaOut !== null && !inQueue.has(t.cpr));
+  if (!enoughNew(f2Base)) f2Base = all.filter((t) => t.y2 !== null && t.kaOut !== null);
   const f2All = f2Base.map((t) => { const [a, u] = recent(t.unit, t.kaOut); return { ...t, y: t.y2, approve: t.kaOut, recentAll: a, recentUnit: u }; });
   const valStart = threeMonthsBefore(start);
   const saved = MODEL_CHOICE && MODEL_CHOICE.key === choiceKey(start) ? MODEL_CHOICE : null;
