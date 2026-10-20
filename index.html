@@ -875,7 +875,7 @@ $("filePic").addEventListener("change", async (e) => {
 // match hospital names loosely: "RSU SW" = "RSUSW", "RSU KD" = "RSUSKD", "CLINIC SOE" = "SOE"
 const picKey = (x) => String(x ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^CLINIC/, "").replace(/^RSUS(?=.)/, "RSU");
 // same hospital, different code in the data and in the PIC list
-const UNIT_ALIAS = { RSUKD: "SHKD", RSUS: "RSULV" };   // RSUSKD = SHKD, RSUS = RSUS LV
+const UNIT_ALIAS = { RSUKD: "SHKD", RSUS: "RSULV", SHSS: "SRONDOL" };   // RSUSKD = SHKD, RSUS = RSUS LV, SHSS = Srondol
 function picNameFor(unit) {
   if (!PIC_LIST) return null;
   if (PIC_LIST[unit]) return PIC_LIST[unit];
