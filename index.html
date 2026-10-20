@@ -916,7 +916,7 @@ function pivotHistory(rows) {
   const recs = []; let dropped = 0;
   for (const [id, list] of byCpr) {
     const last = list[list.length - 1];
-    if (/reject|cancel|batal|tolak|draft/i.test(String(last[HCOL.status] ?? ""))) { dropped++; continue; }
+    if (/reject|cancel|batal|tolak/i.test(String(last[HCOL.status] ?? ""))) { dropped++; continue; }
     const req = list.filter((x) => normRole(x[HCOL.role]) === "requester" || Number(x[HCOL.seq]) === 0);
     const created = (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null;
     // entry into KA = last Approval Date BEFORE the Key Account row (Sequence 3). Rows after it
@@ -969,7 +969,7 @@ function renderHistInfo() {
   }
   const res = HIST.result;
   $("histMode").value = HIST_MODE;
-  $("histNote").textContent = `${fmtInt(HIST.rows.length)} rows → ${fmtInt(res.cprs)} CPRs (${fmtInt(res.dropped)} rejected/cancelled/draft CPRs excluded). `
+  $("histNote").textContent = `${fmtInt(HIST.rows.length)} rows → ${fmtInt(res.cprs)} CPRs (${fmtInt(res.dropped)} rejected/cancelled CPRs excluded). `
     + "Approval Date of the last step before Key Account HO = the date the CPR is sent to KA for Sequence 3. Steps from Key Account HO onward are not used. This file never marks Sequence 3 or Sequence 8 as completed; all progress after entry comes from PO Data. "
     + "This file contains no Vendor ID, so the same-vendor rule does not apply to CPRs from this file.";
   renderTable($("tblRoles"), [
