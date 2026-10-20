@@ -377,10 +377,10 @@ body.locked #loginForm .btn { width: 100%; }
   <!-- BUKTI -->
   <section class="panel" id="panel-bukti" role="tabpanel" aria-labelledby="tab-bukti">
     <p class="note" id="bkNote"></p>
-    <div class="section-title"><h2>1. Is the forecast accurate?</h2><p>Each CPR that has actually reached the KA is compared with its forecast. Forecasts are produced only from data preceding the period, so this is an out-of-sample test.</p></div>
+    <div class="section-title"><h2>1. Is the forecast accurate?</h2><p>Same test as the analysis notebook: the model learns only from history before the last 3 months, then forecasts the CPRs of those 3 months (2026 process). These CPRs were never used to choose or train the tested model, so this is an out-of-sample test.</p></div>
     <div class="tiles" id="bkFcTiles"></div>
-    <div class="card" style="margin-top:12px"><h3>Model selection</h3><div class="sub">Same procedure as the analysis notebook: each candidate is trained on older history and tested on the 3 months before the period (2026-process CPRs); the lowest validation MAE is chosen and retrained on all history.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
-    <div class="card" style="margin-top:12px"><h3>Mean absolute forecast error per week</h3><div class="sub">Lower values indicate higher accuracy. Compared against a simple baseline (median per hospital).</div><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
+    <div class="card" style="margin-top:12px"><h3>Model selection</h3><div class="sub">Same procedure as the analysis notebook: each candidate learns from older history and is checked on a 3-month validation window (2026-process CPRs); the lowest validation MAE is chosen, tested on the latest 3 months, then retrained on all history to forecast the queue.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
+    <div class="card" style="margin-top:12px"><h3>Forecast 1: mean absolute error per week (test months)</h3><div class="sub">Lower values indicate higher accuracy. Compared against a simple baseline (median per hospital, 2026 process).</div><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
     <div class="section-title"><h2>2. Is the KA workload more evenly distributed?</h2><p id="bkLoadDesc"></p></div>
     <div class="tbl-wrap"><table id="tblBkLoad"></table></div>
     <div class="section-title"><h2>3. Are CPRs converted into POs more quickly?</h2><p id="bkPoDesc"></p></div>
@@ -905,6 +905,8 @@ function unitMapFromRecs() {
   for (const r of [...PO_RECS, ...RECS]) { const code = String(r.cpr).split("-")[1]; if (!code || !r.unit || r.unit === "(kosong)") continue; if (!g.has(code)) g.set(code, []); g.get(code).push(r.unit); }
   const out = {}; for (const [k, a] of g) out[k] = mode(a); return out;
 }
+// approval steps that come BEFORE Key Account HO in the CPR flow
+const PRE_KA_ROLES = new Set(["requester", "accounting unit", "accounting ho", "accounting staff", "purchasing head hu"]);
 function pivotHistory(rows) {
   // CPRHistory is only the queue into Key Account HO: its Approval Date is the moment the CPR is sent
   // to KA (Sequence 3). It never says that Sequence 3 or Sequence 8 is done - that comes only from PO Data.
@@ -913,15 +915,19 @@ function pivotHistory(rows) {
   const known = IS_SAMPLE ? {} : unitMapFromRecs();
   const byCpr = new Map();
   for (const r of rows) { const id = r[HCOL.cpr]; if (!id) continue; if (!byCpr.has(id)) byCpr.set(id, []); byCpr.get(id).push(r); }
-  const recs = []; let dropped = 0;
+  const recs = [], removed = []; let dropped = 0, skipped = 0;
   for (const [id, list] of byCpr) {
     const last = list[list.length - 1];
-    if (/reject|cancel|batal|tolak/i.test(String(last[HCOL.status] ?? ""))) { dropped++; continue; }
+    if (/reject|cancel|batal|tolak/i.test(String(last[HCOL.status] ?? ""))) { dropped++; removed.push(String(id)); continue; }
     const req = list.filter((x) => normRole(x[HCOL.role]) === "requester" || Number(x[HCOL.seq]) === 0);
     const created = (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null;
     // entry into KA = last Approval Date BEFORE the Key Account row (Sequence 3). Rows after it
     // (division head, purchasing HO, ...) are ignored here - their progress comes from PO Data.
-    const kaRow = list.find((x) => normRole(x[HCOL.role]).replace(/[^a-z]/g, "").includes("keyaccount"));
+    const isKaRole = (x) => normRole(x[HCOL.role]).replace(/[^a-z]/g, "").includes("keyaccount");
+    const kaRow = list.find(isKaRole);
+    // no Key Account row but already with an approver that comes after KA (division head, FC, CEO, ...):
+    // the CPR was never routed to KA HO, so it is not KA work
+    if (!kaRow && list.some((x) => !isKaRole(x) && !PRE_KA_ROLES.has(normRole(x[HCOL.role])))) { skipped++; removed.push(String(id)); continue; }
     // no Key Account row yet = the CPR has not reached KA: the arrival is forecast
     const beforeKa = kaRow ? list.filter((x) => Number(x[HCOL.seq]) < Number(kaRow[HCOL.seq])) : [];
     const queueAt = kaRow ? (beforeKa.map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort().slice(-1)[0] || toStamp(kaRow[HCOL.submit]) || null) : null;
@@ -938,7 +944,7 @@ function pivotHistory(rows) {
       stage: null, stageSince: null
     }));
   }
-  return { recs, dropped, cprs: byCpr.size };
+  return { recs, dropped, skipped, removed, cprs: byCpr.size };
 }
 // put new records over the saved ones: same CPR number -> filled values replace old ones
 // fields that the approval history describes completely: a missing value there means "not happened yet"
@@ -969,7 +975,7 @@ function renderHistInfo() {
   }
   const res = HIST.result;
   $("histMode").value = HIST_MODE;
-  $("histNote").textContent = `${fmtInt(HIST.rows.length)} rows → ${fmtInt(res.cprs)} CPRs (${fmtInt(res.dropped)} rejected/cancelled CPRs excluded). `
+  $("histNote").textContent = `${fmtInt(HIST.rows.length)} rows → ${fmtInt(res.cprs)} CPRs (${fmtInt(res.dropped)} rejected/cancelled CPRs excluded${res.skipped ? `; ${fmtInt(res.skipped)} CPRs never routed to Key Account HO excluded` : ""}). `
     + "Approval Date of the last step before Key Account HO = the date the CPR is sent to KA for Sequence 3. Steps from Key Account HO onward are not used. This file never marks Sequence 3 or Sequence 8 as completed; all progress after entry comes from PO Data. "
     + "This file contains no Vendor ID, so the same-vendor rule does not apply to CPRs from this file.";
   renderTable($("tblRoles"), [
@@ -984,7 +990,9 @@ async function applyHistory(rows, fileName, roleKa, roleBack) {
   const result = pivotHistory(rows);
   HIST = { rows, fileName, roleKa, roleBack, result };
   const feedHasKa = result.recs.some((r) => r.ka);
-  const base = IS_SAMPLE ? [] : RECS;
+  // CPRs rejected (or never routed to KA) in this upload leave the queue, even if an earlier upload saved them
+  const gone = new Set(result.removed);
+  const base = IS_SAMPLE ? [] : RECS.filter((r) => !gone.has(r.cpr));
   META.hasKa = false; void feedHasKa; // worklot data: the DSS assigns the KA
   RECS = mergeRecs(base, result.recs, HIST_KEYS).map(finishRec);
   applyProgress();
@@ -1404,15 +1412,26 @@ function buildPoRecords(rows) {
   return out;
 }
 // who did the work: the KA the DSS assigned (saved), otherwise the KA written in the file
+// username -> display name ("maria.nugraheni" -> "Puspa"), learned from files that have the "User KA" column
+let KA_NAMES = null, KA_NAMES_N = -1;
+function kaNameOf(user) {
+  if (KA_NAMES_N !== PO_RECS.length) {
+    const g = new Map(); for (const r of PO_RECS) if (r.ka && r.kaName) { const k = r.ka.toLowerCase(); if (!g.has(k)) g.set(k, []); g.get(k).push(r.kaName); }
+    KA_NAMES = new Map([...g].map(([k, a]) => [k, mode(a)])); KA_NAMES_N = PO_RECS.length;
+  }
+  return KA_NAMES.get(String(user).toLowerCase()) || null;
+}
+// performance belongs to the KA who actually did the review (KA username in PO Data);
+// the DSS allocation is used only when the file does not say who it was
 function poKa(r) {
-  const lock = LOCKED.get(r.cpr);
-  if (lock) return { ka: lock.ka, src: "dss" };
   if (r.ka) {
     if (META.hasKa) return { ka: r.ka, src: "file" };
-    const u = r.ka.toLowerCase(), name = (r.kaName || "").toLowerCase();
+    const u = r.ka.toLowerCase(), name = (r.kaName || kaNameOf(r.ka) || "").toLowerCase();
     const hit = (META.kaList || []).find((n) => u.includes(n.toLowerCase()) || name === n.toLowerCase());
-    return { ka: hit || r.kaName || r.ka, src: "file" };
+    return { ka: hit || r.kaName || kaNameOf(r.ka) || r.ka, src: "file" };
   }
+  const lock = LOCKED.get(r.cpr);
+  if (lock) return { ka: lock.ka, src: "dss" };
   return { ka: null, src: null };
 }
 async function savePo() {
@@ -1453,7 +1472,7 @@ async function loadKinerjaFile(file, rows, columns) {
     // add to the saved PO records (same CPR number -> the newer file wins)
     const poMap = new Map(PO_RECS.map((r) => [r.cpr, r]));
     const poFresh = buildPoRecords(rows);
-    for (const r of poFresh) poMap.set(r.cpr, r);
+    for (const r of poFresh) { const old = poMap.get(r.cpr); poMap.set(r.cpr, old && !r.kaName ? { ...r, kaName: old.kaName } : r); }   // keep the KA display name when the newer file has no "User KA"
     PO_RECS = [...poMap.values()];
     PO_META = { fileName: file.name, savedAt: new Date().toISOString(), chunks: Math.ceil(PO_RECS.length / CHUNK), count: PO_RECS.length, rawRows: rows.length };
     const prog = await updateProgress(file, rows);
@@ -1731,7 +1750,7 @@ for (const id of ["loadSrc", "loadFrom", "loadTo"]) $(id).addEventListener("chan
    text-similarity feature, which is too heavy for the browser; test MAE stays 3.33 days):
      unit_median_all, unit_mean_all, unit_median_new, new_process, create_day_of_week, create_month,
      capex_median, has_category
-   The model is fitted again in the browser on every run, on all CPRs created before the period. */
+   The model is fitted again in the browser on every run, on all stored history (see ensureModels for the notebook-style test). */
 const NEW_PROCESS_FROM = toDay("2026-01-01"); // the KA HO stage started in 2026
 function solveLinear(A, b) {
   // Gaussian elimination with partial pivoting: solves A x = b
@@ -1750,7 +1769,7 @@ function solveLinear(A, b) {
    Forecast 2 = days from "Date Approved CPR by Key Account HO" to "Date Received CPR by PurchasingHO"
    Both learn log(1 + days). Candidates = Linear Regression (alpha 0, 0.1, 1, 10, 100) and XGBoost
    (300 trees, max_depth 2/3/4, learning_rate 0.03/0.1, absolute error). The model with the lowest MAE on the
-   validation window (the 3 months before the period, 2026-process CPRs only) is chosen, then retrained on all history. */
+   validation window (2026-process CPRs) is chosen, tested on the latest 3 months, then retrained on all history. */
 let TRAIN = new Map(), TRAIN_META = null;
 const TRAIN_FIELDS = ["cpr", "unit", "create", "kaIn", "kaOut", "back", "isNew", "capex", "text"];
 const ITEM_COL = "Item Description", SUBJECT_COL = "Subject";
@@ -1959,13 +1978,23 @@ function chooseModel(tuneTrain, tuneVal, stats, feats) {
 }
 const threeMonthsBefore = (day) => { const d = dayToDate(day); return toDay(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 3, d.getUTCDate())).toISOString()); };
 
-// MODELS = { key, f1: {...}, f2: {...} } - kept in memory; the chosen setting is saved so other visits skip the tuning
+// MODELS = { key, f1, f2, test, ... } - kept in memory; the chosen setting and the test result are saved so other visits skip the tuning.
+// Same steps as the notebook, anchored on the latest history (not on the allocation period):
+//   test = last 3 months of history, validation = the 3 months before it, tuning train = everything older
+//   1) choose the setting with the lowest validation MAE   2) report its MAE on the test months (never used for choosing)
+//   3) retrain the chosen setting on ALL history -> forecasts for the queue
 let MODELS = null;
-const choiceKey = (start) => `${TRAIN_META ? TRAIN_META.version : 0}|${TRAIN.size}|${start}`;   // tuning depends only on the history
-const modelKey = (start) => `${choiceKey(start)}|${RECS.length}`;
-async function ensureModels(start, onStatus) {
-  if (start === null || TRAIN.size < 100) { MODELS = null; return; }
-  const key = modelKey(start);
+const choiceKey = () => `${TRAIN_META ? TRAIN_META.version : 0}|${TRAIN.size}`;   // depends only on the history
+const modelKey = () => `${choiceKey()}|${RECS.length}`;
+function testWindow(all) {
+  const last = Math.max(...all.filter((t) => t.y !== null && t.create !== null).map((t) => t.create));
+  const d = dayToDate(last);
+  const testStart = toDay(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 2, 1)).toISOString());
+  return { testStart, valStart: threeMonthsBefore(testStart) };
+}
+async function ensureModels(_start, onStatus) {
+  if (TRAIN.size < 100) { MODELS = null; return; }
+  const key = modelKey();
   if (MODELS && MODELS.key === key) return;
   const all = [...TRAIN.values()].map((t) => ({ ...t, y: diff(t.kaIn, t.create), y2: diff(t.back, t.kaOut) }));
   // similarity over every CPR text: history + queue CPRs that are not in the history file
@@ -1977,38 +2006,44 @@ async function ensureModels(start, onStatus) {
   all.forEach((t, i) => { t.sim = sim[i]; });
   const simByCpr = new Map(all.map((t) => [t.cpr, t.sim])); queueOnly.forEach((r, i) => simByCpr.set(r.cpr, sim[all.length + i]));
   const recent = recentSpeed(all);
-  // Forecast 1 history: created before the period start
-  // If that holds fewer than 100 CPRs of the new (KA HO) process, learn from all history
-  // (CPRs still waiting for KA are never in the history, so their forecast is unaffected).
-  const enoughNew = (list) => list.filter((t) => t.isNew === 1).length >= 100;
-  let f1All = all.filter((t) => t.y !== null && t.create !== null && t.create < start);
-  if (!enoughNew(f1All)) f1All = all.filter((t) => t.y !== null && t.create !== null);
-  // Forecast 2 history: KA approved before the period start (same fallback)
-  let f2Base = all.filter((t) => t.y2 !== null && t.kaOut !== null && t.kaOut < start);
-  if (!enoughNew(f2Base)) f2Base = all.filter((t) => t.y2 !== null && t.kaOut !== null);
-  const f2All = f2Base.map((t) => { const [a, u] = recent(t.unit, t.kaOut); return { ...t, y: t.y2, approve: t.kaOut, recentAll: a, recentUnit: u }; });
-  const valStart = threeMonthsBefore(start);
-  const saved = MODEL_CHOICE && MODEL_CHOICE.key === choiceKey(start) ? MODEL_CHOICE : null;
+  const f1All = all.filter((t) => t.y !== null && t.create !== null);
+  const f2All = all.filter((t) => t.y2 !== null && t.kaOut !== null).map((t) => { const [a, u] = recent(t.unit, t.kaOut); return { ...t, y: t.y2, approve: t.kaOut, recentAll: a, recentUnit: u }; });
+  const { testStart, valStart } = testWindow(all);
+  const saved = MODEL_CHOICE && MODEL_CHOICE.key === choiceKey() ? MODEL_CHOICE : null;
+  const fitOn = (sel, list, stats, feats) => { const st = stats(list), X = list.map((r) => feats(r, st)), y = list.map((r) => Math.log1p(r.y)); const f = findCandidate(sel.chosen).fit(X, y); return { st, X, y, f }; };
   const pick = async (label, hist, dateOf, stats, feats, savedSel) => {
     if (hist.length < 100) return null;
+    const before = hist.filter((r) => dateOf(r) < testStart);
     let sel = savedSel;
     if (!sel) {
-      const tuneTrain = hist.filter((r) => dateOf(r) < valStart), tuneVal = hist.filter((r) => dateOf(r) >= valStart && r.isNew === 1);
+      const tuneTrain = before.filter((r) => dateOf(r) < valStart), tuneVal = before.filter((r) => dateOf(r) >= valStart && r.isNew === 1);
       // too little older history to compare models fairly: use the model the notebook chose
       if (tuneTrain.length < 1000 || tuneVal.length < 50) sel = { chosen: label === "arrival" ? { family: "Linear Regression", setting: "alpha=0", valMae: null } : { family: "XGBoost", setting: "max_depth=2, learning_rate=0.1", valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true };
       else { onStatus && onStatus(`Selecting the best ${label} model (Linear Regression vs XGBoost) …`); await new Promise((r) => setTimeout(r, 10)); sel = chooseModel(tuneTrain, tuneVal, stats, feats); }
+      // test: learn on everything before the test months, forecast the test months (2026 process only)
+      const testRows = hist.filter((r) => dateOf(r) >= testStart && r.isNew === 1);
+      if (testRows.length >= 30 && before.length >= 100) {
+        onStatus && onStatus(`Testing the ${label} model on the latest 3 months …`); await new Promise((r) => setTimeout(r, 10));
+        const m = fitOn(sel, before, stats, feats);
+        const res = m.y.map((v, i) => v - m.f(m.X[i])), q20 = quantile(res, 0.2), q80 = quantile(res, 0.8);
+        const newBefore = before.filter((r) => r.isNew === 1), baseAll = median(newBefore.map((r) => r.y));
+        const baseUnit = groupStat(newBefore, (r) => r.unit, (r) => r.y, median);
+        const rows = testRows.map((r) => { const lg = m.f(feats(r, m.st)), p = roundHalfEven(Math.max(0, Math.expm1(lg)));
+          const lo = roundHalfEven(Math.max(0, Math.expm1(lg + q20))), hi = roundHalfEven(Math.max(0, Math.expm1(lg + q80)));
+          return [dateOf(r), p - r.y, Math.round(baseUnit.get(r.unit) ?? baseAll) - r.y, r.y >= lo && r.y <= hi ? 1 : 0]; });
+        sel = { ...sel, test: { from: testStart, to: Math.max(...testRows.map(dateOf)), trainN: before.length, rows } };
+      }
     }
-    // retrain the chosen setting on all history
-    const st = stats(hist), X = hist.map((r) => feats(r, st)), y = hist.map((r) => Math.log1p(r.y));
-    const f = findCandidate(sel.chosen).fit(X, y);
-    const res = hist.map((r, i) => y[i] - f(X[i]));   // residuals in log days: P20-P80 range
-    return { ...sel, n: hist.length, st, f, q20: quantile(res, 0.2), q80: quantile(res, 0.8) };
+    // retrain the chosen setting on all history -> forecasts for the queue
+    const m = fitOn(sel, hist, stats, feats);
+    const res = m.y.map((v, i) => v - m.f(m.X[i]));   // residuals in log days: P20-P80 range
+    return { ...sel, n: hist.length, st: m.st, f: m.f, q20: quantile(res, 0.2), q80: quantile(res, 0.8) };
   };
   const f1 = await pick("arrival", f1All, (r) => r.create, f1Stats, f1Features, saved && saved.f1);
   const f2 = await pick("return", f2All, (r) => r.approve, f2Stats, f2Features, saved && saved.f2);
-  MODELS = { key, f1, f2, simByCpr, recent, valStart };
-  const strip = (m) => (m ? { chosen: m.chosen, bestPerFamily: m.bestPerFamily, nTune: m.nTune, nVal: m.nVal } : null);
-  MODEL_CHOICE = { key: choiceKey(start), f1: strip(f1), f2: strip(f2) };
+  MODELS = { key, f1, f2, simByCpr, recent, valStart, testStart };
+  const strip = (m) => (m ? { chosen: m.chosen, bestPerFamily: m.bestPerFamily, nTune: m.nTune, nVal: m.nVal, fixed: !!m.fixed, test: m.test || null } : null);
+  MODEL_CHOICE = { key: choiceKey(), f1: strip(f1), f2: strip(f2) };
   if (!saved && DB && canSave()) { try { await DB.doc("settings/models").set(MODEL_CHOICE); } catch {} }
 }
 let MODEL_CHOICE = null;
@@ -2101,7 +2136,7 @@ function simulate() {
   const f1Unit = unitMed(base, "f1"), f2Unit = unitMed(baseF2, "f2");
   const f1All = median(base.map((r) => r.f1)) ?? 2, f2All = median(baseF2.map((r) => r.f2)) ?? 4;
   // Forecast 1 and 2 = the model chosen by validation MAE (see ensureModels); median per hospital when there is no PO Data history
-  const useModels = MODELS && MODELS.key === modelKey(start);
+  const useModels = MODELS && MODELS.key === modelKey();
   const f1Pred = (r) => { const p = useModels ? predictF1(r) : null; return p ? p.days : Math.round(f1Unit[r.unit] ?? f1All); };
   const f1Range = (r) => { const p = useModels ? predictF1(r) : null; return p ? [p.lo, p.hi] : [null, null]; };
   const f2Pred = (r, approveDay) => { const p = useModels ? predictF2(r, approveDay) : null; return p !== null ? p : Math.round(f2Unit[r.unit] ?? f2All); };
@@ -2713,35 +2748,34 @@ function renderBukti() {
   if (!SIM) { clear(); $("bkNote").textContent = "Please run the allocation in the CPR Allocation tab first."; return; }
   const mRows = [];
   for (const [label, m] of [["Forecast 1 · arrival at KA", SIM.models && SIM.models.f1], ["Forecast 2 · return to KA", SIM.models && SIM.models.f2]]) {
-    if (!m) { mRows.push({ fc: label, model: "Median per hospital", setting: "–", mae: null, chosen: true }); continue; }
-    if (!m.bestPerFamily.length) mRows.push({ fc: label, model: m.chosen.family, setting: m.chosen.setting, mae: null, chosen: true });
-    for (const b of m.bestPerFamily) mRows.push({ fc: label, model: b.family, setting: b.setting, mae: b.valMae, chosen: b.family === m.chosen.family && b.setting === m.chosen.setting });
+    if (!m) { mRows.push({ fc: label, model: "Median per hospital", setting: "–", mae: null, test: null, chosen: true }); continue; }
+    const testMae = m.test ? mean(m.test.rows.map((x) => Math.abs(x[1]))) : null;
+    if (!m.bestPerFamily.length) mRows.push({ fc: label, model: m.chosen.family, setting: m.chosen.setting + " (notebook choice)", mae: null, test: testMae, chosen: true });
+    for (const b of m.bestPerFamily) { const ch = b.family === m.chosen.family && b.setting === m.chosen.setting; mRows.push({ fc: label, model: b.family, setting: b.setting, mae: b.valMae, test: ch ? testMae : null, chosen: ch }); }
   }
   renderTable($("tblModels"), [
     { key: "fc", label: "Forecast", sortable: false },
     { key: "model", label: "Model", sortable: false },
     { key: "setting", label: "Best setting", sortable: false },
     { key: "mae", label: "Validation MAE (days)", num: true, sortable: false, render: (r) => (r.mae === null ? "–" : fmtNum(r.mae, 2)) },
+    { key: "test", label: "Test MAE (days)", num: true, sortable: false, render: (r) => (r.test === null ? "–" : fmtNum(r.test, 2)) },
     { key: "chosen", label: "", sortable: false, render: (r) => (r.chosen ? pill("Chosen", "good") : "") }
   ], mRows);
   $("bkNote").textContent = `Period: CPRs created ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)} (${fmtInt(SIM.n)} CPRs).`;
-  // 1) forecast accuracy on CPRs that already arrived
-  const ev = SIM.assigned.filter((c) => c.r.kaIn !== null && c.r.f1 !== null && (META.hasKa || actualArrival(c.r) !== null));
-  const err = ev.map((c) => c.f1 - c.r.f1), errB = ev.map((c) => c.f1Base - c.r.f1);
-  const mae = mean(err.map(Math.abs)), maeB = mean(errB.map(Math.abs));
-  const within2 = ev.length ? (err.filter((e) => Math.abs(e) <= 2).length / ev.length) * 100 : null;
-  const inBand = ev.filter((c) => c.f1Lo !== null && c.r.f1 >= c.f1Lo && c.r.f1 <= c.f1Hi);
-  const coverage = ev.length && ev[0].f1Lo !== null ? (inBand.length / ev.length) * 100 : null;
-  const bias = median(err), biasMean = mean(err);
-  $("bkFcTiles").replaceChildren(
-    tile("CPRs evaluated", fmtInt(ev.length), "", "arrival confirmed by PO Data (Date Received CPR by Key Account HO)"),
-    tile("Mean absolute error (MAE)", fmtNum(mae), "days", maeB !== null ? `baseline: ${fmtNum(maeB)} days (${mae < maeB ? "model is more accurate" : "model is not yet more accurate"})` : ""),
-    tile("Within ±2 days", fmtNum(within2, 0), "%", "forecast error of at most 2 days"),
-    tile("Bias (median error)", (bias > 0 ? "+" : "") + fmtNum(bias, 0), "days", (Math.abs(bias ?? 0) < 0.5 ? "balanced" : bias > 0 ? "tends to forecast later than actual" : "tends to forecast earlier than actual") + ` · mean ${fmtNum(biasMean)} (influenced by long-delayed CPRs)`),
-    tile("Within P20–P80 range", fmtNum(coverage, 0), "%", "target of at least 60%")
-  );
+  // 1) forecast accuracy: notebook-style test on the latest 3 months of history
+  const tiles = [];
+  for (const [name, m] of [["Forecast 1 · arrival at KA", SIM.models && SIM.models.f1], ["Forecast 2 · return to KA", SIM.models && SIM.models.f2]]) {
+    const t = m && m.test;
+    if (!t) { tiles.push(tile(name, "–", "", "Not enough history to test (upload CPR_Cleaned with at least 3 recent months)")); continue; }
+    const e = t.rows.map((x) => Math.abs(x[1])), eb = t.rows.map((x) => Math.abs(x[2]));
+    const mae = mean(e), maeB = mean(eb);
+    tiles.push(tile(`${name} · MAE`, fmtNum(mae, 2), "days", `${fmtInt(t.rows.length)} CPRs, ${fmtDay(t.from)} – ${fmtDay(t.to)} · baseline ${fmtNum(maeB, 2)} days (${mae < maeB ? "model is more accurate" : "model is not yet more accurate"})`));
+    tiles.push(tile(`${name} · within ±2 days`, fmtNum((e.filter((x) => x <= 2).length / e.length) * 100, 0), "%", `exact: ${fmtNum((e.filter((x) => x === 0).length / e.length) * 100, 0)}% · more than 5 days off: ${fmtNum((e.filter((x) => x > 5).length / e.length) * 100, 0)}%`));
+  }
+  $("bkFcTiles").replaceChildren(...tiles);
+  const t1 = SIM.models && SIM.models.f1 && SIM.models.f1.test;
   const byWeek = new Map();
-  for (let i = 0; i < ev.length; i++) { const wk = ev[i].r.kaIn - weekday(ev[i].r.kaIn); if (!byWeek.has(wk)) byWeek.set(wk, [[], []]); byWeek.get(wk)[0].push(Math.abs(err[i])); byWeek.get(wk)[1].push(Math.abs(errB[i])); }
+  for (const x of t1 ? t1.rows : []) { const wk = x[0] - weekday(x[0]); if (!byWeek.has(wk)) byWeek.set(wk, [[], []]); byWeek.get(wk)[0].push(Math.abs(x[1])); byWeek.get(wk)[1].push(Math.abs(x[2])); }
   const weeks = [...byWeek.keys()].sort((a, b) => a - b).filter((w) => byWeek.get(w)[0].length >= 3);
   $("lgFc").innerHTML = `<span><i class="line" style="background:var(--s1)"></i>Model (${SIM.f1Method})</span>` + '<span><i class="line" style="background:var(--s2)"></i>Baseline (median per hospital)</span>';
   lineChart($("chFc"), weeks, [
