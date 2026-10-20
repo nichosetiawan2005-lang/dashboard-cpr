@@ -766,6 +766,9 @@ function populateControls(keep) {
     if (keep && oldFrom !== null && oldTo !== null) {
       $("sFrom").value = dayToIso(Math.min(oldFrom, keep.newMin ?? oldFrom));
       $("sTo").value = dayToIso(Math.max(oldTo, end));
+    } else if (!META.hasKa) {
+      // queue data: allocate every CPR in the file
+      $("sFrom").value = dayToIso(META.minCreate); $("sTo").value = dayToIso(end);
     } else {
       const start = toDay(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 2, 1)).toISOString());
       $("sFrom").value = dayToIso(Math.max(start, META.minCreate)); $("sTo").value = dayToIso(end);
@@ -847,7 +850,8 @@ $("filePic").addEventListener("change", async (e) => {
   try {
     const { rows } = await readWorkbook(file);
     const list = {};
-    for (const r of rows) { const rs = r.RS ?? r.rs ?? r["Rumah Sakit"]; const pic = r.PIC ?? r.pic; if (rs && pic) list[String(rs).trim()] = String(pic).trim(); }
+    // one cell may hold several hospitals: "SHHO, SRI, STC, SCR"
+    for (const r of rows) { const rs = r.RS ?? r.rs ?? r["Rumah Sakit"]; const pic = r.PIC ?? r.pic; if (!rs || !pic) continue; for (const one of String(rs).split(/[,;\/]/)) if (one.trim()) list[one.trim()] = String(pic).trim(); }
     if (!Object.keys(list).length) { setStatus("The Hospital PIC List could not be read: the file must contain RS and PIC columns."); return; }
     PIC_LIST = list; $("picKeep").checked = true;
     if (!META.hasKa && !IS_SAMPLE) { deriveMeta(); populateControls({}); }
@@ -868,6 +872,15 @@ $("filePic").addEventListener("change", async (e) => {
      back    = first Submit Date of the PurchasingHO role,  backOut = last Approval Date of that role
      ka      = Username on the Key Account role row (when present)
    CPRs whose last status is rejected / cancelled are dropped. */
+// match hospital names loosely: "RSU SW" = "RSUSW", "RSU KD" = "RSUSKD", "CLINIC SOE" = "SOE"
+const picKey = (x) => String(x ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^CLINIC/, "").replace(/^RSUS(?=.)/, "RSU");
+function picNameFor(unit) {
+  if (!PIC_LIST) return null;
+  if (PIC_LIST[unit]) return PIC_LIST[unit];
+  const k = picKey(unit); if (!k) return null;
+  for (const [rs, name] of Object.entries(PIC_LIST)) if (picKey(rs) === k) return name;
+  return null;
+}
 const HCOL = { cpr: "Capital Req ID", unit: "Unit", role: "Role", user: "Username", submit: "Submit Date", approve: "Approval Date", status: "Document Status", seq: "Sequence", asset: "Asset Code", category: "Category Type", subject: "Subject", amount: "Total Amount" };
 // only these two are needed: new CPRs that are still waiting have no approval yet, so "Approval Date" may be missing
 const HREQUIRED = ["cpr", "submit"];
@@ -903,7 +916,11 @@ function pivotHistory(rows) {
     if (/reject|cancel|batal|tolak/i.test(String(last[HCOL.status] ?? ""))) { dropped++; continue; }
     const req = list.filter((x) => normRole(x[HCOL.role]) === "requester" || Number(x[HCOL.seq]) === 0);
     const created = (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null;
-    const queueAt = list.map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort().slice(-1)[0] || null;
+    // entry into KA = last Approval Date BEFORE the Key Account row (Sequence 3). Rows after it
+    // (division head, purchasing HO, ...) are ignored here - their progress comes from PO Data.
+    const kaRow = list.find((x) => normRole(x[HCOL.role]).replace(/[^a-z]/g, "").includes("keyaccount"));
+    const beforeKa = kaRow ? list.filter((x) => Number(x[HCOL.seq]) < Number(kaRow[HCOL.seq])) : list;
+    const queueAt = beforeKa.map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort().slice(-1)[0] || null;
     const code = String(id).split("-")[1] || String(last[HCOL.unit]);
     const assetUnit = String(last[HCOL.asset] ?? "").split(".")[0].trim();
     recs.push(finishRec({
@@ -939,6 +956,8 @@ function renderHistInfo() {
   if (!HIST) return;
   const counts = new Map(); for (const r of HIST.rows) { const k = normRole(r[HCOL.role]); counts.set(k, (counts.get(k) || 0) + 1); }
   const roles = [...counts.keys()].sort();
+  const minSeq = new Map(); for (const r of HIST.rows) { const k = normRole(r[HCOL.role]), q = Number(r[HCOL.seq]); if (!minSeq.has(k) || q < minSeq.get(k)) minSeq.set(k, q); }
+  const kaSeq = Math.min(Infinity, ...roles.filter((k) => k.replace(/[^a-z]/g, "").includes("keyaccount")).map((k) => minSeq.get(k)));
   for (const [id, cur] of [["roleKa", HIST.roleKa], ["roleBack", HIST.roleBack]]) {
     const sel = $(id); sel.replaceChildren(el("option", { value: "" }, "— not in file —"));
     for (const r of roles) sel.append(el("option", { value: r }, r));
@@ -947,13 +966,13 @@ function renderHistInfo() {
   const res = HIST.result;
   $("histMode").value = HIST_MODE;
   $("histNote").textContent = `${fmtInt(HIST.rows.length)} rows → ${fmtInt(res.cprs)} CPRs (${fmtInt(res.dropped)} rejected/cancelled CPRs excluded). `
-    + "Approval Date = the date the CPR is sent to Key Account HO for Sequence 3. This file never marks Sequence 3 or Sequence 8 as completed; all progress after entry comes from PO Data. "
+    + "Approval Date of the last step before Key Account HO = the date the CPR is sent to KA for Sequence 3. Steps from Key Account HO onward are not used. This file never marks Sequence 3 or Sequence 8 as completed; all progress after entry comes from PO Data. "
     + "This file contains no Vendor ID, so the same-vendor rule does not apply to CPRs from this file.";
   renderTable($("tblRoles"), [
     { key: "role", label: "Role in file", sortable: false },
     { key: "n", label: "Rows", num: true, sortable: false },
-    { key: "use", label: "Used as", sortable: false, render: (r) => (r.role === "requester" ? pill("CPR created", "muted") : pill("Queue entry date (Approval Date)", "info")) }
-  ], roles.map((role) => ({ role, n: counts.get(role) })));
+    { key: "use", label: "Used as", sortable: false, render: (r) => (r.role === "requester" ? pill("CPR created", "muted") : r.beforeKa ? pill("Queue entry date (Approval Date)", "info") : pill("Not used (progress from PO Data)", "muted")) }
+  ], roles.map((role) => ({ role, n: counts.get(role), beforeKa: minSeq.get(role) < kaSeq })));
 }
 async function applyHistory(rows, fileName, roleKa, roleBack) {
   const roles = [...new Set(rows.map((r) => normRole(r[HCOL.role])))];
@@ -1955,9 +1974,15 @@ async function ensureModels(start, onStatus) {
   const simByCpr = new Map(all.map((t) => [t.cpr, t.sim])); queueOnly.forEach((r, i) => simByCpr.set(r.cpr, sim[all.length + i]));
   const recent = recentSpeed(all);
   // Forecast 1 history: created before the period start
-  const f1All = all.filter((t) => t.y !== null && t.create !== null && t.create < start);
-  // Forecast 2 history: KA approved before the period start
-  const f2All = all.filter((t) => t.y2 !== null && t.kaOut !== null && t.kaOut < start).map((t) => { const [a, u] = recent(t.unit, t.kaOut); return { ...t, y: t.y2, approve: t.kaOut, recentAll: a, recentUnit: u }; });
+  // If that holds fewer than 100 CPRs of the new (KA HO) process, learn from all history except the queue CPRs themselves.
+  const inQueue = new Set(IS_SAMPLE ? [] : RECS.map((r) => r.cpr));
+  const enoughNew = (list) => list.filter((t) => t.isNew === 1).length >= 100;
+  let f1All = all.filter((t) => t.y !== null && t.create !== null && t.create < start);
+  if (!enoughNew(f1All)) f1All = all.filter((t) => t.y !== null && t.create !== null && !inQueue.has(t.cpr));
+  // Forecast 2 history: KA approved before the period start (same fallback)
+  let f2Base = all.filter((t) => t.y2 !== null && t.kaOut !== null && t.kaOut < start);
+  if (!enoughNew(f2Base)) f2Base = all.filter((t) => t.y2 !== null && t.kaOut !== null && !inQueue.has(t.cpr));
+  const f2All = f2Base.map((t) => { const [a, u] = recent(t.unit, t.kaOut); return { ...t, y: t.y2, approve: t.kaOut, recentAll: a, recentUnit: u }; });
   const valStart = threeMonthsBefore(start);
   const saved = MODEL_CHOICE && MODEL_CHOICE.key === choiceKey(start) ? MODEL_CHOICE : null;
   const pick = async (label, hist, dateOf, stats, feats, savedSel) => {
@@ -2089,6 +2114,7 @@ function simulate() {
   if (PIC_LIST) {
     picSource = "Hospital PIC List";
     for (const [rs, name] of Object.entries(PIC_LIST)) { const u = META.nameToUser[name.toLowerCase()]; if (u) pic[rs] = u; }
+    for (const unit of META.units) { const name = picNameFor(unit); const u = name && META.nameToUser[name.toLowerCase()]; if (u && !pic[unit]) pic[unit] = u; }
   } else {
     picSource = "the KA who most frequently handled the hospital before the test period";
     const g = new Map(); for (const r of (hist.length ? hist : RECS.filter((x) => x.isNew))) { if (!g.has(r.unit)) g.set(r.unit, []); g.get(r.unit).push(r.ka); }
@@ -2458,7 +2484,7 @@ function renderQuality() {
   const ka = RECS.filter((r) => r.isNew);
   const complete = ka.filter((r) => r.kaIn !== null && r.kaOut !== null && r.back !== null && r.backOut !== null).length;
   const unknownPic = PIC_LIST ? Object.values(PIC_LIST).filter((n) => !META.nameToUser[n.toLowerCase()]) : [];
-  const unitsNoPic = PIC_LIST ? META.units.filter((u) => !PIC_LIST[u] && RECS.some((r) => r.unit === u && r.isNew)) : [];
+  const unitsNoPic = PIC_LIST ? META.units.filter((u) => !picNameFor(u) && RECS.some((r) => r.unit === u && r.isNew)) : [];
   if (!META.hasKa) unknownPic.length = 0;
   $("dqTiles").replaceChildren(
     tile("Rows in latest file", fmtInt(META.rawRows), "", META.format === "history" ? `${fmtInt(RECS.length)} CPRs after merging with stored data` : `${fmtInt(META.duplicates || 0)} duplicate CPR numbers skipped`),
