@@ -1171,7 +1171,7 @@ async function initDb() {
     const rows = chunks.flatMap((c) => (c.exists ? c.data().rows : []));
     META = { hasKa: m.hasKa, format: m.format, fileName: m.fileName, rawRows: m.rawRows, duplicates: m.duplicates, negatives: m.negatives, columnsFound: m.columnsFound };
     RECS = rows.map((a) => { const r = {}; FIELDS.forEach((k, i) => { r[k] = a[i]; }); return finishRec(r); });
-    SAVED_AT = m.savedAt; IS_SAMPLE = false;
+    SAVED_AT = m.savedAt; IS_SAMPLE = false; renderEmptyState();
     applyProgress();
     await loadLocks();
     deriveMeta(); populateControls();

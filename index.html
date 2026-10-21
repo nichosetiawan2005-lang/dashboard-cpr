@@ -189,6 +189,16 @@ details.more[open] > summary::before { content: "▾ "; }
 .dq li { margin-bottom: 4px; }
 /* landing page shown before an access code is entered (online version) */
 body.checking .top, body.checking .wrap { visibility: hidden; }
+/* no data yet: show only the upload checklist (no sample names) */
+body.no-data .tabs, body.no-data .panel, body.no-data #globalFilters, body.no-data #modeBanner, body.no-data #sampleBanner,
+body.no-data #lblCpr, body.no-data #lblProg, body.no-data #lblPic, body.no-data #picKeepWrap { display: none !important; }   /* uploads are in the checklist instead */
+#emptyCard { margin-top: 16px; padding: 24px; }
+#emptySteps { list-style: none; padding: 0; margin: 12px 0 0; }
+#emptySteps li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--line); font-size: 14px; }
+#emptySteps li .num { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; background: var(--info-bg); color: var(--accent-ink); flex: none; }
+#emptySteps li.done .num { background: var(--good-bg); color: var(--good); }
+#emptySteps li .txt { flex: 1 1 260px; }
+#emptySteps li .txt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 body.locked .top, body.locked .wrap > :not(#loginCard) { display: none !important; }
 body.locked .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
 body.locked #loginCard { display: block !important; width: 100%; max-width: 440px; padding: 28px; }
@@ -241,6 +251,11 @@ body.locked #loginForm .btn { width: 100%; }
 <div class="wrap">
   <div class="banner info" id="sampleBanner">
     <div><b>Sample data is currently displayed.</b> Recommended sequence: (1) upload the Hospital PIC List, (2) upload the CPR Queue (CPRHistory), (3) select Run Allocation, and (4) upload PO Data to update CPR progress and KA performance. All uploaded data is stored in this dashboard.</div>
+  </div>
+  <div class="card" id="emptyCard" hidden>
+    <h3 id="emptyTitle">No data uploaded yet</h3>
+    <div class="sub" id="emptySub"></div>
+    <ol id="emptySteps"></ol>
   </div>
   <div class="card" id="loginCard" hidden>
     <div class="landing-name">CPR Allocation &amp; Workload Balancing</div>
@@ -379,6 +394,19 @@ body.locked #loginForm .btn { width: 100%; }
     <p class="note" id="bkNote"></p>
     <div class="section-title"><h2>1. Is the forecast accurate?</h2><p>Same test as the analysis notebook: the model learns only from history before the last 3 months, then forecasts the CPRs of those 3 months (2026 process). These CPRs were never used to choose or train the tested model, so this is an out-of-sample test.</p></div>
     <div class="tiles" id="bkFcTiles"></div>
+    <div class="card" id="fcSetCard" style="margin-top:12px"><h3>Forecast settings</h3><div class="sub">Choose which history the forecast learns from. Default = the analysis notebook. "Apply and retrain" tests the new setting on the latest months and shows its test MAE next to the default, so the effect is visible before it is relied on. Only CPRs allocated after the change use the new forecast; saved Key Account assignments do not change.</div>
+      <div class="filters" style="border:0;padding:0;margin:8px 0 0">
+        <div class="field"><label for="fcFrom">Learn from CPRs created from</label><input type="date" id="fcFrom"></div>
+        <label class="check" title="Only CPRs that went through Key Account HO (Username Key Account Ho filled)"><input type="checkbox" id="fcOnlyNew"> Only 2026-process CPRs</label>
+        <div class="field"><label for="fcMonths">Test and validation window</label><select id="fcMonths"><option value="2">2 months each</option><option value="3">3 months each</option><option value="4">4 months each</option></select></div>
+        <div class="field"><label for="fcMax">Ignore CPRs longer than (days)</label><input type="number" id="fcMax" min="1" step="1" placeholder="none"></div>
+        <div class="field"><label for="fcModel">Model</label><select id="fcModel"></select></div>
+        <button class="btn" id="fcApply" type="button">Apply and retrain</button>
+        <button class="btn ghost" id="fcReset" type="button">Reset to notebook default</button>
+      </div>
+      <div class="tbl-wrap" style="margin-top:10px"><table id="tblFcCompare"></table></div>
+      <p class="note" id="fcSetNote"></p>
+    </div>
     <div class="card" style="margin-top:12px"><h3>Model selection</h3><div class="sub">Same procedure as the analysis notebook: each candidate learns from older history and is checked on a 3-month validation window (2026-process CPRs); the lowest validation MAE is chosen, tested on the latest 3 months, then retrained on all history to forecast the queue.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
     <div class="card" style="margin-top:12px"><h3>Forecast 1: mean absolute error per week (test months)</h3><div class="sub">Lower values indicate higher accuracy. Compared against a simple baseline (median per hospital, 2026 process).</div><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
     <div class="section-title"><h2>2. Is the KA workload more evenly distributed?</h2><p id="bkLoadDesc"></p></div>
@@ -1026,7 +1054,14 @@ let BASE_BEFORE_HIST = [];
    Fill these two values to switch the storage to Supabase. The publishable key is meant to be public.
    The data is protected in Supabase itself: every request carries the access code typed by the user
    (header "x-access-code"), and Row Level Security only lets the "view" code read and the "admin" code write. */
-const CONFIG = { supabaseUrl: "https://pdsjxriakcrmeeyfzefu.supabase.co", supabaseKey: "sb_publishable_PNDmMLXqH4ujxtj9v8cANQ_lXDXQk1P" }; // key: "Publishable key" (sb_publishable_...) or legacy "anon public"
+const CONFIG = { supabaseUrl: "https://pdsjxriakcrmeeyfzefu.supabase.co", supabaseKey: "sb_publishable_PNDmMLXqH4ujxtj9v8cANQ_lXDXQk1P" };
+const STORE_PREFIX = "";   // "" = live dashboard; "test/" = test copy with its own data
+if (STORE_PREFIX) {
+  const b = document.createElement("div");
+  b.style.cssText = "background:var(--warn-bg);color:var(--fg);border-bottom:1px solid var(--warn);padding:8px 16px;font-size:13px;text-align:center";
+  b.innerHTML = "<b>TEST VERSION</b> · data here is separate from the live dashboard. Changes are tried here first and moved to the live dashboard only after approval.";
+  document.body.prepend(b); document.title = "[TEST] " + document.title;
+} // key: "Publishable key" (sb_publishable_...) or legacy "anon public"
 const SB = !!(CONFIG.supabaseUrl && CONFIG.supabaseKey);
 let ACCESS_CODE = "", ACCESS = "none", IS_ADMIN = false; // ACCESS: "none" | "view" | "admin"
 function loadCode() { try { ACCESS_CODE = localStorage.getItem("cprCode") || ""; } catch { ACCESS_CODE = ""; } }
@@ -1054,22 +1089,24 @@ function makeSupabaseDb() {
     return res.status === 204 || res.status === 201 ? null : res.json().catch(() => null);
   };
   const snap = (id, data) => ({ id, exists: data !== undefined, data: () => data });
+  // STORE_PREFIX keeps a test copy's data apart from the live dashboard ("test/cpr/meta" instead of "cpr/meta")
   const doc = (path) => ({
     id: path.split("/").pop(), path,
-    get: async () => { const rows = await call(`${base}?path=eq.${encodeURIComponent(path)}&select=data`); return snap(path.split("/").pop(), rows && rows.length ? rows[0].data : undefined); },
-    set: async (data) => { await call(base, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ path, data, updated_at: new Date().toISOString() }) }); },
+    get: async () => { const rows = await call(`${base}?path=eq.${encodeURIComponent(STORE_PREFIX + path)}&select=data`); return snap(path.split("/").pop(), rows && rows.length ? rows[0].data : undefined); },
+    set: async (data) => { await call(base, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ path: STORE_PREFIX + path, data, updated_at: new Date().toISOString() }) }); },
     update: async (data) => { const cur = await doc(path).get(); if (!cur.exists) throw { code: "invalid_argument", message: "document does not exist" }; await doc(path).set({ ...cur.data(), ...data }); },
-    delete: async () => { await call(`${base}?path=eq.${encodeURIComponent(path)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } }); }
+    delete: async () => { await call(`${base}?path=eq.${encodeURIComponent(STORE_PREFIX + path)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } }); }
   });
   return {
     doc,
     collection: (cp) => ({
       doc: (id) => doc(cp + "/" + id),
-      get: async () => { const rows = await call(`${base}?path=like.${encodeURIComponent(cp + "/*")}&select=path,data&order=path`); const docs = (rows || []).filter((r) => r.path.split("/").length === cp.split("/").length + 1).map((r) => snap(r.path.split("/").pop(), r.data)); return { docs, size: docs.length, empty: !docs.length }; }
+      get: async () => { const rows = await call(`${base}?path=like.${encodeURIComponent(STORE_PREFIX + cp + "/*")}&select=path,data&order=path`); const docs = (rows || []).filter((r) => r.path.split("/").length === (STORE_PREFIX + cp).split("/").length + 1).map((r) => snap(r.path.split("/").pop(), r.data)); return { docs, size: docs.length, empty: !docs.length }; }
     })
   };
 }
 function renderAuth() {
+  renderEmptyState();   // admin and view-only see a different empty page
   if (!SB) return;
   // no valid code yet: show only the landing page with the sign-in form
   document.body.classList.remove("checking");
@@ -1134,7 +1171,7 @@ async function initDb() {
     const rows = chunks.flatMap((c) => (c.exists ? c.data().rows : []));
     META = { hasKa: m.hasKa, format: m.format, fileName: m.fileName, rawRows: m.rawRows, duplicates: m.duplicates, negatives: m.negatives, columnsFound: m.columnsFound };
     RECS = rows.map((a) => { const r = {}; FIELDS.forEach((k, i) => { r[k] = a[i]; }); return finishRec(r); });
-    SAVED_AT = m.savedAt; IS_SAMPLE = false;
+    SAVED_AT = m.savedAt; IS_SAMPLE = false; renderEmptyState();
     applyProgress();
     await loadLocks();
     deriveMeta(); populateControls();
@@ -1463,7 +1500,7 @@ $("filePo").addEventListener("change", async (e) => {
     const { rows, columns } = await readWorkbook(file);
     await loadKinerjaFile(file, rows, columns);
   } catch (err) { setStatus("The performance file could not be read: " + err.message); }
-  e.target.value = "";
+  e.target.value = ""; renderEmptyState();
 });
 async function loadKinerjaFile(file, rows, columns) {
   {
@@ -1473,7 +1510,7 @@ async function loadKinerjaFile(file, rows, columns) {
     const poMap = new Map(PO_RECS.map((r) => [r.cpr, r]));
     const poFresh = buildPoRecords(rows);
     for (const r of poFresh) { const old = poMap.get(r.cpr); poMap.set(r.cpr, old && !r.kaName ? { ...r, kaName: old.kaName } : r); }   // keep the KA display name when the newer file has no "User KA"
-    PO_RECS = [...poMap.values()];
+    PO_RECS = [...poMap.values()]; renderEmptyState();
     PO_META = { fileName: file.name, savedAt: new Date().toISOString(), chunks: Math.ceil(PO_RECS.length / CHUNK), count: PO_RECS.length, rawRows: rows.length };
     const prog = await updateProgress(file, rows);
     setPoDates(); renderKa();
@@ -1984,13 +2021,20 @@ const threeMonthsBefore = (day) => { const d = dayToDate(day); return toDay(new 
 //   1) choose the setting with the lowest validation MAE   2) report its MAE on the test months (never used for choosing)
 //   3) retrain the chosen setting on ALL history -> forecasts for the queue
 let MODELS = null;
-const choiceKey = () => `${TRAIN_META ? TRAIN_META.version : 0}|${TRAIN.size}`;   // depends only on the history
+// adjustable forecast settings (admin, Evaluation tab). Default = the notebook.
+const FC_DEFAULT = { from: "", onlyNew: false, months: 3, maxDays: 0, model: "auto" };
+let FC_SET = { ...FC_DEFAULT };
+let FC_RESULTS = {};   // settings key -> { f1, f2 } test MAE, so the default and the current setting can be compared
+const fcKey = (set) => JSON.stringify([set.from || "", !!set.onlyNew, Number(set.months) || 3, Number(set.maxDays) || 0, set.model || "auto"]);
+const fcIsDefault = (set) => fcKey(set) === fcKey(FC_DEFAULT);
+const choiceKey = () => `${TRAIN_META ? TRAIN_META.version : 0}|${TRAIN.size}|${fcKey(FC_SET)}`;   // depends only on the history and the settings
 const modelKey = () => `${choiceKey()}|${RECS.length}`;
-function testWindow(all) {
+function testWindow(all, months = 3) {
   const last = Math.max(...all.filter((t) => t.y !== null && t.create !== null).map((t) => t.create));
   const d = dayToDate(last);
-  const testStart = toDay(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 2, 1)).toISOString());
-  return { testStart, valStart: threeMonthsBefore(testStart) };
+  const testStart = toDay(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - (months - 1), 1)).toISOString());
+  const v = dayToDate(testStart);
+  return { testStart, valStart: toDay(new Date(Date.UTC(v.getUTCFullYear(), v.getUTCMonth() - months, v.getUTCDate())).toISOString()) };
 }
 async function ensureModels(_start, onStatus) {
   if (TRAIN.size < 100) { MODELS = null; return; }
@@ -2006,19 +2050,26 @@ async function ensureModels(_start, onStatus) {
   all.forEach((t, i) => { t.sim = sim[i]; });
   const simByCpr = new Map(all.map((t) => [t.cpr, t.sim])); queueOnly.forEach((r, i) => simByCpr.set(r.cpr, sim[all.length + i]));
   const recent = recentSpeed(all);
-  const f1All = all.filter((t) => t.y !== null && t.create !== null);
-  const f2All = all.filter((t) => t.y2 !== null && t.kaOut !== null).map((t) => { const [a, u] = recent(t.unit, t.kaOut); return { ...t, y: t.y2, approve: t.kaOut, recentAll: a, recentUnit: u }; });
-  const { testStart, valStart } = testWindow(all);
+  // settings: which history is read
+  const fromDay = FC_SET.from ? isoToDay(FC_SET.from) : null, maxDays = Number(FC_SET.maxDays) || 0;
+  const keep = (t) => (fromDay === null || (t.create !== null && t.create >= fromDay)) && (!FC_SET.onlyNew || t.isNew === 1);
+  const f1All = all.filter((t) => t.y !== null && t.create !== null && keep(t));
+  const f2All = all.filter((t) => t.y2 !== null && t.kaOut !== null && keep(t)).map((t) => { const [a, u] = recent(t.unit, t.kaOut); return { ...t, y: t.y2, approve: t.kaOut, recentAll: a, recentUnit: u }; });
+  const { testStart, valStart } = testWindow(all, Number(FC_SET.months) || 3);
+  // very long CPRs can be left out of what the model LEARNS from; the test still counts every CPR, so the MAE stays honest
+  const learnable = (list) => (maxDays > 0 ? list.filter((r) => r.y <= maxDays) : list);
   const saved = MODEL_CHOICE && MODEL_CHOICE.key === choiceKey() ? MODEL_CHOICE : null;
-  const fitOn = (sel, list, stats, feats) => { const st = stats(list), X = list.map((r) => feats(r, st)), y = list.map((r) => Math.log1p(r.y)); const f = findCandidate(sel.chosen).fit(X, y); return { st, X, y, f }; };
+  const fitOn = (sel, list0, stats, feats) => { const list = learnable(list0); const st = stats(list), X = list.map((r) => feats(r, st)), y = list.map((r) => Math.log1p(r.y)); const f = findCandidate(sel.chosen).fit(X, y); return { st, X, y, f }; };
   const pick = async (label, hist, dateOf, stats, feats, savedSel) => {
     if (hist.length < 100) return null;
     const before = hist.filter((r) => dateOf(r) < testStart);
     let sel = savedSel;
     if (!sel) {
-      const tuneTrain = before.filter((r) => dateOf(r) < valStart), tuneVal = before.filter((r) => dateOf(r) >= valStart && r.isNew === 1);
+      const tuneTrain = learnable(before.filter((r) => dateOf(r) < valStart)), tuneVal = before.filter((r) => dateOf(r) >= valStart && r.isNew === 1);
+      const forced = FC_SET.model && FC_SET.model !== "auto" ? CANDIDATES.find((c) => `${c.family}|${c.setting}` === FC_SET.model) : null;
+      if (forced) sel = { chosen: { family: forced.family, setting: forced.setting, valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true, forced: true };
       // too little older history to compare models fairly: use the model the notebook chose
-      if (tuneTrain.length < 1000 || tuneVal.length < 50) sel = { chosen: label === "arrival" ? { family: "Linear Regression", setting: "alpha=0", valMae: null } : { family: "XGBoost", setting: "max_depth=2, learning_rate=0.1", valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true };
+      else if (tuneTrain.length < (fcIsDefault(FC_SET) ? 1000 : 200) || tuneVal.length < (fcIsDefault(FC_SET) ? 50 : 30)) sel = { chosen: label === "arrival" ? { family: "Linear Regression", setting: "alpha=0", valMae: null } : { family: "XGBoost", setting: "max_depth=2, learning_rate=0.1", valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true };
       else { onStatus && onStatus(`Selecting the best ${label} model (Linear Regression vs XGBoost) …`); await new Promise((r) => setTimeout(r, 10)); sel = chooseModel(tuneTrain, tuneVal, stats, feats); }
       // test: learn on everything before the test months, forecast the test months (2026 process only)
       const testRows = hist.filter((r) => dateOf(r) >= testStart && r.isNew === 1);
@@ -2043,11 +2094,50 @@ async function ensureModels(_start, onStatus) {
   const f2 = await pick("return", f2All, (r) => r.approve, f2Stats, f2Features, saved && saved.f2);
   MODELS = { key, f1, f2, simByCpr, recent, valStart, testStart };
   const strip = (m) => (m ? { chosen: m.chosen, bestPerFamily: m.bestPerFamily, nTune: m.nTune, nVal: m.nVal, fixed: !!m.fixed, test: m.test || null } : null);
-  MODEL_CHOICE = { key: choiceKey(), f1: strip(f1), f2: strip(f2) };
+  const testMae = (m) => (m && m.test ? mean(m.test.rows.map((x) => Math.abs(x[1]))) : null);
+  FC_RESULTS[fcKey(FC_SET)] = { f1: testMae(f1), f2: testMae(f2), n1: f1 && f1.test ? f1.test.rows.length : 0, n2: f2 && f2.test ? f2.test.rows.length : 0, f1Model: f1 ? `${f1.chosen.family} (${f1.chosen.setting})` : "–", f2Model: f2 ? `${f2.chosen.family} (${f2.chosen.setting})` : "–", train: TRAIN.size };
+  MODEL_CHOICE = { key: choiceKey(), f1: strip(f1), f2: strip(f2), settings: FC_SET, results: FC_RESULTS };
   if (!saved && DB && canSave()) { try { await DB.doc("settings/models").set(MODEL_CHOICE); } catch {} }
 }
 let MODEL_CHOICE = null;
-async function loadModelChoice() { if (!DB) return; try { const d = await DB.doc("settings/models").get(); MODEL_CHOICE = d.exists ? d.data() : null; } catch { MODEL_CHOICE = null; } }
+async function loadModelChoice() { if (!DB) return; try { const d = await DB.doc("settings/models").get(); MODEL_CHOICE = d.exists ? d.data() : null; } catch { MODEL_CHOICE = null; }
+  if (MODEL_CHOICE && MODEL_CHOICE.settings) FC_SET = { ...FC_DEFAULT, ...MODEL_CHOICE.settings };
+  if (MODEL_CHOICE && MODEL_CHOICE.results) FC_RESULTS = MODEL_CHOICE.results; }
+// Forecast settings card (Evaluation tab)
+function renderFcSettings() {
+  if (!$("fcModel").options.length) { $("fcModel").append(el("option", { value: "auto" }, "Automatic (lowest validation MAE)")); for (const c of CANDIDATES) $("fcModel").append(el("option", { value: `${c.family}|${c.setting}` }, `${c.family} (${c.setting})`)); }
+  $("fcFrom").value = FC_SET.from || ""; $("fcOnlyNew").checked = !!FC_SET.onlyNew; $("fcMonths").value = String(FC_SET.months || 3);
+  $("fcMax").value = FC_SET.maxDays ? String(FC_SET.maxDays) : ""; $("fcModel").value = FC_SET.model || "auto";
+  for (const id of ["fcFrom", "fcOnlyNew", "fcMonths", "fcMax", "fcModel", "fcApply", "fcReset"]) $(id).disabled = !canSave();
+  const describe = (set) => { if (fcIsDefault(set)) return "Notebook default"; const p = []; if (set.from) p.push("from " + fmtDay(isoToDay(set.from))); if (set.onlyNew) p.push("2026 process only"); if (Number(set.months) !== 3) p.push(`${set.months}-month windows`); if (Number(set.maxDays)) p.push(`ignore > ${set.maxDays} days`); if (set.model && set.model !== "auto") p.push(set.model.replace("|", " ")); return p.join(", "); };
+  const rows = Object.entries(FC_RESULTS).filter(([, r]) => r.train === TRAIN.size).map(([k, r]) => { const a = JSON.parse(k); const set = { from: a[0], onlyNew: a[1], months: a[2], maxDays: a[3], model: a[4] }; return { name: describe(set) + (Number(set.months) !== 3 ? " (different test months)" : ""), def: fcIsDefault(set), cur: k === fcKey(FC_SET), src: r, ...r }; })
+    .sort((a, b) => (b.def - a.def) || (b.cur - a.cur));
+  // ★ only among settings tested on the same months as the default (same CPRs = a fair comparison)
+  const fair = (r) => JSON.parse(Object.keys(FC_RESULTS).find((k) => FC_RESULTS[k] === r.src) || "[0,0,3]")[2] === 3;
+  const best = (k) => Math.min(...rows.filter((r) => r[k] !== null && fair(r)).map((r) => r[k]));
+  renderTable($("tblFcCompare"), [
+    { key: "name", label: "Setting", sortable: false, render: (r) => r.name },
+    { key: "f1", label: "Forecast 1 test MAE (days)", num: true, sortable: false, render: (r) => (r.f1 === null ? "–" : fmtNum(r.f1, 2) + (fair(r) && r.f1 === best("f1") && rows.length > 1 ? " ★" : "")) },
+    { key: "n1", label: "CPRs tested", num: true, sortable: false, render: (r) => fmtInt(r.n1) },
+    { key: "f1Model", label: "Forecast 1 model", sortable: false },
+    { key: "f2", label: "Forecast 2 test MAE (days)", num: true, sortable: false, render: (r) => (r.f2 === null ? "–" : fmtNum(r.f2, 2) + (fair(r) && r.f2 === best("f2") && rows.length > 1 ? " ★" : "")) },
+    { key: "f2Model", label: "Forecast 2 model", sortable: false },
+    { key: "cur", label: "", sortable: false, render: (r) => (r.cur ? pill("In use", "good") : "") }
+  ], rows);
+  $("fcSetNote").textContent = "Lower MAE = more accurate. ★ = best among settings tested on the same CPRs as the default; settings with a different test window are tested on other months and cannot be compared directly. "
+    + "CPRs left out by \"Ignore CPRs longer than\" are still counted in the test, so the MAE is not flattered.";
+}
+async function applyFcSettings(set) {
+  FC_SET = { ...FC_DEFAULT, ...set }; MODELS = null;
+  const btn = $("fcApply"); btn.disabled = true; btn.textContent = "Retraining …";
+  try { await ensureModels(null, (m) => { btn.textContent = m; setStatus(m); }); await logEvent({ type: "Forecast settings", cpr: null, note: fcIsDefault(FC_SET) ? "reset to notebook default" : JSON.stringify(FC_SET) }); }
+  catch (err) { setStatus("Retraining failed: " + (err.message || err)); }
+  btn.disabled = false; btn.textContent = "Apply and retrain";
+  if (SIM) SIM = simulate();
+  renderAll(); setStatus(`Forecast retrained (${fcIsDefault(FC_SET) ? "notebook default" : "custom setting"}). Forecast 1 test MAE ${fmtNum(FC_RESULTS[fcKey(FC_SET)].f1, 2)} days, Forecast 2 ${fmtNum(FC_RESULTS[fcKey(FC_SET)].f2, 2)} days.`);
+}
+$("fcApply").addEventListener("click", () => applyFcSettings({ from: $("fcFrom").value, onlyNew: $("fcOnlyNew").checked, months: Number($("fcMonths").value), maxDays: Number($("fcMax").value) || 0, model: $("fcModel").value }));
+$("fcReset").addEventListener("click", () => applyFcSettings({ ...FC_DEFAULT }));
 // prediction for one queue CPR (rounded like np.round)
 function predictF1(r) {
   const m = MODELS && MODELS.f1; if (!m) return null;
@@ -2744,6 +2834,7 @@ function actualFromPo() {
     highest: Math.max(...tbl.flat()), counts, n: list.length, from, to, sameCprs, avg: mean(tbl.flat()) };
 }
 function renderBukti() {
+  renderFcSettings();
   const clear = () => { for (const id of ["tblModels", "bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
   if (!SIM) { clear(); $("bkNote").textContent = "Please run the allocation in the CPR Allocation tab first."; return; }
   const mRows = [];
@@ -2851,7 +2942,34 @@ function showTab(name) {
   try { localStorage.setItem("cprTab", name); } catch {}
 }
 document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
-function renderAll() { renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
+function renderAll() { renderEmptyState(); renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
+// before the CPR queue is uploaded: no sample data on screen, only what to upload
+function renderEmptyState() {
+  const empty = IS_SAMPLE;
+  document.body.classList.toggle("no-data", empty);
+  $("emptyCard").hidden = !empty;
+  if (!empty) return;
+  if (!canSave()) {
+    $("emptyTitle").textContent = "No data available yet";
+    $("emptySub").textContent = "The dashboard administrator has not uploaded any CPR data yet. Please check back later.";
+    $("emptySteps").replaceChildren(); return;
+  }
+  $("emptyTitle").textContent = "No data uploaded yet";
+  $("emptySub").textContent = "Upload the files below in this order. The dashboard opens once the CPR queue has been uploaded.";
+  const step = (n, done, title, detail, inputId, label) => {
+    const li = el("li", { class: done ? "done" : "" }); li.append(el("span", { class: "num" }, done ? "✓" : String(n)));
+    const txt = el("div", { class: "txt" }, title); txt.append(el("small", {}, detail)); li.append(txt);
+    if (inputId) li.append(Object.assign(el("button", { class: done ? "btn ghost" : "btn", type: "button" }, done ? "Upload again" : label), { onclick: () => $(inputId).click() }));
+    return li;
+  };
+  const nPic = PIC_LIST ? Object.keys(PIC_LIST).length : 0, nHist = Math.max(TRAIN.size, PO_RECS.length);
+  $("emptySteps").replaceChildren(
+    step(1, nPic > 0, "Hospital PIC List", nPic ? `${fmtInt(nPic)} hospitals saved.` : "List of hospitals (RS) and their PIC Key Account.", "filePic", "Upload Hospital PIC List"),
+    step(2, nHist > 0, "Forecast history: CPR_Cleaned or PO Data", nHist ? `${fmtInt(nHist)} CPRs saved for the forecast.` : "Past CPRs that the forecast learns from.", "filePo", "Upload CPR_Cleaned / PO Data"),
+    step(3, false, "CPR Queue (SHG CPRHistory)", "The CPRs to be allocated to Key Accounts.", "fileCpr", "Upload CPR Queue"),
+    step(4, false, "Run allocation", "Available after step 3, in the CPR Allocation tab.", null, null)
+  );
+}
 let resizeTimer; window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => renderers[currentTab](), 150); });
 
 if (SB) document.body.classList.add("checking"); // hide the page until the access code is checked
@@ -2862,7 +2980,7 @@ if (SB) document.body.classList.add("checking"); // hide the page until the acce
   let tab = "distribusi"; try { tab = localStorage.getItem("cprTab") || tab; } catch {}
   if (!renderers[tab]) tab = "distribusi";
   SIM = simulate(); syncLoadDates();
-  showTab(tab);
+  showTab(tab); renderEmptyState();
   initDb();
 })();
 </script>
