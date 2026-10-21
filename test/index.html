@@ -315,7 +315,7 @@ body.locked #loginForm .btn { width: 100%; }
   <section class="panel" id="panel-ka" role="tabpanel" aria-labelledby="tab-ka">
     <div class="card" style="margin-top:16px">
       <h3>Performance data: PO Data</h3>
-      <div class="sub">PO Data (or CPR_Cleaned) serves two purposes: evaluating KA performance based on CPRs that have been converted into POs, and providing historical data for training the forecast model. It does not add CPRs to the work queue; the queue is sourced only from CPRHistory.</div>
+      <div class="sub">PO Data (or CPR_Cleaned) serves two purposes: evaluating KA performance based on CPRs that have been converted into POs, and providing the history the forecast model learns from. A file uploaded here <b>replaces</b> the forecast history (use the full CPR_Cleaned export); "Update Progress" in the header does not change the forecast. It does not add CPRs to the work queue; the queue is sourced only from CPRHistory.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
         <label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload PO Data / CPR_Cleaned<input type="file" id="filePo" accept=".xlsx,.xls,.csv"></label>
         <div class="field"><label for="poFrom">PO created from</label><input type="date" id="poFrom"></div>
@@ -404,6 +404,7 @@ body.locked #loginForm .btn { width: 100%; }
         <button class="btn" id="fcApply" type="button">Apply and retrain</button>
         <button class="btn ghost" id="fcReset" type="button">Reset to notebook default</button>
       </div>
+      <p class="note" id="fcHistInfo" style="margin-top:10px"></p>
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblFcCompare"></table></div>
       <p class="note" id="fcSetNote"></p>
     </div>
@@ -1502,11 +1503,11 @@ $("filePo").addEventListener("change", async (e) => {
   setStatus(`Reading ${file.name} …`);
   try {
     const { rows, columns } = await readWorkbook(file);
-    await loadKinerjaFile(file, rows, columns);
+    await loadKinerjaFile(file, rows, columns, { train: true });   // this upload is also the forecast history
   } catch (err) { setStatus("The performance file could not be read: " + err.message); }
   e.target.value = ""; renderEmptyState();
 });
-async function loadKinerjaFile(file, rows, columns) {
+async function loadKinerjaFile(file, rows, columns, opts = {}) {
   {
     const need = [COL.cpr, PO_COL.po].filter((c) => !columns.includes(c));
     if (need.length) { setStatus(`The performance file cannot be used: column(s) ${need.map((c) => `"${c}"`).join(", ")} not found. Please use a PO Data or CPR_Cleaned export that includes the PO column.`); return; }
@@ -1516,7 +1517,7 @@ async function loadKinerjaFile(file, rows, columns) {
     for (const r of poFresh) { const old = poMap.get(r.cpr); poMap.set(r.cpr, old && !r.kaName ? { ...r, kaName: old.kaName } : r); }   // keep the KA display name when the newer file has no "User KA"
     PO_RECS = [...poMap.values()]; renderEmptyState();
     PO_META = { fileName: file.name, savedAt: new Date().toISOString(), chunks: Math.ceil(PO_RECS.length / CHUNK), count: PO_RECS.length, rawRows: rows.length };
-    const prog = await updateProgress(file, rows);
+    const prog = await updateProgress(file, rows, opts);
     setPoDates(); renderKa();
     let saved = "";
     if (DB && canSave()) { try { await savePo(); saved = " Saved."; await logEvent({ type: "PO data", file: file.name, rows: rows.length, cpr: PO_RECS.length, total: PO_RECS.length }); } catch (err) { saved = " Not saved: " + saveErrorText(err) + "."; } }
@@ -1611,9 +1612,11 @@ async function loadProgress() {
   for (const c of chunks) for (const a of c.exists ? c.data().rows : []) { const p = {}; PROG_FIELDS.forEach((k, i) => { p[k] = a[i]; }); PROG.set(p.cpr, p); }
 }
 // read a Data PO file as progress: adds to the saved progress, returns a short summary
-async function updateProgress(file, rows) {
+async function updateProgress(file, rows, opts = {}) {
   const { map, maxDay } = buildProgress(rows);
-  updateTrain(rows);   // forecast history
+  // forecast history changes ONLY on a deliberate forecast-history upload (it then replaces the old history),
+  // so progress updates never shift the forecast and the same file always gives the same forecast
+  if (opts.train) { TRAIN = new Map(); updateTrain(rows); TRAIN_META.fileName = file.name; }
   const doneBefore = new Set(RECS.filter((r) => r.done).map((r) => r.cpr));
   const stepBefore = new Map(RECS.map((r) => [r.cpr, [r.kaOut, r.back, r.backOut].join("|")]));
   for (const [cpr, p] of map) PROG.set(cpr, p); // newer file wins
@@ -1627,7 +1630,7 @@ async function updateProgress(file, rows) {
   let saved = "";
   if (DB && canSave()) {
     try {
-      await saveProgress(); await saveTrain(); if (RECS.length && !IS_SAMPLE) await saveData();
+      await saveProgress(); if (opts.train) await saveTrain(); if (RECS.length && !IS_SAMPLE) await saveData();
       await logEvent({ type: "Progress update", file: file.name, rows: rows.length, cpr: inWorklot.length, note: `${changed} CPRs changed stage, ${finished} CPRs completed (converted into PO / rejected), ${noUpdate} queued CPRs not yet in PO Data` });
     } catch (err) { saved = ` Progress could not be saved: ${saveErrorText(err)}.`; }
   }
@@ -2109,6 +2112,9 @@ async function loadModelChoice() { if (!DB) return; try { const d = await DB.doc
   if (MODEL_CHOICE && MODEL_CHOICE.results) FC_RESULTS = MODEL_CHOICE.results; }
 // Forecast settings card (Evaluation tab)
 function renderFcSettings() {
+  $("fcHistInfo").textContent = TRAIN.size
+    ? `Forecast history in use: ${TRAIN_META && TRAIN_META.fileName ? TRAIN_META.fileName : "stored history"} · ${fmtInt(TRAIN.size)} CPRs${TRAIN_META && TRAIN_META.savedAt ? " · uploaded " + fmtStamp(TRAIN_META.savedAt) : ""}. It changes only when a new file is uploaded with "Upload PO Data / CPR_Cleaned" in KA Performance (the new file replaces it); "Update Progress" does not change the forecast.`
+    : "No forecast history yet: upload CPR_Cleaned with \"Upload PO Data / CPR_Cleaned\" in KA Performance.";
   if (!$("fcModel").options.length) { $("fcModel").append(el("option", { value: "auto" }, "Automatic (lowest validation MAE)")); for (const c of CANDIDATES) $("fcModel").append(el("option", { value: `${c.family}|${c.setting}` }, `${c.family} (${c.setting})`)); }
   $("fcFrom").value = FC_SET.from || ""; $("fcOnlyNew").checked = !!FC_SET.onlyNew; $("fcMonths").value = String(FC_SET.months || 3);
   $("fcMax").value = FC_SET.maxDays ? String(FC_SET.maxDays) : ""; $("fcModel").value = FC_SET.model || "auto";
