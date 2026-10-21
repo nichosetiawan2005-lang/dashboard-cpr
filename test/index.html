@@ -189,6 +189,15 @@ details.more[open] > summary::before { content: "▾ "; }
 .dq li { margin-bottom: 4px; }
 /* landing page shown before an access code is entered (online version) */
 body.checking .top, body.checking .wrap { visibility: hidden; }
+/* no data yet: show only the upload checklist (no sample names) */
+body.no-data .tabs, body.no-data .panel, body.no-data #globalFilters, body.no-data #modeBanner, body.no-data #sampleBanner { display: none !important; }
+#emptyCard { margin-top: 16px; padding: 24px; }
+#emptySteps { list-style: none; padding: 0; margin: 12px 0 0; }
+#emptySteps li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--line); font-size: 14px; }
+#emptySteps li .num { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; background: var(--info-bg); color: var(--accent-ink); flex: none; }
+#emptySteps li.done .num { background: var(--good-bg); color: var(--good); }
+#emptySteps li .txt { flex: 1 1 260px; }
+#emptySteps li .txt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 body.locked .top, body.locked .wrap > :not(#loginCard) { display: none !important; }
 body.locked .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
 body.locked #loginCard { display: block !important; width: 100%; max-width: 440px; padding: 28px; }
@@ -241,6 +250,11 @@ body.locked #loginForm .btn { width: 100%; }
 <div class="wrap">
   <div class="banner info" id="sampleBanner">
     <div><b>Sample data is currently displayed.</b> Recommended sequence: (1) upload the Hospital PIC List, (2) upload the CPR Queue (CPRHistory), (3) select Run Allocation, and (4) upload PO Data to update CPR progress and KA performance. All uploaded data is stored in this dashboard.</div>
+  </div>
+  <div class="card" id="emptyCard" hidden>
+    <h3 id="emptyTitle">No data uploaded yet</h3>
+    <div class="sub" id="emptySub"></div>
+    <ol id="emptySteps"></ol>
   </div>
   <div class="card" id="loginCard" hidden>
     <div class="landing-name">CPR Allocation &amp; Workload Balancing</div>
@@ -1091,6 +1105,7 @@ function makeSupabaseDb() {
   };
 }
 function renderAuth() {
+  renderEmptyState();   // admin and view-only see a different empty page
   if (!SB) return;
   // no valid code yet: show only the landing page with the sign-in form
   document.body.classList.remove("checking");
@@ -1484,7 +1499,7 @@ $("filePo").addEventListener("change", async (e) => {
     const { rows, columns } = await readWorkbook(file);
     await loadKinerjaFile(file, rows, columns);
   } catch (err) { setStatus("The performance file could not be read: " + err.message); }
-  e.target.value = "";
+  e.target.value = ""; renderEmptyState();
 });
 async function loadKinerjaFile(file, rows, columns) {
   {
@@ -1494,7 +1509,7 @@ async function loadKinerjaFile(file, rows, columns) {
     const poMap = new Map(PO_RECS.map((r) => [r.cpr, r]));
     const poFresh = buildPoRecords(rows);
     for (const r of poFresh) { const old = poMap.get(r.cpr); poMap.set(r.cpr, old && !r.kaName ? { ...r, kaName: old.kaName } : r); }   // keep the KA display name when the newer file has no "User KA"
-    PO_RECS = [...poMap.values()];
+    PO_RECS = [...poMap.values()]; renderEmptyState();
     PO_META = { fileName: file.name, savedAt: new Date().toISOString(), chunks: Math.ceil(PO_RECS.length / CHUNK), count: PO_RECS.length, rawRows: rows.length };
     const prog = await updateProgress(file, rows);
     setPoDates(); renderKa();
@@ -2926,7 +2941,34 @@ function showTab(name) {
   try { localStorage.setItem("cprTab", name); } catch {}
 }
 document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
-function renderAll() { renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
+function renderAll() { renderEmptyState(); renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
+// before the CPR queue is uploaded: no sample data on screen, only what to upload
+function renderEmptyState() {
+  const empty = IS_SAMPLE;
+  document.body.classList.toggle("no-data", empty);
+  $("emptyCard").hidden = !empty;
+  if (!empty) return;
+  if (!canSave()) {
+    $("emptyTitle").textContent = "No data available yet";
+    $("emptySub").textContent = "The dashboard administrator has not uploaded any CPR data yet. Please check back later.";
+    $("emptySteps").replaceChildren(); return;
+  }
+  $("emptyTitle").textContent = "No data uploaded yet";
+  $("emptySub").textContent = "Upload the files below in this order. The dashboard opens once the CPR queue has been uploaded.";
+  const step = (n, done, title, detail, inputId, label) => {
+    const li = el("li", { class: done ? "done" : "" }); li.append(el("span", { class: "num" }, done ? "✓" : String(n)));
+    const txt = el("div", { class: "txt" }, title); txt.append(el("small", {}, detail)); li.append(txt);
+    if (inputId) li.append(Object.assign(el("button", { class: done ? "btn ghost" : "btn", type: "button" }, done ? "Upload again" : label), { onclick: () => $(inputId).click() }));
+    return li;
+  };
+  const nPic = PIC_LIST ? Object.keys(PIC_LIST).length : 0, nHist = Math.max(TRAIN.size, PO_RECS.length);
+  $("emptySteps").replaceChildren(
+    step(1, nPic > 0, "Hospital PIC List", nPic ? `${fmtInt(nPic)} hospitals saved.` : "List of hospitals (RS) and their PIC Key Account.", "filePic", "Upload Hospital PIC List"),
+    step(2, nHist > 0, "Forecast history: CPR_Cleaned or PO Data", nHist ? `${fmtInt(nHist)} CPRs saved for the forecast.` : "Past CPRs that the forecast learns from.", "filePo", "Upload CPR_Cleaned / PO Data"),
+    step(3, false, "CPR Queue (SHG CPRHistory)", "The CPRs to be allocated to Key Accounts.", "fileCpr", "Upload CPR Queue"),
+    step(4, false, "Run allocation", "Available after step 3, in the CPR Allocation tab.", null, null)
+  );
+}
 let resizeTimer; window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => renderers[currentTab](), 150); });
 
 if (SB) document.body.classList.add("checking"); // hide the page until the access code is checked
@@ -2937,7 +2979,7 @@ if (SB) document.body.classList.add("checking"); // hide the page until the acce
   let tab = "distribusi"; try { tab = localStorage.getItem("cprTab") || tab; } catch {}
   if (!renderers[tab]) tab = "distribusi";
   SIM = simulate(); syncLoadDates();
-  showTab(tab);
+  showTab(tab); renderEmptyState();
   initDb();
 })();
 </script>
