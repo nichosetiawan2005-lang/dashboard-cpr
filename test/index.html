@@ -223,12 +223,12 @@ body.locked #loginForm .btn { width: 100%; }
         <label class="file-btn primary" for="fileCpr" id="lblCpr">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
           Upload CPR Queue (CPRHistory)
-          <input type="file" id="fileCpr" accept=".xlsx,.xls,.csv">
+          <input type="file" id="fileCpr" accept=".xlsx,.xls,.csv" multiple>
         </label>
         <label class="file-btn" for="fileProg" id="lblProg">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
           Update Progress (PO Data)
-          <input type="file" id="fileProg" accept=".xlsx,.xls,.csv">
+          <input type="file" id="fileProg" accept=".xlsx,.xls,.csv" multiple>
         </label>
         <label class="file-btn" for="filePic" id="lblPic">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
@@ -317,7 +317,7 @@ body.locked #loginForm .btn { width: 100%; }
       <h3>Performance data: PO Data</h3>
       <div class="sub">PO Data (or CPR_Cleaned) serves two purposes: evaluating KA performance based on CPRs that have been converted into POs, and providing the history the forecast model learns from. A file uploaded here <b>replaces</b> the forecast history (use the full CPR_Cleaned export); "Update Progress" in the header does not change the forecast. It does not add CPRs to the work queue; the queue is sourced only from CPRHistory.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
-        <label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload PO Data / CPR_Cleaned<input type="file" id="filePo" accept=".xlsx,.xls,.csv"></label>
+        <label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload PO Data / CPR_Cleaned<input type="file" id="filePo" accept=".xlsx,.xls,.csv" multiple></label>
         <div class="field"><label for="poFrom">PO created from</label><input type="date" id="poFrom"></div>
         <div class="field"><label for="poTo">to</label><input type="date" id="poTo"></div>
       </div>
@@ -806,7 +806,17 @@ function populateControls(keep) {
   $("fNew").checked = true;
 }
 
+// several files chosen at once (e.g. CPRHistory exports per status): read them as one combined table
+function pickFiles(list) {
+  const files = [...(list || [])]; if (!files.length) return null;
+  return files.length === 1 ? files[0] : { name: `${files.length} files (${files.map((f) => f.name).join(", ")})`, files };
+}
 async function readWorkbook(file) {
+  if (file.files) {
+    const rows = [], columns = [];
+    for (const f of file.files) { const t = await readWorkbook(f); for (const r of t.rows) rows.push(r); for (const c of t.columns) if (!columns.includes(c)) columns.push(c); }
+    return { rows, columns };
+  }
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array", cellDates: false }) // dates stay Excel serial numbers: exact day, no time-zone shift;
   const ws = wb.Sheets[wb.SheetNames[0]];
@@ -816,7 +826,7 @@ async function readWorkbook(file) {
 }
 
 $("fileCpr").addEventListener("change", async (e) => {
-  const file = e.target.files[0]; if (!file) return;
+  const file = pickFiles(e.target.files); if (!file) return;
   setStatus(`Reading ${file.name} …`);
   await new Promise((r) => setTimeout(r, 30));
   try {
@@ -1516,7 +1526,7 @@ function setPoDates() {
   $("poTo").value = dayToIso(max); $("poFrom").value = dayToIso(Math.max(min, max - 90)); // default: last 3 months of PO
 }
 $("filePo").addEventListener("change", async (e) => {
-  const file = e.target.files[0]; if (!file) return;
+  const file = pickFiles(e.target.files); if (!file) return;
   setStatus(`Reading ${file.name} …`);
   try {
     const { rows, columns } = await readWorkbook(file);
@@ -1655,7 +1665,7 @@ async function updateProgress(file, rows, opts = {}) {
   return `Progress as of ${progressDate() !== null ? fmtDay(progressDate()) : "–"}: ${fmtInt(inWorklot.length)} queued CPRs found, ${fmtInt(changed)} changed stage, ${fmtInt(finished)} completed. ${fmtInt(noUpdate)} queued CPRs are not yet in PO Data.${saved}`;
 }
 $("fileProg").addEventListener("change", async (e) => {
-  const file = e.target.files[0]; if (!file) return;
+  const file = pickFiles(e.target.files); if (!file) return;
   setStatus(`Reading ${file.name} …`);
   try {
     const { rows, columns } = await readWorkbook(file);
@@ -3000,7 +3010,7 @@ function renderEmptyState() {
   $("emptySteps").replaceChildren(
     step(1, nPic > 0, "Hospital PIC List", nPic ? `${fmtInt(nPic)} hospitals saved.` : "List of hospitals (RS) and their PIC Key Account.", "filePic", "Upload Hospital PIC List"),
     step(2, nHist > 0, "Forecast history: CPR_Cleaned or PO Data", nHist ? `${fmtInt(nHist)} CPRs saved for the forecast.` : "Past CPRs that the forecast learns from.", "filePo", "Upload CPR_Cleaned / PO Data"),
-    step(3, false, "CPR Queue (SHG CPRHistory)", "The CPRs to be allocated to Key Accounts.", "fileCpr", "Upload CPR Queue"),
+    step(3, false, "CPR Queue (SHG CPRHistory)", "The CPRs to be allocated to Key Accounts. Several exports can be selected at once.", "fileCpr", "Upload CPR Queue"),
     step(4, false, "Run allocation", "Available after step 3, in the CPR Allocation tab.", null, null)
   );
 }
