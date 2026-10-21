@@ -1264,7 +1264,11 @@ async function loadSpv() {
 async function saveTransfers() { await DB.doc("spv/transfers").set({ items: TRANSFERS.slice(-1500) }); }
 async function saveIgnored() { await DB.doc("spv/ignored").set({ items: IGNORED }); }
 async function saveAbsences() { await DB.doc("spv/absences").set({ items: ABSENCES }); }
-function lastTransfers() { const m = new Map(); for (const t of TRANSFERS) m.set(t.cpr, t); return m; }
+// reassignments made before the last "Delete all stored data" are history only: kept in the log, never applied again
+function lastDeleteAt() { let at = ""; for (const x of UPLOAD_LOG) if (x.type === "Data deleted" && x.at > at) at = x.at; return at; }
+const isArchived = (t) => { const cut = lastDeleteAt(); return !!cut && t.at <= cut; };
+const activeTransfers = () => TRANSFERS.filter((t) => !isArchived(t));
+function lastTransfers() { const m = new Map(); for (const t of activeTransfers()) m.set(t.cpr, t); return m; }
 function isAbsent(ka, day) { return ABSENCES.some((a) => a.ka === ka && day >= a.from && day <= a.to); }
 function absenceFor(ka, d1, d2) { return ABSENCES.find((a) => a.ka === ka && a.from <= d2 && a.to >= d1) || null; }
 
@@ -2552,7 +2556,7 @@ function openTrack(cpr) {
   // assignment history: first assignment + every reassignment of this CPR
   const lock = LOCKED.get(r.cpr), hist = [];
   hist.push(el("li", {}, `Assigned to ${kaLabel(lock ? lock.ka : c.ka)} by the DSS (${ruleLabel(lock ? lock.rule : c.rule)})${lock && lock.on !== undefined && lock.on !== null ? " on " + fmtDay(lock.on) : ""}`));
-  for (const t of TRANSFERS.filter((t) => t.cpr === r.cpr)) hist.push(el("li", {}, `${fmtStamp(t.at)}: ${kaLabel(t.from)} → ${kaLabel(t.to)} · ${t.reason}${t.note ? " (" + t.note + ")" : ""} · by ${byLabel(t.by)}`));
+  for (const t of activeTransfers().filter((t) => t.cpr === r.cpr)) hist.push(el("li", {}, `${fmtStamp(t.at)}: ${kaLabel(t.from)} → ${kaLabel(t.to)} · ${t.reason}${t.note ? " (" + t.note + ")" : ""} · by ${byLabel(t.by)}`));
   if (IGNORED[r.cpr]) hist.push(el("li", {}, `Dismissed on ${fmtStamp(IGNORED[r.cpr].at)}`));
   $("trHist").replaceChildren(...hist);
   $("track").showModal();
@@ -2698,7 +2702,7 @@ function renderSpv() {
     tile("Pending with approver", fmtInt(items.filter((x) => x.type === "post").length), "CPRs", "after KA Sequence 3"),
     tile("Possibly inactive", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `> ${STALE_DAYS} days; review and dismiss`),
     tile("KAs absent today", fmtInt(new Set(ABSENCES.filter((a) => today >= a.from && today <= a.to).map((a) => a.ka)).size), "people", ""),
-    tile("Reassignments (last 7 days)", fmtInt(TRANSFERS.filter((t) => Date.parse(t.at) >= week).length), "", `${fmtInt(TRANSFERS.filter((t) => t.by === "SPV").length)} by supervisor in total`)
+    tile("Reassignments (last 7 days)", fmtInt(activeTransfers().filter((t) => Date.parse(t.at) >= week).length), "", `${fmtInt(activeTransfers().filter((t) => t.by === "SPV").length)} by supervisor in total`)
   );
   const f = $("actFilter").value, fk = $("actKa").value;
   // "All active items" hides CPRs that are probably not active and CPRs the SPV ignored
@@ -2741,7 +2745,8 @@ function renderSpv() {
     { key: "to", label: "To", sortable: false, render: (t) => kaLabel(t.to) },
     { key: "reason", label: "Reason", sortable: false },
     { key: "note", label: "Notes", sortable: false, render: (t) => t.note || "" },
-    { key: "by", label: "By", sortable: false, render: (t) => pill(byLabel(t.by), t.by === "SPV" ? "info" : "muted") }
+    { key: "by", label: "By", sortable: false, render: (t) => pill(byLabel(t.by), t.by === "SPV" ? "info" : "muted") },
+    { key: "arch", label: "", sortable: false, render: (t) => (isArchived(t) ? pill("Before data deletion", "muted") : "") }
   ], TRANSFERS.slice().reverse());
 }
 function openTransfer(cpr) {
@@ -2921,7 +2926,7 @@ function renderBukti() {
   }
   // 4) SPV effort
   const inPeriod = new Set(SIM.assigned.map((c) => c.r.cpr));
-  const spvMoves = TRANSFERS.filter((t) => t.by === "SPV" && inPeriod.has(t.cpr)).length, autoMoves = SIM.assigned.filter((c) => c.moved || (c.transfer && (c.transfer.by === "Otomatis" || c.transfer.by === "Automatic"))).length;
+  const spvMoves = activeTransfers().filter((t) => t.by === "SPV" && inPeriod.has(t.cpr)).length, autoMoves = SIM.assigned.filter((c) => c.moved || (c.transfer && (c.transfer.by === "Otomatis" || c.transfer.by === "Automatic"))).length;
   $("bkSpvTiles").replaceChildren(
     tile("Allocated automatically", fmtNum(((SIM.n - spvMoves) / SIM.n) * 100, 0), "%", `${fmtInt(SIM.n - spvMoves)} of ${fmtInt(SIM.n)} CPRs without supervisor intervention`),
     tile("Automatic reassignments", fmtInt(autoMoves), "CPRs", "due to KA absence or excess workload"),
