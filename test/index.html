@@ -190,7 +190,8 @@ details.more[open] > summary::before { content: "▾ "; }
 /* landing page shown before an access code is entered (online version) */
 body.checking .top, body.checking .wrap { visibility: hidden; }
 /* no data yet: show only the upload checklist (no sample names) */
-body.no-data .tabs, body.no-data .panel, body.no-data #globalFilters, body.no-data #modeBanner, body.no-data #sampleBanner { display: none !important; }
+body.no-data .tabs, body.no-data .panel, body.no-data #globalFilters, body.no-data #modeBanner, body.no-data #sampleBanner,
+body.no-data #lblCpr, body.no-data #lblProg, body.no-data #lblPic, body.no-data #picKeepWrap { display: none !important; }   /* uploads are in the checklist instead */
 #emptyCard { margin-top: 16px; padding: 24px; }
 #emptySteps { list-style: none; padding: 0; margin: 12px 0 0; }
 #emptySteps li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--line); font-size: 14px; }
