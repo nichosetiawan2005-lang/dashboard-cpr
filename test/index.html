@@ -349,12 +349,12 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="section-title"><h2>CPRs requiring action</h2><p id="asOfNote"></p></div>
     <div class="filters" style="margin-top:0">
       <div class="field"><label for="actFilter">Show</label><select id="actFilter">
-        <option value="">All active items</option><option value="late">Overdue in KA Sequence 3</option><option value="pre">Delayed before reaching KA</option><option value="post">Pending with approver (after KA)</option><option value="stale">Possibly inactive (&gt; 30 days)</option><option value="ignored">Dismissed</option></select></div>
+        <option value="">All active items</option><option value="late">Overdue in KA Sequence 3</option><option value="pre">Delayed before reaching KA</option><option value="post">Pending with approver (after KA)</option><option value="stale">Inactive (no progress &gt; 30 days)</option><option value="ignored">Dismissed</option></select></div>
       <div class="field"><label for="actKa">KA</label><select id="actKa"></select></div>
       <button class="btn ghost" id="actIgnoreAll" type="button" hidden>Dismiss all shown</button>
     </div>
     <div class="tbl-wrap" style="max-height:460px;overflow:auto"><table id="tblAct"></table></div>
-    <p class="note">"Possibly inactive" refers to a CPR that has not reached the KA more than 30 days after its expected arrival (typically still in Draft with the requester, returned, or cancelled). Such CPRs are excluded from "All active items". Select "Dismiss" when a CPR is no longer being processed: it is removed from this list and from the KA workload, and can be restored at any time.</p>
+    <p class="note">"Inactive" = a CPR that has not reached Sequence 3 and shows no activity (no approval step in CPRHistory, no stage change in PO Data) for more than 30 days, typically still in Draft, returned to the requester, or abandoned. It is marked automatically, is not counted as KA workload, and its data is kept; it becomes active again as soon as a new upload shows activity. Inactive CPRs are excluded from "All active items". Select "Dismiss" to remove any CPR from this list and from the KA workload by hand; it can be restored at any time.</p>
     <p class="note">Rule: a CPR can be reassigned at any stage. The reassignment form shows the CPR's current stage: after Sequence 3 is completed, the new KA handles Sequence 8. Automatic reassignments (absence, workload limit) still apply only to CPRs on which work has not started.</p>
 
     <div class="card" id="trCard" hidden style="margin-top:12px;border-color:var(--accent)">
@@ -959,6 +959,7 @@ function pivotHistory(rows) {
     if (!kaRow && list.some((x) => !isKaRole(x) && !PRE_KA_ROLES.has(normRole(x[HCOL.role])))) { skipped++; removed.push(String(id)); continue; }
     // no Key Account row yet = the CPR has not reached KA: the arrival is forecast
     const beforeKa = kaRow ? list.filter((x) => Number(x[HCOL.seq]) < Number(kaRow[HCOL.seq])) : [];
+    const lastStamp = list.flatMap((x) => [toStamp(x[HCOL.submit]), toStamp(x[HCOL.approve])]).filter(Boolean).sort().slice(-1)[0] || null;
     const queueAt = kaRow ? (beforeKa.map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort().slice(-1)[0] || toStamp(kaRow[HCOL.submit]) || null) : null;
     const code = String(id).split("-")[1] || String(last[HCOL.unit]);
     const assetUnit = String(last[HCOL.asset] ?? "").split(".")[0].trim();
@@ -970,14 +971,14 @@ function pivotHistory(rows) {
       capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
       createAt: created, submitAt: null,
       kaInAt: queueAt, kaOutAt: null, backAt: null, backOutAt: null,
-      stage: null, stageSince: null
+      stage: null, stageSince: null, lastAct: lastStamp ? toDay(lastStamp.slice(0, 10)) : null
     }));
   }
   return { recs, dropped, skipped, removed, cprs: byCpr.size };
 }
 // put new records over the saved ones: same CPR number -> filled values replace old ones
 // fields that the approval history describes completely: a missing value there means "not happened yet"
-const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince"];
+const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct"];
 function mergeRecs(base, fresh, authoritative = []) {
   const map = new Map(base.map((r) => [r.cpr, r]));
   for (const r of fresh) {
@@ -1141,7 +1142,7 @@ if (SB) {
 
 let DB = null, DB_READY = false, LOCKED = new Map(), SAVED_AT = null;
 const CHUNK = 1000;
-const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince"];
+const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct"];
 const useLocks = () => !!DB && !IS_SAMPLE && !META.hasKa;
 const canSave = () => !!DB && (!SB || IS_ADMIN);
 const monthKey = (d) => dayToIso(d).slice(0, 7);
@@ -1255,7 +1256,23 @@ function renderSaveBadge() {
 }
 // ---------- SPV data: transfers ("spv/transfers") and KA absences ("spv/absences") ----------
 let TRANSFERS = [], ABSENCES = [], IGNORED = {}; // IGNORED: cpr -> { at, by, note }
-const STALE_DAYS = 30; // more than this many days past the expected arrival at KA = probably not active
+const STALE_DAYS = 30; // no activity for more than this many days before Sequence 3 = inactive
+// "today" for inactivity: the newest date in the CPR queue or PO Data
+let ACT_CACHE = { recs: null, n: -1, prog: null, day: null };
+function activityDate() {
+  const prog = progressDate();
+  if (ACT_CACHE.recs === RECS && ACT_CACHE.n === RECS.length && ACT_CACHE.prog === prog) return ACT_CACHE.day;
+  let m = dataDate(); for (const r of RECS) if (r.lastAct !== null && r.lastAct !== undefined && (m === null || r.lastAct > m)) m = r.lastAct;
+  ACT_CACHE = { recs: RECS, n: RECS.length, prog, day: m }; return m;
+}
+// last sign of life of a CPR: its latest approval step in CPRHistory, or the start of its current stage in PO Data
+const lastActivity = (r) => Math.max(r.lastAct ?? -Infinity, r.stageSince ?? -Infinity, r.create ?? -Infinity);
+// Inactive = not yet at Sequence 3 and nothing has happened for more than 30 days. Not counted as KA workload, never deleted,
+// and active again as soon as a new upload shows activity.
+function isInactive(r) {
+  if (r.kaIn !== null || r.backOut !== null || r.done) return false;
+  const D = activityDate(); return D !== null && D - lastActivity(r) > STALE_DAYS;
+}
 async function loadSpv() {
   if (!DB) return;
   try { const t = await DB.doc("spv/transfers").get(); TRANSFERS = t.exists ? t.data().items || [] : []; } catch { TRANSFERS = []; }
@@ -2267,7 +2284,7 @@ function simulate() {
   const newLoad = () => kaList.map(() => new Float64Array(nDays));
   const off = (d) => d - minDay;
   const activeDays = (c) => { const out = []; for (let i = 0; i < c.w1; i++) out.push(off(c.s1 + i)); for (let i = 0; i < c.w2; i++) out.push(off(c.s2 + i)); return out.filter((x) => x >= 0 && x < nDays); };
-  const add = (L, c, sign) => { if (c.r && IGNORED[c.r.cpr]) return; // ignored by SPV: no load for the KA
+  const add = (L, c, sign) => { if (c.r && (IGNORED[c.r.cpr] || isInactive(c.r))) return; // dismissed by SPV or inactive: no load for the KA
     const a = L[kaIdx.get(c.ka)]; for (const d of activeDays(c)) a[d] += sign * c.weight; };
   const lastDay = (c) => c.s2 + c.w2 - 1;
   const holding = (c, day) => c.s1 <= day && day <= lastDay(c);
@@ -2323,7 +2340,7 @@ function simulate() {
   const D = dataDate();
   // review-1 window of a CPR not yet started: planned review days, or - if it already sits at the KA - until the data date
   const pendingOffs = (c) => { const end = Math.max(c.s1 + c.w1 - 1, c.r.kaIn !== null && D !== null ? D : -Infinity); const out = []; for (let d = c.s1; d <= end; d++) out.push(off(d)); return out.filter((x) => x >= 0 && x < nDays); };
-  const checkAbsence = (c) => { if (IGNORED[c.r.cpr]) return;
+  const checkAbsence = (c) => { if (IGNORED[c.r.cpr] || isInactive(c.r)) return;
     if (!notStarted(c) || !ABSENCES.length || !absent(c.ka, pendingOffs(c))) return;
     const a = absenceFor(c.ka, c.s1, Math.max(c.s1 + c.w1 - 1, D ?? 0));
     const { best } = bestKa(c, activeDays(c), c.ka);
@@ -2504,6 +2521,7 @@ function progressStatus(c) {
   const r = c.r, p = r.prog;
   if (IGNORED[r.cpr]) return ["Dismissed", "muted"];
   if (p && isRejected(p)) return ["Rejected", "muted"];
+  if (isInactive(r)) return ["Inactive (no progress > 30 days)", "muted"];
   if (p && p.po !== null) return ["Completed (PO)", "good"];
   if (r.backOut !== null) return ["Sequence 8 completed", "good"];
   if (!p) return ["No update yet", "muted"];
@@ -2667,6 +2685,7 @@ function actionItems() {
   const D = dataDate(), out = [];
   for (const c of SIM.assigned) {
     const r = c.r; if (r.backOut !== null || r.done) continue;
+    if (!IGNORED[r.cpr] && isInactive(r)) { const AD = activityDate(), last = lastActivity(r); out.push({ c, type: "stale", days: AD - last, status: `No progress for ${AD - last} days (last activity ${fmtDay(last)}); not yet at Sequence 3. Not counted as KA workload.`, where: r.stage || "Before Key Account", canMove: true }); continue; }
     // without a progress update after the CPR entered KA, its status is unknown: not a problem yet
     if (!r.prog || D === null || D < (r.kaIn ?? r.create)) continue;
     if (IGNORED[r.cpr]) { out.push({ c, type: "ignored", days: 0, status: `Dismissed ${fmtStamp(IGNORED[r.cpr].at)}`, where: "–", canMove: false }); continue; }
@@ -2675,8 +2694,7 @@ function actionItems() {
       const d = D - r.kaIn; if (d > 3) out.push({ c, type: "late", days: d, status: `Sequence 3 not completed after ${d} days`, where: "Key Account HO", canMove: true });
     } else if (r.kaIn === null) {
       const due = r.create + (c.f1Hi ?? c.f1); const d = D - due;
-      if (d > STALE_DAYS) out.push({ c, type: "stale", days: d, status: `Not at KA ${d} days after the forecast limit; possibly still in draft or cancelled`, where, canMove: true });
-      else if (d > 0) out.push({ c, type: "pre", days: d, status: `Not yet at KA, ${d} days past the forecast limit`, where, canMove: true });
+      if (d > 0) out.push({ c, type: "pre", days: d, status: `Not yet at KA, ${d} days past the forecast limit`, where, canMove: true });
     } else if (r.kaOut !== null && r.back === null) {
       const d = D - r.kaOut; if (d > c.f2P80) out.push({ c, type: "post", days: d, status: `Awaiting approver for ${d} days (typically ≤ ${fmtNum(c.f2P80, 0)})`, where, canMove: true });
     }
@@ -2684,7 +2702,7 @@ function actionItems() {
   return out.sort((a, b) => b.days - a.days);
 }
 const actKind = { late: "bad", pre: "warn", post: "serious", stale: "muted", ignored: "muted" };
-const actLabel = { late: "Sequence 3 overdue", pre: "Delayed before KA", post: "Pending with approver", stale: "Possibly inactive", ignored: "Dismissed" };
+const actLabel = { late: "Sequence 3 overdue", pre: "Delayed before KA", post: "Pending with approver", stale: "Inactive", ignored: "Dismissed" };
 function kaLoadOn(ka, day) { if (!SIM) return null; const k = SIM.kaList.indexOf(ka); return k < 0 ? null : SIM.load[k][day - SIM.minDay] || 0; }
 function renderSpv() {
   const editable = canSave() && !IS_SAMPLE;
@@ -2706,7 +2724,7 @@ function renderSpv() {
     tile("Sequence 3 overdue", fmtInt(items.filter((x) => x.type === "late").length), "CPRs", "more than 3 days at KA"),
     tile("Delayed before KA", fmtInt(items.filter((x) => x.type === "pre").length), "CPRs", "past the forecast limit (P80)"),
     tile("Pending with approver", fmtInt(items.filter((x) => x.type === "post").length), "CPRs", "after KA Sequence 3"),
-    tile("Possibly inactive", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `> ${STALE_DAYS} days; review and dismiss`),
+    tile("Inactive", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `no progress > ${STALE_DAYS} days before Sequence 3; not counted as workload, data kept`),
     tile("KAs absent today", fmtInt(new Set(ABSENCES.filter((a) => today >= a.from && today <= a.to).map((a) => a.ka)).size), "people", ""),
     tile("Reassignments (last 7 days)", fmtInt(activeTransfers().filter((t) => Date.parse(t.at) >= week).length), "", `${fmtInt(activeTransfers().filter((t) => t.by === "SPV").length)} by supervisor in total`)
   );
