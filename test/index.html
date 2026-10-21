@@ -355,7 +355,7 @@ body.locked #loginForm .btn { width: 100%; }
     </div>
     <div class="tbl-wrap" style="max-height:460px;overflow:auto"><table id="tblAct"></table></div>
     <p class="note">"Possibly inactive" refers to a CPR that has not reached the KA more than 30 days after its expected arrival (typically still in Draft with the requester, returned, or cancelled). Such CPRs are excluded from "All active items". Select "Dismiss" when a CPR is no longer being processed: it is removed from this list and from the KA workload, and can be restored at any time.</p>
-    <p class="note">Rule: a CPR may be reassigned only if work has not yet started on it (not yet arrived, or arrived but Sequence 3 not completed). CPRs pending with an approver are not reassigned; follow up with the approver at the stated stage.</p>
+    <p class="note">Rule: a CPR can be reassigned at any stage. The reassignment form shows the CPR's current stage: after Sequence 3 is completed, the new KA handles Sequence 8. Automatic reassignments (absence, workload limit) still apply only to CPRs on which work has not started.</p>
 
     <div class="card" id="trCard" hidden style="margin-top:12px;border-color:var(--accent)">
       <h3>Reassign CPR</h3>
@@ -2675,10 +2675,10 @@ function actionItems() {
       const d = D - r.kaIn; if (d > 3) out.push({ c, type: "late", days: d, status: `Sequence 3 not completed after ${d} days`, where: "Key Account HO", canMove: true });
     } else if (r.kaIn === null) {
       const due = r.create + (c.f1Hi ?? c.f1); const d = D - due;
-      if (d > STALE_DAYS) out.push({ c, type: "stale", days: d, status: `Not at KA ${d} days after the forecast limit; possibly still in draft or cancelled`, where, canMove: false });
+      if (d > STALE_DAYS) out.push({ c, type: "stale", days: d, status: `Not at KA ${d} days after the forecast limit; possibly still in draft or cancelled`, where, canMove: true });
       else if (d > 0) out.push({ c, type: "pre", days: d, status: `Not yet at KA, ${d} days past the forecast limit`, where, canMove: true });
     } else if (r.kaOut !== null && r.back === null) {
-      const d = D - r.kaOut; if (d > c.f2P80) out.push({ c, type: "post", days: d, status: `Awaiting approver for ${d} days (typically ≤ ${fmtNum(c.f2P80, 0)})`, where, canMove: false });
+      const d = D - r.kaOut; if (d > c.f2P80) out.push({ c, type: "post", days: d, status: `Awaiting approver for ${d} days (typically ≤ ${fmtNum(c.f2P80, 0)})`, where, canMove: true });
     }
   }
   return out.sort((a, b) => b.days - a.days);
@@ -2764,6 +2764,12 @@ function findAssigned(cpr) { return SIM ? SIM.assigned.find((c) => c.r.cpr === c
 function updateTransferForm() {
   const c = findAssigned($("trCpr").value.trim());
   $("trFrom").textContent = c ? kaLabel(c.ka) : "–";
+  // any stage can be reassigned; the form says where the CPR is so the supervisor knows what moves
+  const r = c && c.r;
+  $("trMsg").textContent = !r ? "" : r.backOut !== null ? `Note: Sequence 8 was completed on ${fmtDay(r.backOut)}. Both KA reviews are done, so this change only updates the record.`
+    : r.back !== null ? `Note: Sequence 3 was completed on ${fmtDay(r.kaOut)} and the CPR is back for Sequence 8. The new KA will handle Sequence 8.`
+    : r.kaOut !== null ? `Note: Sequence 3 was completed on ${fmtDay(r.kaOut)}; the CPR is with other approvers. The new KA will handle Sequence 8 when it returns.`
+    : r.kaIn !== null ? `The CPR is at Key Account for Sequence 3 (since ${fmtDay(r.kaIn)}).` : "The CPR has not reached Key Account yet.";
   const D = dataDate();
   const kas = SIM ? SIM.kaList : [];
   $("trTo").replaceChildren(...kas.filter((k) => !c || k !== c.ka).map((k) => {
@@ -2777,7 +2783,6 @@ $("trCancel").addEventListener("click", () => { $("trCard").hidden = true; });
 $("trSave").addEventListener("click", async () => {
   const cpr = $("trCpr").value.trim(), c = findAssigned(cpr), to = $("trTo").value;
   if (!c) { $("trMsg").textContent = "The CPR number was not found in the current allocation."; return; }
-  if (c.r.back !== null || c.r.kaOut !== null) { $("trMsg").textContent = `This CPR was approved by the KA on ${c.r.kaOutAt ? fmtStampShort(c.r.kaOutAt) : fmtDay(c.r.kaOut)} (Sequence 3 completed)${c.r.backOut !== null ? ` and Sequence 8 was completed on ${fmtDay(c.r.backOut)}` : ""}, so it cannot be reassigned.`; return; }
   if (!to || to === c.ka) { $("trMsg").textContent = "Please select a different target KA."; return; }
   const t = { at: new Date().toISOString(), cpr, unit: c.unit, from: c.ka, to, reason: $("trReason").value, note: $("trNote").value.trim(), by: "SPV" };
   try {
