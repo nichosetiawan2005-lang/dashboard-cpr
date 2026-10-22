@@ -352,6 +352,10 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="field"><label for="incUnit">Hospital</label><select id="incUnit"></select></div>
       <div class="field"><label for="incRule">Rule</label><select id="incRule"></select></div>
       <div class="field"><label for="incAssign">Assignment</label><select id="incAssign"></select></div>
+      <div class="field"><label for="incDateBy">Date</label><select id="incDateBy"><option value="create">Created</option><option value="estArr">Estimated arrival at KA</option><option value="actArr">Actual arrival at KA</option><option value="estRet">Estimated return to KA</option></select></div>
+      <div class="field"><label for="incMonth">Month</label><select id="incMonth"></select></div>
+      <div class="field"><label for="incFrom">From</label><input type="date" id="incFrom"></div>
+      <div class="field"><label for="incTo">To</label><input type="date" id="incTo"></div>
       <button class="btn ghost" type="button" id="incClear">Clear filters</button>
     </div>
     <div class="tbl-tools"><input type="search" id="incSearch" placeholder="Search CPR number, description, hospital, KA"><div class="pager"><button type="button" id="incCopy">Copy table</button><button type="button" id="incPrev" aria-label="Previous page">‹</button><span id="incPage"></span><button type="button" id="incNext" aria-label="Next page">›</button></div></div>
@@ -3076,10 +3080,23 @@ function fillIncFilters() {
     sel.value = values.includes(cur) ? cur : "";
   }
 }
+// date used by the month / date-range filter
+const INC_DATE = { create: (c) => c.r.create, estArr: (c) => c.predArrival, actArr: (c) => actualArrival(c.r), estRet: (c) => estReturn(c) };
+const incDate = (c) => { const d = (INC_DATE[$("incDateBy").value] || INC_DATE.create)(c); return d === null || d === undefined || !Number.isFinite(d) ? null : d; };
+const monthText = (k) => `${MONTHS[Number(k.slice(5, 7)) - 1]} ${k.slice(0, 4)}`;
+function fillIncMonths() {
+  const sel = $("incMonth"), cur = sel.value;
+  const keys = [...new Set(SIM.assigned.map(incDate).filter((d) => d !== null).map(monthKey))].sort().reverse();
+  sel.replaceChildren(el("option", { value: "" }, "All months"), ...keys.map((k) => el("option", { value: k }, monthText(k))));
+  if (keys.includes(cur)) sel.value = cur;
+}
 function incRows() {
   const q = incState.q.trim().toLowerCase();
   const active = INC_FILTERS.filter(([id]) => $(id).value);
+  const mon = $("incMonth").value, from = $("incFrom").value ? isoToDay($("incFrom").value) : null, to = $("incTo").value ? isoToDay($("incTo").value) : null;
+  const dated = mon || from !== null || to !== null;
   return SIM.assigned.filter((c) => active.every(([id, , get]) => get(c) === $(id).value))
+    .filter((c) => { if (!dated) return true; const d = incDate(c); if (d === null) return false; return (!mon || monthKey(d) === mon) && (from === null || d >= from) && (to === null || d <= to); })
     .filter((c) => !q || [c.r.cpr, c.unit, c.vendor, c.r.vendorName, kaLabel(c.ka), kaLabel(c.r.ka)].join(" ").toLowerCase().includes(q))
     .sort((a, b) => a.r.create - b.r.create || a.r.cpr.localeCompare(b.r.cpr));
 }
@@ -3304,7 +3321,7 @@ function returnText(c) {
 const actualArrival = (r) => (r.prog && r.prog.kaIn !== null && r.prog.kaIn !== undefined ? r.prog.kaIn : null);
 function renderIncoming() {
   if (!SIM) return;
-  fillIncFilters(); $("incAssign").parentElement.hidden = !useLocks();
+  fillIncFilters(); fillIncMonths(); $("incAssign").parentElement.hidden = !useLocks();
   const rows = incRows(), per = 50, pages = Math.max(1, Math.ceil(rows.length / per));
   incState.page = Math.min(incState.page, pages - 1);
   $("incPage").textContent = `${incState.page + 1} / ${pages} · ${fmtInt(rows.length)} CPRs`;
@@ -3323,7 +3340,9 @@ function renderIncoming() {
   ], rows.slice(incState.page * per, incState.page * per + per));
 }
 for (const [id] of INC_FILTERS) $(id).addEventListener("change", () => { incState.page = 0; renderIncoming(); });
-$("incClear").addEventListener("click", () => { for (const [id] of INC_FILTERS) $(id).value = ""; $("incSearch").value = ""; incState.q = ""; incState.page = 0; renderIncoming(); });
+for (const id of ["incMonth", "incFrom", "incTo"]) $(id).addEventListener("change", () => { incState.page = 0; renderIncoming(); });
+$("incDateBy").addEventListener("change", () => { $("incMonth").value = ""; incState.page = 0; renderIncoming(); });
+$("incClear").addEventListener("click", () => { for (const [id] of INC_FILTERS) $(id).value = ""; for (const id of ["incMonth", "incFrom", "incTo"]) $(id).value = ""; $("incDateBy").value = "create"; $("incSearch").value = ""; incState.q = ""; incState.page = 0; renderIncoming(); });
 $("incSearch").addEventListener("input", (e) => { incState.q = e.target.value; incState.page = 0; renderIncoming(); });
 $("incPrev").addEventListener("click", () => { incState.page = Math.max(0, incState.page - 1); renderIncoming(); });
 $("incNext").addEventListener("click", () => { incState.page++; renderIncoming(); });
