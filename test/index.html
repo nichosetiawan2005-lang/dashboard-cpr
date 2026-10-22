@@ -148,6 +148,7 @@ td.cellwrap { white-space: normal; min-width: 130px; max-width: 180px; }
 .steps .role { font-weight: 600; font-size: 14px; } .steps .actor { font-size: 12.5px; color: var(--muted); } .steps .actor b { color: var(--fg); font-weight: 600; }
 .steps .right { grid-row: span 2; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .steps .badge { font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; background: var(--good-bg); color: var(--good); border: 1px solid currentColor; white-space: nowrap; }
+.steps li.rejected .dot { background: var(--bad); } .steps .badge.rejected { background: var(--bad-bg); color: var(--bad); }
 .steps .badge.submit { background: var(--info-bg); color: var(--accent-ink); } .steps .badge.revise { background: var(--warn-bg); color: var(--warn); } .steps .badge.rework { background: var(--serious-bg); color: var(--serious); } .steps .badge.consult { background: var(--info-bg); color: var(--fg); } .steps .badge.pending { background: transparent; color: var(--muted); }
 .steps .dur { font-size: 11.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
 .steps .notes { grid-column: 2 / -1; font-size: 12.5px; background: var(--bg); border-radius: 6px; padding: 6px 8px; margin-top: 4px; }
@@ -225,6 +226,9 @@ body.no-data #lblCpr, body.no-data #lblPic, body.no-data #picKeepWrap { display:
 #emptySteps li .txt { flex: 1 1 260px; }
 #emptySteps li .txt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 #emptySteps li.alloc { align-items: flex-start; }
+.ovtiles .tile { cursor: pointer; transition: box-shadow .15s, border-color .15s; }
+.ovtiles .tile:hover { border-color: var(--accent); }
+.ovtiles .tile.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 body.locked .top, body.locked .wrap > :not(#loginCard) { display: none !important; }
 body.locked .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
 body.locked #loginCard { display: block !important; width: 100%; max-width: 440px; padding: 28px; }
@@ -260,6 +264,7 @@ body.locked #loginForm .btn { width: 100%; }
       </div>
     </div>
     <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="false" data-tab="overview" id="tab-overview">Overview</button>
       <button class="tab" role="tab" aria-selected="true" data-tab="distribusi" id="tab-distribusi">CPR Allocation</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="ka" id="tab-ka">KA Performance</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="spv" id="tab-spv">Supervisor Control</button>
@@ -299,6 +304,19 @@ body.locked #loginForm .btn { width: 100%; }
   </div>
 
   <!-- PEMBAGIAN CPR -->
+  <section class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+    <div class="section-title" style="margin-top:16px"><h2>All CPRs</h2><p id="ovNote">Every CPR in the uploaded CPRHistory / CPRSummary, whatever its status. Select a box to list its CPRs; select a CPR number to see its approval steps.</p></div>
+    <div class="tiles ovtiles" id="ovTiles"></div>
+    <div class="card" style="margin-top:12px"><h3 id="ovTitle">All CPRs</h3>
+      <div class="filters" style="border:0;padding:0;margin:8px 0">
+        <div class="field" style="flex:1 1 260px"><label for="ovSearch">Search</label><input type="search" id="ovSearch" placeholder="CPR number, hospital, description, approver …"></div>
+        <div class="field"><label for="ovUnit">Hospital</label><select id="ovUnit"></select></div>
+      </div>
+      <div class="tbl-wrap"><table id="tblOv"></table></div>
+      <div class="filters" style="border:0;padding:0;margin:8px 0 0;justify-content:flex-end"><span class="note" id="ovPage" style="margin:0"></span><button class="btn ghost" id="ovPrev" type="button">‹</button><button class="btn ghost" id="ovNext" type="button">›</button></div>
+    </div>
+  </section>
+
   <section class="panel active" id="panel-distribusi" role="tabpanel" aria-labelledby="tab-distribusi">
     <div class="card" id="settingsCard" style="margin-top:16px">
       <h3>Allocation settings</h3>
@@ -902,7 +920,7 @@ $("fileCpr").addEventListener("change", async (e) => {
     if (DB) {
       setStatus(`${fmtInt(RECS.length)} CPRs read. Saving …`);
       try {
-        await saveData();
+        await saveData(); await saveCatalog();
         $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPRs · saved ${fmtStamp(SAVED_AT)}`;
         saved = " Data saved.";
         const fresh = RECS.filter((r) => !before.has(r.cpr)).length;
@@ -1027,6 +1045,8 @@ function applySummary(sum) {
   META.hasKa = false; deriveMeta();   // the KA list must come from the Hospital PIC List before KA users are recognised
   const known = new Map(RECS.map((r) => [r.cpr, r])); const users = kaUserSet(); let added = 0, updated = 0;
   for (const [id, x] of sum) {
+    { const o = CATALOG.get(id) || { cpr: id, unit: String(x.row[SCOL.unit] ?? ""), subject: String(x.row[SCOL.subject] ?? "").slice(0, 80), lastAct: null, stage: null };
+      CATALOG.set(id, { ...o, status: x.status || o.status, erp: x.erp || o.erp || null, waiting: x.waiting.join(",") || null, create: x.createdAt ? toDay(x.createdAt.slice(0, 10)) : o.create ?? null }); }
     if (/reject|cancel|batal|tolak/i.test(x.status)) continue;
     let r = known.get(id);
     if (!r) {
@@ -1062,6 +1082,77 @@ function dataKaUser(r) {
   return null;
 }
 const dataKa = (r) => { const u = dataKaUser(r); return u ? poKa({ ka: u, kaName: null }).ka : null; };
+// ---------- Overview tab: totals per status, the CPRs behind each box, and tracking for any CPR ----------
+const OV_GROUPS = [
+  { key: "all", label: "Total CPR", desc: "every CPR in the data", test: () => true },
+  { key: "approved", label: "Approved", desc: "Document Status Approved", test: (x) => /^approved$/i.test(x.status || "") },
+  { key: "review", label: "In Review", desc: "In Review and Draft", test: (x) => /review|draft/i.test(x.status || "") },
+  { key: "rejected", label: "Rejected", desc: "Rejected or cancelled", test: (x) => /reject|cancel|batal|tolak/i.test(x.status || "") },
+  { key: "completed", label: "Completed", desc: "PR / PO created in ERP (ERP ID)", test: (x) => !!x.erp }
+];
+let OV = { group: "all", page: 0 };
+function ovRows() {
+  // the catalogue, or (for data uploaded before it existed) the queue records
+  const base = CATALOG.size ? [...CATALOG.values()] : RECS.filter((r) => r.hstatus).map((r) => ({ cpr: r.cpr, unit: r.unit, subject: r.vendorName, status: r.hstatus, create: r.create, lastAct: r.lastAct, stage: r.stage, erp: r.erp, waiting: r.waiting }));
+  const live = new Map(RECS.map((r) => [r.cpr, r])), alloc = SIM ? new Map(SIM.assigned.map((c) => [c.r.cpr, c])) : new Map();
+  return base.map((x) => { const r = live.get(x.cpr), c = alloc.get(x.cpr); return { ...x, stage: (r && r.stage) || x.stage, erp: x.erp || (r && r.erp) || null, ka: c ? c.ka : null, inQueue: !!r }; });
+}
+function renderOverview() {
+  if (!$("ovTiles")) return;
+  const rows = ovRows();
+  $("ovTiles").replaceChildren(...OV_GROUPS.map((g) => {
+    const t = tile(g.label, fmtInt(rows.filter(g.test).length), "", g.desc);
+    t.classList.toggle("sel", OV.group === g.key);
+    t.tabIndex = 0; t.setAttribute("role", "button");
+    const pick = () => { OV = { group: g.key, page: 0 }; renderOverview(); };
+    t.onclick = pick; t.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
+    return t;
+  }));
+  const units = [...new Set(rows.map((x) => x.unit).filter(Boolean))].sort();
+  const uSel = $("ovUnit"), cur = uSel.value; uSel.replaceChildren(el("option", { value: "" }, "All hospitals"), ...units.map((u) => el("option", { value: u }, u))); if (units.includes(cur)) uSel.value = cur;
+  const g = OV_GROUPS.find((x) => x.key === OV.group) || OV_GROUPS[0];
+  const q = $("ovSearch").value.trim().toLowerCase(), unit = uSel.value;
+  const list = rows.filter(g.test).filter((x) => (!unit || x.unit === unit) && (!q || [x.cpr, x.unit, x.subject, x.stage, x.waiting, x.erp, x.ka].some((v) => v && String(v).toLowerCase().includes(q))))
+    .sort((a, b) => (b.lastAct ?? 0) - (a.lastAct ?? 0));
+  const per = 50, pages = Math.max(1, Math.ceil(list.length / per)); OV.page = Math.min(OV.page, pages - 1);
+  $("ovTitle").textContent = `${g.label} · ${fmtInt(list.length)} CPRs`;
+  $("ovPage").textContent = `${OV.page + 1} / ${pages}`; $("ovPrev").disabled = OV.page === 0; $("ovNext").disabled = OV.page >= pages - 1;
+  const kind = (st) => (/^approved$/i.test(st || "") ? "good" : /reject|cancel/i.test(st || "") ? "bad" : /draft/i.test(st || "") ? "muted" : "info");
+  renderTable($("tblOv"), [
+    { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (x) => cprLink(x.cpr) },
+    { key: "unit", label: "Hospital", sortable: false },
+    { key: "subject", label: "Description", sortable: false, render: (x) => el("div", { class: "cellwrap" }, x.subject || "–") },
+    { key: "create", label: "Created", sortable: false, render: (x) => fmtDay(x.create) },
+    { key: "status", label: "Status", sortable: false, render: (x) => pill(x.status || "–", kind(x.status)) },
+    { key: "stage", label: "Current position", sortable: false, render: (x) => el("div", { class: "cellwrap" }, x.stage || (x.waiting ? "Waiting for " + x.waiting.split(",").join(", ") : "–")) },
+    { key: "lastAct", label: "Last activity", sortable: false, render: (x) => fmtDay(x.lastAct) },
+    { key: "ka", label: "Key Account", sortable: false, render: (x) => (x.ka ? kaLabel(x.ka) : "–") },
+    { key: "erp", label: "ERP ID (PR / PO)", sortable: false, render: (x) => x.erp || "–" }
+  ], list.slice(OV.page * per, OV.page * per + per));
+}
+$("ovSearch").addEventListener("input", () => { OV.page = 0; renderOverview(); });
+$("ovUnit").addEventListener("change", () => { OV.page = 0; renderOverview(); });
+$("ovPrev").addEventListener("click", () => { OV.page = Math.max(0, OV.page - 1); renderOverview(); });
+$("ovNext").addEventListener("click", () => { OV.page += 1; renderOverview(); });
+// ---------- catalogue of every CPR (Overview tab): status, dates, current position, ERP ID ----------
+let CATALOG = new Map();
+const CAT_FIELDS = ["cpr", "unit", "subject", "status", "create", "lastAct", "stage", "erp", "waiting"];
+async function saveCatalog() {
+  if (!DB || !canSave()) return;
+  const rows = [...CATALOG.values()].map((x) => CAT_FIELDS.map((k) => x[k] ?? null)), n = Math.ceil(rows.length / CHUNK);
+  const old = await DB.doc("catalog/meta").get(); const oldN = old.exists ? old.data().chunks || 0 : 0;
+  for (let i = 0; i < n; i++) await DB.doc("catalog/chunk-" + i).set({ rows: rows.slice(i * CHUNK, (i + 1) * CHUNK) });
+  for (let i = n; i < oldN; i++) await DB.doc("catalog/chunk-" + i).delete();
+  await DB.doc("catalog/meta").set({ chunks: n, count: rows.length, savedAt: new Date().toISOString() });
+}
+async function loadCatalog() {
+  if (!DB) return;
+  try {
+    const meta = await DB.doc("catalog/meta").get(); if (!meta.exists) return;
+    const chunks = await Promise.all(Array.from({ length: meta.data().chunks || 0 }, (_, i) => DB.doc("catalog/chunk-" + i).get()));
+    CATALOG = new Map(); for (const c of chunks) for (const a of c.exists ? c.data().rows : []) { const x = {}; CAT_FIELDS.forEach((k, i) => { x[k] = a[i]; }); CATALOG.set(x.cpr, x); }
+  } catch {}
+}
 // rework episodes stored as "start:end:who;..." (who: D = Purchasing Director, H = Purchasing Head HO; end empty = still open)
 const reworkList = (r) => (r.rwk ? String(r.rwk).split(";").map((x) => { const [a, b, w] = x.split(":"); return { start: Number(a), end: b === "" ? null : Number(b), who: w === "D" ? "Purchasing Director" : "Purchasing Head HO" }; }) : []);
 const inRework = (r) => !!(r.stage && String(r.stage).startsWith("At Key Account – Rework"));
@@ -1100,7 +1191,7 @@ function pivotHistory(rows) {
     for (const [, rs] of srcs) { const sc = score(rs); if (!best || sc[0] > bestScore[0] || (sc[0] === bestScore[0] && (sc[1] > bestScore[1] || (sc[1] === bestScore[1] && order > bestOrder)))) { best = rs; bestScore = sc; bestOrder = order; } order++; }
     byCpr.set(id, best); olderVersions++;
   }
-  const recs = [], removed = [], removedLast = {}, steps = new Map(); let dropped = 0, skipped = 0;
+  const recs = [], removed = [], removedLast = {}, steps = new Map(), catalog = new Map(); let dropped = 0, skipped = 0;
   // a user is a KA when most of the steps they approve are Key Account / Purchasing HO steps (e.g. not Purchasing Head HO)
   const roleCount = new Map();
   for (const list of byCpr.values()) for (const x of list) { const u = String(x[HCOL.user] ?? "").trim().toLowerCase(); if (!u) continue; const k = normRole(x[HCOL.role]).replace(/[^a-z]/g, ""); const kaStep = k.includes("keyaccount") || k === "purchasingho"; if (!roleCount.has(u)) roleCount.set(u, [0, 0]); roleCount.get(u)[kaStep ? 0 : 1]++; }
@@ -1116,6 +1207,17 @@ function pivotHistory(rows) {
     const status = String(last[HCOL.status] ?? "").trim();
     const lastSeen = list.flatMap((x) => [toStamp(x[HCOL.submit]), toStamp(x[HCOL.approve])]).filter(Boolean).sort().slice(-1)[0] || null;
     removedLast[String(id)] = lastSeen ? toDay(lastSeen.slice(0, 10)) : null;
+    {
+      // catalogue (Overview tab): every CPR, whatever its status
+      const firstSub = list.map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null;
+      const byTime = list.slice().sort((a, b) => ((toStamp(a[HCOL.approve]) || toStamp(a[HCOL.submit]) || "") < (toStamp(b[HCOL.approve]) || toStamp(b[HCOL.submit]) || "") ? -1 : 1));
+      const lastRow = byTime[byTime.length - 1];
+      const code = String(id).split("-")[1] || String(last[HCOL.unit]);
+      catalog.set(String(id), { cpr: String(id), unit: known[code] || String(last[HCOL.asset] ?? "").split(".")[0].trim() || String(last[HCOL.unit]), subject: String(last[HCOL.subject] ?? "").slice(0, 80),
+        status, create: firstSub ? toDay(firstSub.slice(0, 10)) : null, lastAct: removedLast[String(id)],
+        stage: /reject|cancel|batal|tolak/i.test(status) && lastRow ? `Rejected at ${pretty(lastRow)}${lastRow[HCOL.user] ? " (" + lastRow[HCOL.user] + ")" : ""}` : null, erp: null, waiting: null });
+      steps.set(String(id), list.map(stepRow));
+    }
     if (/reject|cancel|batal|tolak/i.test(status)) { dropped++; removed.push(String(id)); continue; }
     const req = list.filter((x) => normRole(x[HCOL.role]) === "requester" || Number(x[HCOL.seq]) === 0);
     const created = (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null;
@@ -1185,9 +1287,8 @@ function pivotHistory(rows) {
       ka8User: (phoRows.find((x) => toStamp(x[HCOL.approve]) === firstPhoDone) || phoRows[0] || {})[HCOL.user] || null,
       rwk: reworks.filter((e) => e.toKa).map((e) => `${dayOf(e.st)}:${e.end ? dayOf(e.end) : ""}:${e.who}`).join(";") || null
     }));
-    steps.set(String(id), list.map(stepRow));
   }
-  return { recs, dropped, skipped, removed, removedLast, olderVersions, steps, kaUsers: kaUsersFound, cprs: byCpr.size };
+  return { recs, dropped, skipped, removed, removedLast, olderVersions, steps, catalog, kaUsers: kaUsersFound, cprs: byCpr.size };
 }
 // put new records over the saved ones: same CPR number -> filled values replace old ones
 // fields that the approval history describes completely: a missing value there means "not happened yet"
@@ -1242,8 +1343,12 @@ async function applyHistory(rows, fileName, roleKa, roleBack) {
   const newerStored = (f) => { const o = stored.get(f.cpr); return o && o.lastAct !== null && o.lastAct !== undefined && f.lastAct !== null && f.lastAct !== undefined && o.lastAct > f.lastAct; };
   const keptOld = result.recs.filter(newerStored).length;
   result.recs = result.recs.filter((f) => !newerStored(f)); result.keptOld = keptOld;
-  if (DB && canSave()) { try { await saveSteps(new Map(result.recs.map((r) => [r.cpr, result.steps.get(r.cpr)])), [...gone]); } catch { /* steps are a convenience: the queue itself is saved separately */ } }
-  else for (const r of result.recs) { const b = stepBucket(r.cpr); if (!STEP_CACHE.has(b)) STEP_CACHE.set(b, {}); STEP_CACHE.get(b)[r.cpr] = result.steps.get(r.cpr); }
+  // catalogue + approval steps of every CPR in the upload (rejected ones too), unless a more recent version is stored
+  const freshCat = [...result.catalog.values()].filter((x) => { const o = CATALOG.get(x.cpr); return !(o && o.lastAct != null && x.lastAct != null && o.lastAct > x.lastAct); });
+  for (const x of freshCat) { const o = CATALOG.get(x.cpr); CATALOG.set(x.cpr, o ? { ...o, ...x, erp: x.erp ?? o.erp, waiting: x.waiting ?? o.waiting } : x); }
+  const stepMap = new Map(freshCat.map((x) => [x.cpr, result.steps.get(x.cpr)]));
+  if (DB && canSave()) { try { await saveSteps(stepMap, []); } catch { /* steps are a convenience: the queue itself is saved separately */ } }
+  else for (const [cpr, rows] of stepMap) { const b = stepBucket(cpr); if (!STEP_CACHE.has(b)) STEP_CACHE.set(b, {}); STEP_CACHE.get(b)[cpr] = rows; }
   const base = IS_SAMPLE ? [] : RECS.filter((r) => !gone.has(r.cpr));
   META.hasKa = false; void feedHasKa; // worklot data: the DSS assigns the KA
   RECS = mergeRecs(base, result.recs, HIST_KEYS).map(finishRec);
@@ -1388,7 +1493,7 @@ async function initDb() {
     if (pic.exists) PIC_LIST = pic.data().list || null;
     try { await loadPo(); } catch {}
     try { await loadProgress(); } catch {}
-    try { await loadTrain(); await loadModelChoice(); await loadKaUsers(); await loadSetup(); } catch {}
+    try { await loadTrain(); await loadModelChoice(); await loadKaUsers(); await loadSetup(); await loadCatalog(); } catch {}
     await loadLog(); renderLog(); await loadSpv();
     if (!meta.exists) { renderSavedInfo(); renderQuality(); renderKa(); return; }
     setStatus("Loading stored data …");
@@ -1619,6 +1724,7 @@ $("btnClearSaved").addEventListener("click", async () => {
     await DB.doc("train/meta").delete(); await DB.doc("settings/models").delete();
     try { const st = await DB.collection("steps").get(); for (const d of st.docs) await DB.doc("steps/" + d.id).delete(); } catch {}
     await DB.doc("settings/kausers").delete(); await DB.doc("settings/setup").delete();
+    { const cm = await DB.doc("catalog/meta").get(); const cn = cm.exists ? cm.data().chunks || 0 : 0; for (let i = 0; i < cn; i++) await DB.doc("catalog/chunk-" + i).delete(); await DB.doc("catalog/meta").delete(); }
     await clearAlloc();
     location.reload();
   } catch (err) { setStatus("Deletion failed: " + (err.message || err.code)); }
@@ -2871,8 +2977,11 @@ async function renderSteps(cpr) {
   const time = (x) => x[4] || x[3] || "";
   const list = rows.map((x, i) => ({ x, i })).sort((a, b) => (time(a.x) < time(b.x) ? -1 : time(a.x) > time(b.x) ? 1 : (Number(a.x[0]) - Number(b.x[0])) || a.i - b.i));
   const pretty = (v) => String(v || "").replace(/\b\w/g, (ch) => ch.toUpperCase()).replace(/\bHo\b/g, "HO").replace(/\bHu\b/g, "HU").replace(/\bFc\b/g, "FC").replace(/\bCeo\b/g, "CEO");
-  let first = true; const returnedAt = new Map();   // role -> time it was sent back to that role (revise / rework)
+  let first = true; const returnedAt = new Map();
+  const catSt = (CATALOG.get(cpr) || {}).status || (r0 && r0.hstatus) || "", isRejectedCpr = /reject|cancel|batal|tolak/i.test(catSt);
+  const lastKey = list.length ? list[list.length - 1].i : -1;   // role -> time it was sent back to that role (revise / rework)
   const items = list.map(({ x, i }) => {
+    const rejectedHere = (x[8] && /^\s*\[reject/i.test(x[8])) || (isRejectedCpr && i === lastKey);
     const [seq, role, user, submit, approve, revise, consult, nReq, nAppr, nCons] = x;
     const r = normRole(role), key = r.replace(/[^a-z]/g, "");
     const isSubmit = first && r === "requester" && !approve; first = false;
@@ -2880,6 +2989,7 @@ async function renderSteps(cpr) {
     const isKa = key.includes("keyaccount") || key === "purchasingho";
     let kind = "approved", badge = "Approval – approved";
     if (isSubmit) { kind = "submit"; badge = "Submit"; }
+    else if (rejectedHere) { kind = "rejected"; badge = "Rejected"; }
     else if (revise && late) { kind = "rework"; badge = `Rework → ${pretty(revise)}`; }
     else if (revise) { kind = "revise"; badge = `Revise → ${pretty(revise)}`; }
     else if (consult) { kind = "consult"; badge = `Consult → ${consult}`; }
@@ -2928,7 +3038,16 @@ async function renderSteps(cpr) {
 /* ---------- CPR tracking panel: click a CPR number to see its journey ---------- */
 const cprLink = (cpr) => Object.assign(el("button", { class: "linkbtn", type: "button", title: "Track this CPR" }, cpr), { onclick: () => openTrack(cpr) });
 function openTrack(cpr) {
-  const c = findAssigned(cpr); if (!c) return;
+  const c = findAssigned(cpr);
+  if (!c) {   // a CPR outside the allocation (rejected, outside the period, ...): its approval steps from the catalogue
+    const x = CATALOG.get(cpr) || {}, D = dataDate();
+    $("trTitle").textContent = cpr;
+    $("trSub").textContent = [x.subject, x.unit].filter(Boolean).join(" · ");
+    $("trMeta").replaceChildren(pill(x.status || "–", /^approved$/i.test(x.status || "") ? "good" : /reject|cancel/i.test(x.status || "") ? "bad" : "info"),
+      el("span", {}, x.erp ? "ERP ID: " + x.erp : "Not in the allocation"), el("span", { class: "note", style: "margin:0" }, D !== null ? `Data as of ${fmtDay(D)}` : ""));
+    $("trLine").replaceChildren(); $("trHist").replaceChildren(el("li", {}, "Not allocated by the dashboard."));
+    $("track").showModal(); renderSteps(cpr); return;
+  }
   const r = c.r, p = r.prog, D = dataDate(), w1 = SIM.w1, w2 = SIM.w2;
   const [statusText, statusKind] = progressStatus(c);
   $("trTitle").textContent = r.cpr;
@@ -3366,7 +3485,7 @@ function renderBukti() {
 }
 
 /* ---------- Tabs and boot ---------- */
-const renderers = { distribusi: renderSim, ka: renderKa, spv: renderSpv, bukti: renderBukti, kualitas: renderQuality };
+const renderers = { overview: renderOverview, distribusi: renderSim, ka: renderKa, spv: renderSpv, bukti: renderBukti, kualitas: renderQuality };
 let currentTab = "distribusi";
 function showTab(name) {
   if ($("tab-" + name).hidden) name = "distribusi"; // a tab hidden for this access level cannot be opened
@@ -3377,7 +3496,7 @@ function showTab(name) {
   try { localStorage.setItem("cprTab", name); } catch {}
 }
 document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
-function renderAll() { renderEmptyState(); renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
+function renderAll() { renderEmptyState(); renderOverview(); renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
 // before the CPR queue is uploaded: no sample data on screen, only what to upload
 function renderEmptyState() {
   // the setup page stays until the first allocation has been run (nothing is allocated automatically)
