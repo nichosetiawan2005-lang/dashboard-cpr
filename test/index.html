@@ -396,12 +396,12 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="section-title"><h2>CPRs requiring action</h2><p id="asOfNote"></p></div>
     <div class="filters" style="margin-top:0">
       <div class="field"><label for="actFilter">Show</label><select id="actFilter">
-        <option value="">All active items</option><option value="late">Overdue in KA Sequence 3</option><option value="pre">Delayed before reaching KA</option><option value="post">Pending with approver (after KA)</option><option value="stale">Inactive (no progress &gt; 30 days)</option><option value="ignored">Dismissed</option></select></div>
+        <option value="">All active items</option><option value="late">Overdue in KA Sequence 3</option><option value="pre">Delayed before reaching KA</option><option value="post">Pending with approver (after KA)</option><option value="stale">Auto-rejected (no progress &gt; 30 days)</option><option value="ignored">Dismissed</option></select></div>
       <div class="field"><label for="actKa">KA</label><select id="actKa"></select></div>
       <button class="btn ghost" id="actIgnoreAll" type="button" hidden>Dismiss all shown</button>
     </div>
     <div class="tbl-wrap" style="max-height:460px;overflow:auto"><table id="tblAct"></table></div>
-    <p class="note">"Inactive" = a CPR that has not reached Sequence 3 and shows no activity (no approval step in CPRHistory) for more than 30 days, typically still in Draft, returned to the requester, or abandoned. It is marked automatically, is not counted as KA workload, and its data is kept; it becomes active again as soon as a new upload shows activity. Inactive CPRs are excluded from "All active items". Select "Dismiss" to remove any CPR from this list and from the KA workload by hand; it can be restored at any time.</p>
+    <p class="note">"Auto-rejected" = a CPR still in progress, at any sequence, that shows no activity (no approval step in CPRHistory) for more than 30 days: the approval system rejects such CPRs automatically. It is marked automatically, is not counted as KA workload, is counted under "Rejected" in the Overview, and its data is kept; it becomes active again as soon as a new upload shows activity. Auto-rejected CPRs are excluded from "All active items". Select "Dismiss" to remove any CPR from this list and from the KA workload by hand; it can be restored at any time.</p>
     <p class="note">Rule: a CPR can be reassigned at any stage. The reassignment form shows the CPR's current stage: after Sequence 3 is completed, the new KA handles Sequence 8. Automatic reassignments (absence, workload limit) still apply only to CPRs on which work has not started.</p>
 
     <div class="card" id="trCard" hidden style="margin-top:12px;border-color:var(--accent)">
@@ -1109,7 +1109,7 @@ const OV_GROUPS = [
   { key: "all", label: "Total CPR", desc: "every CPR in the data", test: () => true },
   { key: "approved", label: "Approved", desc: "Document Status Approved", test: (x) => /^approved$/i.test(x.status || "") },
   { key: "review", label: "In Review", desc: "In Review and Draft", test: (x) => /review|draft/i.test(x.status || "") },
-  { key: "rejected", label: "Rejected", desc: "Rejected or cancelled", test: (x) => /reject|cancel|batal|tolak/i.test(x.status || "") },
+  { key: "rejected", label: "Rejected", desc: "Rejected or cancelled, incl. auto-rejected (no progress > 30 days)", test: (x) => /reject|cancel|batal|tolak/i.test(x.status || "") },
   { key: "completed", label: "Completed", desc: "PR / PO created in ERP (ERP ID)", test: (x) => !!x.erp }
 ];
 let OV = { group: "all", page: 0 };
@@ -1117,7 +1117,8 @@ function ovRows() {
   // the catalogue, or (for data uploaded before it existed) the queue records
   const base = CATALOG.size ? [...CATALOG.values()] : RECS.filter((r) => r.hstatus).map((r) => ({ cpr: r.cpr, unit: r.unit, subject: r.vendorName, status: r.hstatus, create: r.create, lastAct: r.lastAct, stage: r.stage, erp: r.erp, waiting: r.waiting }));
   const live = new Map(RECS.map((r) => [r.cpr, r])), alloc = SIM ? new Map(SIM.assigned.map((c) => [c.r.cpr, c])) : new Map();
-  return base.map((x) => { const r = live.get(x.cpr), c = alloc.get(x.cpr); return { ...x, stage: (r && r.stage) || x.stage, pos: (r && posLabel(r)) || x.pos || null, erp: x.erp || (r && r.erp) || null, ka: c ? c.ka : null, inQueue: !!r }; });
+  return base.map((x) => { const r = live.get(x.cpr), c = alloc.get(x.cpr); const auto = r && /review|draft/i.test(x.status || "") && isInactive(r);
+    return { ...x, status: auto ? "Rejected (auto, no progress > 30 days)" : x.status, stage: (r && r.stage) || x.stage, pos: (r && posLabel(r)) || x.pos || null, erp: x.erp || (r && r.erp) || null, ka: c ? c.ka : null, inQueue: !!r }; });
 }
 function renderLateAlert() {
   const items = SIM ? actionItems().filter((x) => x.type === "late" || x.type === "pre" || x.type === "post") : [];
@@ -1654,7 +1655,7 @@ function renderSaveBadge() {
 }
 // ---------- SPV data: transfers ("spv/transfers") and KA absences ("spv/absences") ----------
 let TRANSFERS = [], ABSENCES = [], IGNORED = {}; // IGNORED: cpr -> { at, by, note }
-const STALE_DAYS = 30; // no activity for more than this many days before Sequence 3 = inactive
+const STALE_DAYS = 30; // no activity for more than this many days = rejected automatically by the approval system
 // "today" for inactivity: the newest date in the CPR queue or PO Data
 let ACT_CACHE = { recs: null, n: -1, prog: null, day: null };
 function activityDate() {
@@ -1665,10 +1666,10 @@ function activityDate() {
 }
 // last sign of life of a CPR: its latest approval step in CPRHistory, or the start of its current stage in PO Data
 const lastActivity = (r) => Math.max(r.lastAct ?? -Infinity, r.stageSince ?? -Infinity, r.create ?? -Infinity);
-// Inactive = not yet at Sequence 3 and nothing has happened for more than 30 days. Not counted as KA workload, never deleted,
-// and active again as soon as a new upload shows activity.
+// Auto-rejected = a CPR still in progress (any sequence) with no activity for more than 30 days: the approval system
+// rejects such CPRs automatically. Not counted as KA workload, never deleted, active again if a new upload shows activity.
 function isInactive(r) {
-  if (r.kaIn !== null || r.backOut !== null || r.done) return false;
+  if (r.done) return false;
   const D = activityDate(); return D !== null && D - lastActivity(r) > STALE_DAYS;
 }
 async function loadSpv() {
@@ -3092,7 +3093,7 @@ function progressStatus(c) {
     if (/^approved$/i.test(r.hstatus || "")) return ["Done · Fully approved", "good"];
     if (r.backOut !== null) return ["Done · Sequence 8 approved", "good"];
   }
-  if (isInactive(r)) return ["Inactive (no progress > 30 days)", "muted"];
+  if (isInactive(r)) return ["Rejected · auto (no progress > 30 days)", "bad"];
   const pos = posLabel(r);   // "Sequence N : Role" read from CPRHistory / CPRSummary
   if (inRework(r)) return [pos || "At KA – Rework", "warn"];
   if (!p) return ["No update yet", "muted"];
@@ -3279,14 +3280,14 @@ function arrivalText(c) {
   const box = el("div"); box.append(el("div", {}, fmtDay(c.predArrival)));
   const rg = arrivalRange(c), D = dataDate();
   if (rg) box.append(smallNote("likely " + rangeText(rg)));
-  if (rg && !c.r.done && c.r.prog && D !== null && D > rg[1]) box.append(smallNote(`late ${D - rg[1]} days`, "var(--warn)"));
+  if (rg && !c.r.done && !isInactive(c.r) && c.r.prog && D !== null && D > rg[1]) box.append(smallNote(`late ${D - rg[1]} days`, "var(--warn)"));
   return box;
 }
 // return to KA: the actual date from the data, else Forecast 2 with its likely range
 function returnText(c) {
   const box = el("div");
   const D = dataDate(), rg = returnRange(c), limit = rg ? rg[1] : estReturn(c);
-  const late = c.r.back === null && c.r.prog && D !== null && limit < D && !c.r.done;
+  const late = c.r.back === null && c.r.prog && D !== null && limit < D && !c.r.done && !isInactive(c.r);
   box.append(el("div", {}, fmtDay(estReturn(c))));
   if (c.r.back !== null) box.append(smallNote("actual"));
   else if (rg) box.append(smallNote("likely " + rangeText(rg)));
@@ -3378,7 +3379,7 @@ function actionItems() {
   const D = dataDate(), out = [];
   for (const c of SIM.assigned) {
     const r = c.r; if (r.backOut !== null || r.done) continue;
-    if (!IGNORED[r.cpr] && isInactive(r)) { const AD = activityDate(), last = lastActivity(r); out.push({ c, type: "stale", days: AD - last, status: `No progress for ${AD - last} days (last activity ${fmtDay(last)}); not yet at Sequence 3. Not counted as KA workload.`, where: r.stage || "Before Key Account", canMove: true }); continue; }
+    if (!IGNORED[r.cpr] && isInactive(r)) { const AD = activityDate(), last = lastActivity(r); out.push({ c, type: "stale", days: AD - last, status: `No progress for ${AD - last} days (last activity ${fmtDay(last)}); rejected automatically. Not counted as KA workload.`, where: posLabel(r) || r.stage || "Before Key Account", canMove: false }); continue; }
     // without a progress update after the CPR entered KA, its status is unknown: not a problem yet
     if (!r.prog || D === null || D < (r.kaIn ?? r.create)) continue;
     if (IGNORED[r.cpr]) { out.push({ c, type: "ignored", days: 0, status: `Dismissed ${fmtStamp(IGNORED[r.cpr].at)}`, where: "–", canMove: false }); continue; }
@@ -3396,7 +3397,7 @@ function actionItems() {
   return out.sort((a, b) => b.days - a.days);
 }
 const actKind = { late: "bad", pre: "warn", post: "serious", stale: "muted", ignored: "muted" };
-const actLabel = { late: "Sequence 3 overdue", pre: "Delayed before KA", post: "Pending with approver", stale: "Inactive", ignored: "Dismissed" };
+const actLabel = { late: "Sequence 3 overdue", pre: "Delayed before KA", post: "Pending with approver", stale: "Auto-rejected", ignored: "Dismissed" };
 function kaLoadOn(ka, day) { if (!SIM) return null; const k = SIM.kaList.indexOf(ka); return k < 0 ? null : SIM.load[k][day - SIM.minDay] || 0; }
 function renderSpv() {
   const editable = canSave() && !IS_SAMPLE;
@@ -3418,7 +3419,7 @@ function renderSpv() {
     tile("Sequence 3 overdue", fmtInt(items.filter((x) => x.type === "late").length), "CPRs", "more than 3 days at KA"),
     tile("Delayed before KA", fmtInt(items.filter((x) => x.type === "pre").length), "CPRs", "past the end of the arrival forecast range"),
     tile("Pending with approver", fmtInt(items.filter((x) => x.type === "post").length), "CPRs", "after KA Sequence 3, past the end of the return forecast range"),
-    tile("Inactive", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `no progress > ${STALE_DAYS} days before Sequence 3; not counted as workload, data kept`),
+    tile("Auto-rejected", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `no progress > ${STALE_DAYS} days at any sequence; not counted as workload, data kept`),
     tile("KAs absent today", fmtInt(new Set(ABSENCES.filter((a) => today >= a.from && today <= a.to).map((a) => a.ka)).size), "people", ""),
     tile("Reassignments (last 7 days)", fmtInt(activeTransfers().filter((t) => Date.parse(t.at) >= week).length), "", `${fmtInt(activeTransfers().filter((t) => t.by === "SPV").length)} by supervisor in total`)
   );
