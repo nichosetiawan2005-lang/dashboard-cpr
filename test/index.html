@@ -2835,7 +2835,8 @@ function simulate() {
     const out8 = r.backOutFirst ?? r.backOut;
     c.e1 = r.kaOut !== null && r.kaOut >= c.s1 ? r.kaOut : c.s1 + c.w1 - 1;
     c.e2 = out8 !== null && out8 !== undefined && out8 >= c.s2 ? out8 : c.s2 + c.w2 - 1;
-    if (r.done) { if (r.kaOut === null) c.e1 = Math.min(c.e1, c.s1); if (out8 == null) c.e2 = Math.min(c.e2, c.s2 - 1); }
+    // finished CPR (PR/PO created, fully approved, Sequence 8 approved): nothing counts after its last activity
+    if (r.done && !inRework(r)) { const fin = Math.max(...[r.kaOut, r.backOut, out8, r.lastAct].filter((x) => x !== null && x !== undefined), c.s1); c.e1 = Math.min(c.e1, fin); c.e2 = Math.min(c.e2, fin); }
   };
   const activeDays = (c) => { const out = new Set(); if (c.e1 === undefined) setEnds(c); for (let d = c.s1; d <= c.e1; d++) out.add(off(d)); for (let d = c.s2; d <= c.e2; d++) out.add(off(d)); for (const e of c.rw || []) for (let d = e.start; d <= (e.end ?? e.start); d++) out.add(off(d)); return [...out].filter((x) => x >= 0 && x < nDays); };
   const add = (L, c, sign) => { if (c.r && (IGNORED[c.r.cpr] || isInactive(c.r))) return; // dismissed by SPV or inactive: no load for the KA
