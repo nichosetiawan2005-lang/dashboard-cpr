@@ -225,9 +225,9 @@ body.locked #loginForm .btn { width: 100%; }
           Upload CPR Queue (CPRHistory)
           <input type="file" id="fileCpr" accept=".xlsx,.xls,.csv" multiple>
         </label>
-        <label class="file-btn" for="fileProg" id="lblProg">
+        <label class="file-btn" for="fileProg" id="lblProg" title="Optional: adds the PO creation date and Completed (PO) status. CPR progress itself is read from CPRHistory.">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
-          Update Progress (PO Data)
+          PO Data (optional)
           <input type="file" id="fileProg" accept=".xlsx,.xls,.csv" multiple>
         </label>
         <label class="file-btn" for="filePic" id="lblPic">
@@ -297,7 +297,7 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="tiles" id="simTiles"></div>
     <p class="note" id="simCompare"></p>
     <div id="simResults"><div class="card" style="margin-top:12px"><h3>Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
-    <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. Status is updated from PO Data; details and follow-up actions are available in Supervisor Control.</p></div>
+    <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. Status is read from CPRHistory (every approval step); PO Data only adds the PO date; details and follow-up actions are available in Supervisor Control.</p></div>
     <div class="filters" id="incFilters" style="margin:0 0 10px">
       <div class="field"><label for="incStatus">Status</label><select id="incStatus"></select></div>
       <div class="field"><label for="incKa">Key Account</label><select id="incKa"></select></div>
@@ -315,7 +315,7 @@ body.locked #loginForm .btn { width: 100%; }
   <section class="panel" id="panel-ka" role="tabpanel" aria-labelledby="tab-ka">
     <div class="card" style="margin-top:16px">
       <h3>Performance data: PO Data</h3>
-      <div class="sub">PO Data (or CPR_Cleaned) serves two purposes: evaluating KA performance based on CPRs that have been converted into POs, and providing the history the forecast model learns from. A file uploaded here <b>replaces</b> the forecast history (use the full CPR_Cleaned export); "Update Progress" in the header does not change the forecast. It does not add CPRs to the work queue; the queue is sourced only from CPRHistory.</div>
+      <div class="sub">PO Data (or CPR_Cleaned) serves two purposes: evaluating KA performance based on CPRs that have been converted into POs, and providing the history the forecast model learns from. A file uploaded here <b>replaces</b> the forecast history (use the full CPR_Cleaned export); "PO Data (optional)" in the header does not change the forecast. It does not add CPRs to the work queue; the queue is sourced only from CPRHistory.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
         <label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload PO Data / CPR_Cleaned<input type="file" id="filePo" accept=".xlsx,.xls,.csv" multiple></label>
         <div class="field"><label for="poFrom">PO created from</label><input type="date" id="poFrom"></div>
@@ -946,49 +946,81 @@ function unitMapFromRecs() {
 }
 // approval steps that come BEFORE Key Account HO in the CPR flow
 const PRE_KA_ROLES = new Set(["requester", "accounting unit", "accounting ho", "accounting staff", "purchasing head hu"]);
+// the approver right before KA (Sequence 3) and right before Purchasing HO (Sequence 8), learned from CPRHistory
+const PRE_SEQ3_ROLES = new Set(["purchasing head hu", "accounting ho"]);
+const PRE_SEQ8_ROLES = new Set(["budget controller", "ceo archetype"]);
 function pivotHistory(rows) {
-  // CPRHistory is only the queue into Key Account HO: its Approval Date is the moment the CPR is sent
-  // to KA (Sequence 3). It never says that Sequence 3 or Sequence 8 is done - that comes only from PO Data.
-  //   create = first Submit Date of the requester row (Sequence 0), else of any row
-  //   kaIn   = latest Approval Date of the CPR = entry into the KA queue
+  // CPRHistory holds every approval step of a CPR; read it top to bottom per CPR:
+  //   create  = first Submit Date of the requester (Sequence 0)
+  //   kaIn    = last Submit Date on the Key Account row            (= "Date Received CPR by Key Account HO")
+  //   kaOut   = last Approval Date on the Key Account row          (= "Date Approved CPR by Key Account HO")
+  //   back    = last approval by another approver before Purchasing HO's last approval (= "Date Received CPR by PurchasingHO")
+  //   backOut = last Approval Date on the Purchasing HO row         (= "Date Approved CPR by PurchasingHO")
+  //   stage   = where the CPR is now (pending row, or the next approver after the last approval)
+  // These match the columns of CPR_Cleaned, so the forecast is compared with the same definitions it learned from.
   const known = IS_SAMPLE ? {} : unitMapFromRecs();
   const byCpr = new Map();
   for (const r of rows) { const id = r[HCOL.cpr]; if (!id) continue; if (!byCpr.has(id)) byCpr.set(id, []); byCpr.get(id).push(r); }
   const recs = [], removed = []; let dropped = 0, skipped = 0;
+  const roleKey = (x) => normRole(x[HCOL.role]).replace(/[^a-z]/g, "");
+  const isKaRole = (x) => roleKey(x).includes("keyaccount");
+  const isPurchHo = (x) => roleKey(x) === "purchasingho";
+  const pretty = (x) => normRole(x[HCOL.role]).replace(/\b\w/g, (ch) => ch.toUpperCase()).replace(/\bHo\b/g, "HO").replace(/\bHu\b/g, "HU").replace(/\bFc\b/g, "FC").replace(/\bCeo\b/g, "CEO");
+  const maxOf = (list, col) => list.map((x) => toStamp(x[col])).filter(Boolean).sort().slice(-1)[0] || null;
+  const dayOf = (st) => (st ? toDay(st.slice(0, 10)) : null);
   for (const [id, list] of byCpr) {
     const last = list[list.length - 1];
-    if (/reject|cancel|batal|tolak/i.test(String(last[HCOL.status] ?? ""))) { dropped++; removed.push(String(id)); continue; }
+    const status = String(last[HCOL.status] ?? "").trim();
+    if (/reject|cancel|batal|tolak/i.test(status)) { dropped++; removed.push(String(id)); continue; }
     const req = list.filter((x) => normRole(x[HCOL.role]) === "requester" || Number(x[HCOL.seq]) === 0);
     const created = (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null;
-    // entry into KA = last Approval Date BEFORE the Key Account row (Sequence 3). Rows after it
-    // (division head, purchasing HO, ...) are ignored here - their progress comes from PO Data.
-    const isKaRole = (x) => normRole(x[HCOL.role]).replace(/[^a-z]/g, "").includes("keyaccount");
-    const kaRow = list.find(isKaRole);
+    const kaRows = list.filter(isKaRole), phoRows = list.filter(isPurchHo);
     // no Key Account row but already with an approver that comes after KA (division head, FC, CEO, ...):
     // the CPR was never routed to KA HO, so it is not KA work
-    if (!kaRow && list.some((x) => !isKaRole(x) && !PRE_KA_ROLES.has(normRole(x[HCOL.role])))) { skipped++; removed.push(String(id)); continue; }
-    // no Key Account row yet = the CPR has not reached KA: the arrival is forecast
-    const beforeKa = kaRow ? list.filter((x) => Number(x[HCOL.seq]) < Number(kaRow[HCOL.seq])) : [];
+    if (!kaRows.length && list.some((x) => !isKaRole(x) && !PRE_KA_ROLES.has(normRole(x[HCOL.role])))) { skipped++; removed.push(String(id)); continue; }
+    let kaInAt = maxOf(kaRows, HCOL.submit);
+    const kaOutAt = maxOf(kaRows, HCOL.approve);
+    const phoDone = maxOf(phoRows, HCOL.approve);
+    // the export lists only steps already passed: the approver now holding the CPR has no row yet.
+    // So the last approval tells where it is: after Purchasing Head HU / Accounting HO it is at KA (Sequence 3),
+    // after Budget Controller / CEO Archetype it is back at KA (Sequence 8).
+    const approvedRows = list.filter((x) => toStamp(x[HCOL.approve])).sort((x, y) => (toStamp(x[HCOL.approve]) < toStamp(y[HCOL.approve]) ? -1 : 1));
+    const lastApproved = approvedRows[approvedRows.length - 1] || null;
+    const inReview = !/approved|draft/i.test(status);
+    let atKa = null;
+    if (inReview && lastApproved && !kaRows.length && PRE_SEQ3_ROLES.has(normRole(lastApproved[HCOL.role]))) { kaInAt = toStamp(lastApproved[HCOL.approve]); atKa = 3; }
+    let backAt = null;
+    if (phoDone) backAt = list.filter((x) => !isPurchHo(x)).map((x) => toStamp(x[HCOL.approve])).filter((t) => t && t < phoDone).sort().slice(-1)[0] || maxOf(phoRows, HCOL.submit);
+    else if (phoRows.length) backAt = maxOf(phoRows, HCOL.submit);
+    else if (inReview && kaOutAt && lastApproved && PRE_SEQ8_ROLES.has(normRole(lastApproved[HCOL.role]))) { backAt = toStamp(lastApproved[HCOL.approve]); atKa = 8; }
+    // where is the CPR now?
+    let stage = null, stageAt = null;
+    const pending = list.filter((x, i) => !toStamp(x[HCOL.approve]) && toStamp(x[HCOL.submit]) && !(i === 0 && normRole(x[HCOL.role]) === "requester"));
+    if (/^approved$/i.test(status)) { stage = "Fully approved"; stageAt = maxOf(list, HCOL.approve); }
+    else if (atKa) { stage = `At Key Account (Sequence ${atKa})`; stageAt = atKa === 3 ? kaInAt : backAt; }
+    else if (/draft/i.test(status) && !pending.length) { stage = "Draft (requester)"; stageAt = maxOf(list, HCOL.submit); }
+    else if (pending.length) { const pr = pending[pending.length - 1]; stage = normRole(pr[HCOL.role]) === "requester" ? "Returned to requester" : "With " + pretty(pr); stageAt = toStamp(pr[HCOL.submit]); }
+    else if (lastApproved) { stage = normRole(lastApproved[HCOL.role]) === "requester" ? "Resubmitted by requester" : "Next approver after " + pretty(lastApproved); stageAt = toStamp(lastApproved[HCOL.approve]); }
+    else { stage = "Submitted, waiting for the first approver"; stageAt = created; }
     const lastStamp = list.flatMap((x) => [toStamp(x[HCOL.submit]), toStamp(x[HCOL.approve])]).filter(Boolean).sort().slice(-1)[0] || null;
-    const queueAt = kaRow ? (beforeKa.map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort().slice(-1)[0] || toStamp(kaRow[HCOL.submit]) || null) : null;
     const code = String(id).split("-")[1] || String(last[HCOL.unit]);
     const assetUnit = String(last[HCOL.asset] ?? "").split(".")[0].trim();
     recs.push(finishRec({
       cpr: String(id), unit: known[code] || assetUnit || String(last[HCOL.unit]), vendor: "(kosong)", vendorName: String(last[HCOL.subject] ?? "").slice(0, 60),
       ka: null, kaName: null,
-      create: created ? toDay(created.slice(0, 10)) : null, phIn: null, phOut: null,
-      kaIn: queueAt ? toDay(queueAt.slice(0, 10)) : null, kaOut: null, back: null, backOut: null,
+      create: dayOf(created), phIn: null, phOut: null,
+      kaIn: dayOf(kaInAt), kaOut: dayOf(kaOutAt), back: dayOf(backAt), backOut: dayOf(phoDone),
       capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
       createAt: created, submitAt: null,
-      kaInAt: queueAt, kaOutAt: null, backAt: null, backOutAt: null,
-      stage: null, stageSince: null, lastAct: lastStamp ? toDay(lastStamp.slice(0, 10)) : null
+      kaInAt, kaOutAt, backAt, backOutAt: phoDone,
+      stage, stageSince: dayOf(stageAt), lastAct: dayOf(lastStamp), hstatus: status || null
     }));
   }
   return { recs, dropped, skipped, removed, cprs: byCpr.size };
 }
 // put new records over the saved ones: same CPR number -> filled values replace old ones
 // fields that the approval history describes completely: a missing value there means "not happened yet"
-const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct"];
+const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus"];
 function mergeRecs(base, fresh, authoritative = []) {
   const map = new Map(base.map((r) => [r.cpr, r]));
   for (const r of fresh) {
@@ -1016,12 +1048,12 @@ function renderHistInfo() {
   const res = HIST.result;
   $("histMode").value = HIST_MODE;
   $("histNote").textContent = `${fmtInt(HIST.rows.length)} rows → ${fmtInt(res.cprs)} CPRs (${fmtInt(res.dropped)} rejected/cancelled CPRs excluded${res.skipped ? `; ${fmtInt(res.skipped)} CPRs never routed to Key Account HO excluded` : ""}). `
-    + "Approval Date of the last step before Key Account HO = the date the CPR is sent to KA for Sequence 3. Steps from Key Account HO onward are not used. This file never marks Sequence 3 or Sequence 8 as completed; all progress after entry comes from PO Data. "
+    + "Each CPR is read top to bottom through its approval steps: the Key Account row gives the arrival at KA and the Sequence 3 approval, the Purchasing HO row gives the return to KA and the Sequence 8 approval, and the last pending or approved row gives the current stage. "
     + "This file contains no Vendor ID, so the same-vendor rule does not apply to CPRs from this file.";
   renderTable($("tblRoles"), [
     { key: "role", label: "Role in file", sortable: false },
     { key: "n", label: "Rows", num: true, sortable: false },
-    { key: "use", label: "Used as", sortable: false, render: (r) => (r.role === "requester" ? pill("CPR created", "muted") : r.beforeKa ? pill("Queue entry date (Approval Date)", "info") : pill("Not used (progress from PO Data)", "muted")) }
+    { key: "use", label: "Used as", sortable: false, render: (r) => { const k = r.role.replace(/[^a-z]/g, ""); return r.role === "requester" ? pill("CPR created", "muted") : k.includes("keyaccount") ? pill("Sequence 3: arrival and approval", "info") : k === "purchasingho" ? pill("Sequence 8: return and approval", "info") : pill("Current stage", "muted"); } }
   ], roles.map((role) => ({ role, n: counts.get(role), beforeKa: minSeq.get(role) < kaSeq })));
 }
 async function applyHistory(rows, fileName, roleKa, roleBack) {
@@ -1152,7 +1184,7 @@ if (SB) {
 
 let DB = null, DB_READY = false, LOCKED = new Map(), SAVED_AT = null;
 const CHUNK = 1000;
-const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct"];
+const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus"];
 const useLocks = () => !!DB && !IS_SAMPLE && !META.hasKa;
 const canSave = () => !!DB && (!SB || IS_ADMIN);
 const monthKey = (d) => dayToIso(d).slice(0, 7);
@@ -1606,17 +1638,20 @@ function buildProgress(rows) {
 const isRejected = (p) => /reject|cancel|batal|tolak/i.test(p.status || "");
 // put the latest progress over the worklot records
 function applyProgress() {
+  // CPRHistory is the main progress source (it holds every step). PO Data only adds the PO date
+  // and fills dates for CPRs that the history does not cover.
   for (const r of RECS) {
     const p = PROG.get(r.cpr);
-    r.prog = p || null;
-    r.done = false;
-    if (!p) continue;
-    if (p.kaIn !== null) { r.kaIn = p.kaIn; r.kaInAt = null; }
-    if (p.kaOut !== null) { r.kaOut = p.kaOut; r.kaOutAt = null; }
-    if (p.back !== null) { r.back = p.back; r.backAt = null; }
-    if (p.backOut !== null) { r.backOut = p.backOut; r.backOutAt = null; }
-    r.stage = p.stage ? String(p.stage).replace("Approver berikutnya setelah ", "Next approver after ") : null; r.stageSince = p.stageSince ?? null;
-    r.done = p.po !== null || r.backOut !== null || isRejected(p);
+    const fromHist = r.hstatus !== null && r.hstatus !== undefined;
+    if (p) {
+      if (r.kaIn === null && p.kaIn !== null) r.kaIn = p.kaIn;
+      if (r.kaOut === null && p.kaOut !== null) r.kaOut = p.kaOut;
+      if (r.back === null && p.back !== null) r.back = p.back;
+      if (r.backOut === null && p.backOut !== null) r.backOut = p.backOut;
+      if (!fromHist) { r.stage = p.stage ? String(p.stage).replace("Approver berikutnya setelah ", "Next approver after ") : null; r.stageSince = p.stageSince ?? null; }
+    }
+    r.prog = fromHist ? { kaIn: r.kaIn, kaOut: r.kaOut, back: r.back, backOut: r.backOut, po: p ? p.po : null, status: r.hstatus, stage: r.stage, stageSince: r.stageSince } : p || null;
+    r.done = !!((p && p.po !== null) || r.backOut !== null || (p && isRejected(p)) || /^approved$/i.test(r.hstatus || ""));
     finishRec(r);
   }
 }
@@ -2140,7 +2175,7 @@ async function loadModelChoice() { if (!DB) return; try { const d = await DB.doc
 // Forecast settings card (Evaluation tab)
 function renderFcSettings() {
   $("fcHistInfo").textContent = TRAIN.size
-    ? `Forecast history in use: ${TRAIN_META && TRAIN_META.fileName ? TRAIN_META.fileName : "stored history"} · ${fmtInt(TRAIN.size)} CPRs${TRAIN_META && TRAIN_META.savedAt ? " · uploaded " + fmtStamp(TRAIN_META.savedAt) : ""}. It changes only when a new file is uploaded with "Upload PO Data / CPR_Cleaned" in KA Performance (the new file replaces it); "Update Progress" does not change the forecast.`
+    ? `Forecast history in use: ${TRAIN_META && TRAIN_META.fileName ? TRAIN_META.fileName : "stored history"} · ${fmtInt(TRAIN.size)} CPRs${TRAIN_META && TRAIN_META.savedAt ? " · uploaded " + fmtStamp(TRAIN_META.savedAt) : ""}. It changes only when a new file is uploaded with "Upload PO Data / CPR_Cleaned" in KA Performance (the new file replaces it); "PO Data (optional)" does not change the forecast.`
     : "No forecast history yet: upload CPR_Cleaned with \"Upload PO Data / CPR_Cleaned\" in KA Performance.";
   if (!$("fcModel").options.length) { $("fcModel").append(el("option", { value: "auto" }, "Automatic (lowest validation MAE)")); for (const c of CANDIDATES) $("fcModel").append(el("option", { value: `${c.family}|${c.setting}` }, `${c.family} (${c.setting})`)); }
   $("fcFrom").value = FC_SET.from || ""; $("fcOnlyNew").checked = !!FC_SET.onlyNew; $("fcMonths").value = String(FC_SET.months || 3);
@@ -2685,9 +2720,9 @@ function makeSample() {
 }
 
 /* ---------- Kontrol SPV ---------- */
-function dataDate() { // the latest date seen in the data = "today" for the action list
-  if (progressDate() !== null) return progressDate();
-  let m = null; for (const r of RECS) for (const k of ["create", "kaIn", "kaOut", "back", "backOut"]) if (r[k] !== null && r[k] !== undefined && (m === null || r[k] > m)) m = r[k];
+function dataDate() { // the latest date seen in the data (CPRHistory or PO Data) = "today" for the action list
+  let m = progressDate();
+  for (const r of RECS) for (const k of ["create", "kaIn", "kaOut", "back", "backOut", "lastAct"]) if (r[k] !== null && r[k] !== undefined && (m === null || r[k] > m)) m = r[k];
   return m;
 }
 function actionItems() {
@@ -2723,8 +2758,8 @@ function renderSpv() {
   const today = toDay(new Date()), D = dataDate();
   $("spvNote").textContent = SIM ? "" : "Please run the allocation in the CPR Allocation tab first so that the action list can be calculated.";
   $("asOfNote").textContent = progressDate() !== null
-    ? `Based on the latest progress update (PO Data as of ${fmtDay(progressDate())}). Upload the latest PO Data to keep this list current.`
-    : "No progress update yet. Upload PO Data with the \"Update Progress\" button so that overdue or pending CPRs can be identified.";
+    ? `Based on CPRHistory and PO Data, data as of ${fmtDay(dataDate())}. Upload the latest CPRHistory to keep this list current.`
+    : `Based on CPRHistory, data as of ${dataDate() !== null ? fmtDay(dataDate()) : "–"}. Upload the latest CPRHistory to keep this list current.`;
   const items = actionItems();
   const week = Date.now() - 7 * 864e5;
   $("spvTiles").replaceChildren(
