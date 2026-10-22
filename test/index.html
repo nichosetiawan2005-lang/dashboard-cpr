@@ -923,7 +923,7 @@ function picNameFor(unit) {
   for (const [rs, name] of Object.entries(PIC_LIST)) if (picKey(rs) === k) return name;
   return null;
 }
-const HCOL = { cpr: "Capital Req ID", unit: "Unit", role: "Role", user: "Username", submit: "Submit Date", approve: "Approval Date", status: "Document Status", seq: "Sequence", asset: "Asset Code", category: "Category Type", subject: "Subject", amount: "Total Amount" };
+const HCOL = { revise: "Revise To", cpr: "Capital Req ID", unit: "Unit", role: "Role", user: "Username", submit: "Submit Date", approve: "Approval Date", status: "Document Status", seq: "Sequence", asset: "Asset Code", category: "Category Type", subject: "Subject", amount: "Total Amount" };
 // only these two are needed: new CPRs that are still waiting have no approval yet, so "Approval Date" may be missing
 const HREQUIRED = ["cpr", "submit"];
 let HIST = null; // { rows, fileName } of the last history upload, kept in memory for role re-mapping
@@ -946,6 +946,9 @@ function unitMapFromRecs() {
 }
 // approval steps that come BEFORE Key Account HO in the CPR flow
 const PRE_KA_ROLES = new Set(["requester", "accounting unit", "accounting ho", "accounting staff", "purchasing head hu"]);
+// rework episodes stored as "start:end:who;..." (who: D = Purchasing Director, H = Purchasing Head HO; end empty = still open)
+const reworkList = (r) => (r.rwk ? String(r.rwk).split(";").map((x) => { const [a, b, w] = x.split(":"); return { start: Number(a), end: b === "" ? null : Number(b), who: w === "D" ? "Purchasing Director" : "Purchasing Head HO" }; }) : []);
+const inRework = (r) => !!(r.stage && String(r.stage).startsWith("At Key Account – Rework"));
 // the approver right before KA (Sequence 3) and right before Purchasing HO (Sequence 8), learned from CPRHistory
 const PRE_SEQ3_ROLES = new Set(["purchasing head hu", "accounting ho"]);
 const PRE_SEQ8_ROLES = new Set(["budget controller", "ceo archetype"]);
@@ -960,7 +963,14 @@ function pivotHistory(rows) {
   // These match the columns of CPR_Cleaned, so the forecast is compared with the same definitions it learned from.
   const known = IS_SAMPLE ? {} : unitMapFromRecs();
   const byCpr = new Map();
-  for (const r of rows) { const id = r[HCOL.cpr]; if (!id) continue; if (!byCpr.has(id)) byCpr.set(id, []); byCpr.get(id).push(r); }
+  // the same step can appear in several uploaded files: keep it once
+  const seen = new Set();
+  for (const r of rows) {
+    const id = r[HCOL.cpr]; if (!id) continue;
+    const key = [id, r[HCOL.seq], normRole(r[HCOL.role]), r[HCOL.user], toStamp(r[HCOL.submit]), toStamp(r[HCOL.approve]), r[HCOL.revise]].join("|");
+    if (seen.has(key)) continue; seen.add(key);
+    if (!byCpr.has(id)) byCpr.set(id, []); byCpr.get(id).push(r);
+  }
   const recs = [], removed = []; let dropped = 0, skipped = 0;
   const roleKey = (x) => normRole(x[HCOL.role]).replace(/[^a-z]/g, "");
   const isKaRole = (x) => roleKey(x).includes("keyaccount");
@@ -989,6 +999,20 @@ function pivotHistory(rows) {
     const inReview = !/approved|draft/i.test(status);
     let atKa = null;
     if (inReview && lastApproved && !kaRows.length && PRE_SEQ3_ROLES.has(normRole(lastApproved[HCOL.role]))) { kaInAt = toStamp(lastApproved[HCOL.approve]); atKa = 3; }
+    // REWORK = Purchasing Head HO or Purchasing Director sends the CPR back (Revise To). When it goes back to
+    // Purchasing HO / Key Account, the KA works on it again: start = that return, end = the KA's next approval.
+    const LATE = { "purchasing head ho": "H", "purchasing director": "D" };
+    const reviseTo = (x) => normRole(x[HCOL.revise]);
+    const reworkRows = list.filter((x) => LATE[normRole(x[HCOL.role])] && reviseTo(x) && toStamp(x[HCOL.approve])).sort((x, y) => (toStamp(x[HCOL.approve]) < toStamp(y[HCOL.approve]) ? -1 : 1));
+    const reworks = reworkRows.map((x) => {
+      const st = toStamp(x[HCOL.approve]), t = reviseTo(x), toKa = t === "purchasing ho" || t.replace(/[^a-z]/g, "").includes("keyaccount");
+      const end = toKa ? list.filter((y) => (isPurchHo(y) || isKaRole(y)) && toStamp(y[HCOL.approve]) > st).map((y) => toStamp(y[HCOL.approve])).sort()[0] || null : null;
+      return { st, end, toKa, who: LATE[normRole(x[HCOL.role])], row: x };
+    });
+    const firstPhoDone = phoRows.map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort()[0] || null;
+    // first return to KA for Sequence 8 (before any rework) - used for the daily workload
+    const backFirstAt = firstPhoDone ? list.filter((x) => !isPurchHo(x)).map((x) => toStamp(x[HCOL.approve])).filter((t) => t && t < firstPhoDone).sort().slice(-1)[0] || null : null;
+    const kaUser = (phoRows.concat(kaRows).map((x) => x[HCOL.user]).filter(Boolean).slice(-1)[0]) || null;
     let backAt = null;
     if (phoDone) backAt = list.filter((x) => !isPurchHo(x)).map((x) => toStamp(x[HCOL.approve])).filter((t) => t && t < phoDone).sort().slice(-1)[0] || maxOf(phoRows, HCOL.submit);
     else if (phoRows.length) backAt = maxOf(phoRows, HCOL.submit);
@@ -996,7 +1020,10 @@ function pivotHistory(rows) {
     // where is the CPR now?
     let stage = null, stageAt = null;
     const pending = list.filter((x, i) => !toStamp(x[HCOL.approve]) && toStamp(x[HCOL.submit]) && !(i === 0 && normRole(x[HCOL.role]) === "requester"));
+    const openRework = inReview && lastApproved ? reworks.find((e) => e.row === lastApproved) : null;
     if (/^approved$/i.test(status)) { stage = "Fully approved"; stageAt = maxOf(list, HCOL.approve); }
+    else if (openRework && openRework.toKa) { stage = `At Key Account – Rework (returned by ${pretty(lastApproved)})`; stageAt = openRework.st; }
+    else if (inReview && lastApproved && reviseTo(lastApproved)) { stage = `Returned to ${pretty({ [HCOL.role]: lastApproved[HCOL.revise] })} for revision (by ${pretty(lastApproved)})`; stageAt = toStamp(lastApproved[HCOL.approve]); }
     else if (atKa) { stage = `At Key Account (Sequence ${atKa})`; stageAt = atKa === 3 ? kaInAt : backAt; }
     else if (/draft/i.test(status) && !pending.length) { stage = "Draft (requester)"; stageAt = maxOf(list, HCOL.submit); }
     else if (pending.length) { const pr = pending[pending.length - 1]; stage = normRole(pr[HCOL.role]) === "requester" ? "Returned to requester" : "With " + pretty(pr); stageAt = toStamp(pr[HCOL.submit]); }
@@ -1013,14 +1040,16 @@ function pivotHistory(rows) {
       capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
       createAt: created, submitAt: null,
       kaInAt, kaOutAt, backAt, backOutAt: phoDone,
-      stage, stageSince: dayOf(stageAt), lastAct: dayOf(lastStamp), hstatus: status || null
+      stage, stageSince: dayOf(stageAt), lastAct: dayOf(lastStamp), hstatus: status || null,
+      backFirst: dayOf(backFirstAt), backOutFirst: dayOf(firstPhoDone), rework: reworks.length || null, kaUser,
+      rwk: reworks.filter((e) => e.toKa).map((e) => `${dayOf(e.st)}:${e.end ? dayOf(e.end) : ""}:${e.who}`).join(";") || null
     }));
   }
   return { recs, dropped, skipped, removed, cprs: byCpr.size };
 }
 // put new records over the saved ones: same CPR number -> filled values replace old ones
 // fields that the approval history describes completely: a missing value there means "not happened yet"
-const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus"];
+const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst"];
 function mergeRecs(base, fresh, authoritative = []) {
   const map = new Map(base.map((r) => [r.cpr, r]));
   for (const r of fresh) {
@@ -1184,7 +1213,7 @@ if (SB) {
 
 let DB = null, DB_READY = false, LOCKED = new Map(), SAVED_AT = null;
 const CHUNK = 1000;
-const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus"];
+const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst"];
 const useLocks = () => !!DB && !IS_SAMPLE && !META.hasKa;
 const canSave = () => !!DB && (!SB || IS_ADMIN);
 const monthKey = (d) => dayToIso(d).slice(0, 7);
@@ -1651,7 +1680,7 @@ function applyProgress() {
       if (!fromHist) { r.stage = p.stage ? String(p.stage).replace("Approver berikutnya setelah ", "Next approver after ") : null; r.stageSince = p.stageSince ?? null; }
     }
     r.prog = fromHist ? { kaIn: r.kaIn, kaOut: r.kaOut, back: r.back, backOut: r.backOut, po: p ? p.po : null, status: r.hstatus, stage: r.stage, stageSince: r.stageSince } : p || null;
-    r.done = !!((p && p.po !== null) || r.backOut !== null || (p && isRejected(p)) || /^approved$/i.test(r.hstatus || ""));
+    r.done = !!((p && p.po !== null) || (r.backOut !== null && !inRework(r)) || (p && isRejected(p)) || /^approved$/i.test(r.hstatus || ""));
     finishRec(r);
   }
 }
@@ -1785,6 +1814,15 @@ function renderKaFromPo(view) {
   if (view) for (const ka of SIM.kaList) if (!groups.has(ka)) groups.set(ka, []);
   $("poInfo").textContent = `File: ${PO_META ? PO_META.fileName : "–"} · ${fmtInt(PO_RECS.length)} CPRs converted into POs · ${fmtInt(inRange.length)} CPRs with POs created ${$("poFrom").value ? fmtDay(from) : "–"} – ${$("poTo").value ? fmtDay(to) : "–"} are included.`;
   $("kaNote").textContent = `KA source per CPR: ${fmtInt(fromDss)} from the DSS allocation, ${fmtInt(fromFile)} from the KA column in the file` + (unknown ? `; ${fmtInt(unknown)} CPRs have no identifiable KA (excluded).` : ".");
+  // rework (returned by Purchasing Head HO / Director) per KA, from CPRHistory, counted on the return date
+  const rwBy = new Map(), s8By = new Map();
+  for (const r of RECS) {
+    const ka = r.kaUser ? poKa({ ka: r.kaUser, kaName: null }).ka : (LOCKED.get(r.cpr) || {}).ka;
+    if (!ka) continue;
+    if (r.backOut !== null && r.backOut !== undefined && (from === null || r.backOut >= from) && (to === null || r.backOut <= to)) s8By.set(ka, (s8By.get(ka) || 0) + 1);
+    for (const e of reworkList(r)) if ((from === null || e.start >= from) && (to === null || e.start <= to)) rwBy.set(ka, (rwBy.get(ka) || 0) + 1);
+  }
+  for (const ka of rwBy.keys()) if (!groups.has(ka)) groups.set(ka, []);
   const rows = [...groups.entries()].map(([ka, list]) => {
     const tot = list.map((r) => (r.rev1 !== null && r.rev2 !== null ? r.rev1 + r.rev2 : null));
     const lv = view && view.perKa[ka];
@@ -1792,7 +1830,8 @@ function renderKaFromPo(view) {
       ka, name: kaLabel(ka), n: list.length,
       r1avg: mean(list.map((r) => r.rev1)), r2avg: mean(list.map((r) => r.rev2)), totAvg: mean(tot),
       kaToPo: mean(list.map((r) => r.kaToPo)), toPo: mean(list.map((r) => r.toPo)), ...workStats(list),
-      loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null
+      loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null,
+      rework: rwBy.get(ka) || 0, reworkRate: s8By.get(ka) ? ((rwBy.get(ka) || 0) / s8By.get(ka)) * 100 : null
     };
   }).sort((a, b) => (b.totAvg ?? 0) - (a.totAvg ?? 0));
   const withWork = rows.filter((r) => r.n > 0);
@@ -1806,6 +1845,8 @@ function renderKaFromPo(view) {
     { key: "r1avg", label: "Sequence 3 (days)", num: true, render: (r) => fmtNum(r.r1avg) },
     { key: "r2avg", label: "Sequence 8 (days)", num: true, render: (r) => fmtNum(r.r2avg) },
     { key: "totAvg", label: "Total Seq. 3 + Seq. 8 (days)", num: true, render: (r) => fmtNum(r.totAvg) },
+    { key: "rework", label: "Rework (returned by PH HO / Director)", num: true, render: (r) => fmtInt(r.rework) },
+    { key: "reworkRate", label: "Rework per Seq. 8 completed (%)", num: true, render: (r) => (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 0)) },
     { key: "kaToPo", label: "Arrival at KA → PO (days)", num: true, render: (r) => fmtNum(r.kaToPo) },
     { key: "toPo", label: "CPR created → PO (days)", num: true, render: (r) => fmtNum(r.toPo) },
     { key: "perDay", label: "Completed/day (avg)", num: true, render: (r) => fmtNum(r.perDay) },
@@ -2328,7 +2369,8 @@ function simulate() {
   const nDays = maxActual - minDay + 120;
   const newLoad = () => kaList.map(() => new Float64Array(nDays));
   const off = (d) => d - minDay;
-  const activeDays = (c) => { const out = []; for (let i = 0; i < c.w1; i++) out.push(off(c.s1 + i)); for (let i = 0; i < c.w2; i++) out.push(off(c.s2 + i)); return out.filter((x) => x >= 0 && x < nDays); };
+  // days the KA holds the CPR: Sequence 3, Sequence 8 and every rework (returned by Purchasing Head HO / Director)
+  const activeDays = (c) => { const out = new Set(); for (let i = 0; i < c.w1; i++) out.add(off(c.s1 + i)); for (let i = 0; i < c.w2; i++) out.add(off(c.s2 + i)); for (const e of c.rw || []) for (let d = e.start; d <= (e.end ?? e.start); d++) out.add(off(d)); return [...out].filter((x) => x >= 0 && x < nDays); };
   const add = (L, c, sign) => { if (c.r && (IGNORED[c.r.cpr] || isInactive(c.r))) return; // dismissed by SPV or inactive: no load for the KA
     const a = L[kaIdx.get(c.ka)]; for (const d of activeDays(c)) a[d] += sign * c.weight; };
   const lastDay = (c) => c.s2 + c.w2 - 1;
@@ -2400,7 +2442,7 @@ function simulate() {
     const lock = tr ? { ka: tr.to, rule: "Dialihkan", weight: 1 } : saved;
     const [lo, hi] = f1Range(r);
     const c = {
-      r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2, transfer: tr || null,
+      r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2, transfer: tr || null, rw: reworkList(r),
       f1Lo: lo, f1Hi: hi, f1Base: Math.round(f1Unit[r.unit] ?? f1All), f2P80,
       f1: f1Pred(r), f2: null, // forecasts always use the latest model; only the KA is locked
       lock: lock && kaList.includes(lock.ka) ? lock : null
@@ -2409,7 +2451,7 @@ function simulate() {
     // Forecast 2 starts at the KA approval: the actual date from PO Data, else arrival + Sequence 3 duration
     c.f2 = f2Pred(r, r.kaOut !== null ? r.kaOut : (r.kaIn ?? c.predArrival) + w1);
     c.s1 = c.predArrival; c.s2 = c.s1 + w1 + c.f2;
-    push(byCreate, r.create, c); if (r.kaIn !== null) push(byArrive, r.kaIn, c); if (r.kaOut !== null) push(byKaOut, r.kaOut, c); if (r.back !== null) push(byBack, r.back, c);
+    push(byCreate, r.create, c); if (r.kaIn !== null) push(byArrive, r.kaIn, c); if (r.kaOut !== null) push(byKaOut, r.kaOut, c); const backW = r.backFirst ?? r.back; if (backW !== null && backW !== undefined) push(byBack, backW, c);
   }
   const vendorHolder = (vendor, day) => { if (!hasVendor(vendor)) return null; for (const x of byVendor.get(vendor) || []) if (holding(x, day)) return x.ka; return null; };
   const rules = { "Vendor sama": 0, "PIC unit": 0, "Beban terendah": 0, "Dialihkan": 0, "Exception": 0 };
@@ -2567,6 +2609,7 @@ function progressStatus(c) {
   if (IGNORED[r.cpr]) return ["Dismissed", "muted"];
   if (p && isRejected(p)) return ["Rejected", "muted"];
   if (isInactive(r)) return ["Inactive (no progress > 30 days)", "muted"];
+  if (inRework(r)) return ["At KA – Rework", "warn"];
   if (p && p.po !== null) return ["Completed (PO)", "good"];
   if (r.backOut !== null) return ["Sequence 8 completed", "good"];
   if (!p) return ["No update yet", "muted"];
@@ -2598,9 +2641,13 @@ function openTrack(cpr) {
     ["CPR created", r.submitAt && r.submitAt !== r.createAt ? "submitted " + fmtStampShort(r.submitAt) : "", r.create, null, r.createAt],
     ["Arrived at Key Account", c.f1Lo !== null && c.f1Lo !== undefined ? `forecast range ${fmtDay(r.create + c.f1Lo)} – ${fmtDay(r.create + c.f1Hi)}` : "", arrive, arriveEst],
     ["Sequence 3 approved by KA", "", r.kaOut, kaOutEst],
-    ["With other approvers", r.stage && r.back === null && r.kaOut !== null ? `currently: ${r.stage}` : r.back !== null ? "until the CPR returned to KA" : "", r.back !== null ? r.back : null, null, null, r.kaOut !== null && r.back === null],
-    ["Returned to KA (Sequence 8)", "", r.back, backEst],
-    ["Sequence 8 approved", "", r.backOut, (r.back ?? backEst) + w2],
+    ["With other approvers", r.stage && r.back === null && r.kaOut !== null ? `currently: ${r.stage}` : r.back !== null ? "until the CPR returned to KA" : "", r.back !== null ? (r.backFirst ?? r.back) : null, null, null, r.kaOut !== null && r.back === null],
+    ["Returned to KA (Sequence 8)", "", r.backFirst ?? r.back, backEst],
+    ["Sequence 8 approved", "", r.backOutFirst ?? r.backOut, (r.back ?? backEst) + w2],
+    ...reworkList(r).flatMap((e, n) => [
+      [`Rework ${n + 1}: returned by ${e.who}`, "back to the KA for correction", e.start, null],
+      [`Rework ${n + 1}: approved again by KA`, "", e.end, null]
+    ]),
     ["PO created", "", p && p.po !== null ? p.po : null, null]
   ];
   const rejected = p && isRejected(p);
