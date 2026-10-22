@@ -344,7 +344,8 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="banner warn" id="histWarn" hidden></div>
     <div class="tiles" id="simTiles"></div>
     <p class="note" id="simCompare"></p>
-    <div id="simResults"><div class="card" style="margin-top:12px"><h3>Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
+    <div id="simResults"><div class="card" style="margin-top:12px"><h3 id="hKaCount">Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
+    <div class="card" style="margin-top:12px" id="cardKaDone" hidden><h3>Completed CPRs per KA</h3><div class="sub">History only: CPRs the KA has finished (PR / PO created, fully approved or Sequence 8 approved). Not counted as workload.</div><div class="chart" id="chKaDone"></div></div>
     <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. Status is read from CPRHistory (every approval step); details and follow-up actions are available in Supervisor Control.</p></div>
     <div class="filters" id="incFilters" style="margin:0 0 10px">
       <div class="field"><label for="incStatus">Status</label><select id="incStatus"></select></div>
@@ -3053,12 +3054,15 @@ function renderSim() {
   const activeCount = {}, doneCount = {};
   for (const c of s.assigned) { const r = c.r; if (r.done) doneCount[c.ka] = (doneCount[c.ka] || 0) + 1; else if (!IGNORED[r.cpr] && !isInactive(r)) activeCount[c.ka] = (activeCount[c.ka] || 0) + 1; }
   const kas = s.kaList.slice().sort((a, b) => (s.actual ? (s.dssCount[b] || 0) - (s.dssCount[a] || 0) : (activeCount[b] || 0) - (activeCount[a] || 0)));
-  $("subKaCount").textContent = s.actual ? "DSS allocation compared with the actual allocation" : "Active = not completed yet, so still the KA's workload. A CPR leaves the active count (and the daily workload) as soon as the data shows it completed.";
-  $("lgKaCount").innerHTML = s.actual ? lg([["DSS", "var(--s1)"], ["Actual", "var(--s2)"]]) : lg([["Active", "var(--s1)"], ["Completed", "var(--s2)"]]);
+  $("hKaCount").textContent = s.actual ? "Number of CPRs per KA" : "Active CPRs per KA (workload)";
+  $("subKaCount").textContent = s.actual ? "DSS allocation compared with the actual allocation" : "CPRs not completed yet, so still the KA's workload. A CPR leaves this chart (and the daily workload) as soon as the data shows it completed, rejected or inactive for more than 30 days.";
+  $("lgKaCount").innerHTML = s.actual ? lg([["DSS", "var(--s1)"], ["Actual", "var(--s2)"]]) : "";
+  $("cardKaDone").hidden = !!s.actual;
+  if (!s.actual) { const kd = s.kaList.filter((k) => doneCount[k]).sort((a, b) => (doneCount[b] || 0) - (doneCount[a] || 0)); barChartH($("chKaDone"), kd.map(kaLabel), [{ name: "Completed", color: "var(--s2)", values: kd.map((k) => doneCount[k] || 0) }], { dec: 0, label: "Completed CPRs per KA" }); }
   barChartH($("chKaCount"), kas.map(kaLabel), s.actual ? [
     { name: "DSS", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) },
     { name: "Actual", color: "var(--s2)", values: kas.map((k) => s.actualCount[k] || 0) }
-  ] : [{ name: "Active", color: "var(--s1)", values: kas.map((k) => activeCount[k] || 0) }, { name: "Completed", color: "var(--s2)", values: kas.map((k) => doneCount[k] || 0) }], { dec: 0, label: "Number of CPRs per KA" });
+  ] : [{ name: "Active", color: "var(--s1)", values: kas.map((k) => activeCount[k] || 0) }], { dec: 0, label: "Active CPRs per KA" });
   const mtxt = (m, what) => (m ? `${m.chosen.family} (${m.chosen.setting})${m.chosen.valMae !== null && m.chosen.valMae !== undefined ? `, chosen by the lowest validation MAE (${fmtNum(m.chosen.valMae, 2)} days)` : ""}, trained on ${fmtInt(m.n)} CPRs from PO Data` : `median per hospital, because fewer than 100 CPRs with ${what} are available in PO Data`);
   $("simNote").textContent = `Arrival at KA (Forecast 1): ${mtxt(s.models && s.models.f1, "an arrival date")}. Return to KA (Forecast 2): ${mtxt(s.models && s.models.f2, "a return date")}. Review duration is assumed to be ${s.w1} day${s.w1 === 1 ? "" : "s"} (Sequence 3) and ${s.w2} day${s.w2 === 1 ? "" : "s"} (Sequence 8). Workload limit: ${fmtNum(s.maxPerDay)} CPRs per KA per day${s.userMax ? " (set manually)" : " (automatic)"}.`;
   incState.page = 0; renderIncoming();
