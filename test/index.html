@@ -133,6 +133,27 @@ td.cellwrap { white-space: normal; min-width: 130px; max-width: 180px; }
 .linkbtn { border: 0; background: none; padding: 0; font: inherit; color: var(--accent-ink); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 #track { border: 1px solid var(--line-strong); border-radius: 12px; padding: 0; width: min(600px, calc(100vw - 32px)); background: var(--panel); color: var(--fg); box-shadow: 0 16px 48px rgba(0,0,0,.25); }
 #track::backdrop { background: rgba(10, 14, 20, .45); }
+#track { width: min(760px, calc(100vw - 32px)); }
+.steps { list-style: none; margin: 0; padding: 0 0 0 4px; position: relative; }
+.steps::before { content: ""; position: absolute; left: 112px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
+.steps li { display: grid; grid-template-columns: 98px 24px 1fr; gap: 0; align-items: start; padding: 6px 0; }
+.steps .t { text-align: right; padding-right: 10px; font-size: 12.5px; color: var(--muted); font-weight: 600; line-height: 1.3; }
+.steps .t small { display: block; font-family: var(--font-data); font-weight: 400; font-style: italic; font-size: 11.5px; }
+.steps .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--panel); background: var(--good); margin: 4px 0 0 2px; box-shadow: 0 0 0 1px var(--line-strong); position: relative; z-index: 1; }
+.steps li.submit .dot { background: var(--accent); } .steps li.revise .dot { background: var(--warn); } .steps li.rework .dot { background: var(--serious); } .steps li.consult .dot { background: var(--s4); }
+.steps .card2 { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel); display: grid; grid-template-columns: 46px 1fr auto; gap: 4px 12px; align-items: center; }
+.steps li.ka .card2 { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.steps .seq { grid-row: span 2; width: 46px; height: 46px; border-radius: 10px; background: var(--info-bg); color: var(--accent-ink); display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; line-height: 1; }
+.steps .seq small { font-size: 9.5px; font-weight: 600; letter-spacing: .04em; margin-bottom: 2px; }
+.steps .role { font-weight: 600; font-size: 14px; } .steps .actor { font-size: 12.5px; color: var(--muted); } .steps .actor b { color: var(--fg); font-weight: 600; }
+.steps .right { grid-row: span 2; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.steps .badge { font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; background: var(--good-bg); color: var(--good); border: 1px solid currentColor; white-space: nowrap; }
+.steps .badge.submit { background: var(--info-bg); color: var(--accent-ink); } .steps .badge.revise { background: var(--warn-bg); color: var(--warn); } .steps .badge.rework { background: var(--serious-bg); color: var(--serious); } .steps .badge.consult { background: var(--info-bg); color: var(--fg); } .steps .badge.pending { background: transparent; color: var(--muted); }
+.steps .dur { font-size: 11.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
+.steps .notes { grid-column: 2 / -1; font-size: 12.5px; background: var(--bg); border-radius: 6px; padding: 6px 8px; margin-top: 4px; }
+.steps .notes div + div { margin-top: 2px; } .steps .notes b { font-weight: 600; }
+@media (max-width: 560px) { .steps::before { left: 6px; } .steps li { grid-template-columns: 0 18px 1fr; } .steps .t { display: none; } .steps .card2 { grid-template-columns: 40px 1fr; } .steps .right { grid-row: auto; grid-column: 2; flex-direction: row; align-items: center; justify-content: flex-start; } .steps .when-m { display: block; } }
+.steps .when-m { display: none; font-size: 11.5px; color: var(--muted); }
 .tr-head { padding: 18px 20px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; }
 .tr-head h3 { font-family: var(--font-data); font-size: 15px; }
 .tr-sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
@@ -462,7 +483,8 @@ body.locked #loginForm .btn { width: 100%; }
   <div class="tr-head"><div><h3 id="trTitle"></h3><div class="tr-sub" id="trSub"></div><div class="tr-meta" id="trMeta"></div></div>
     <button class="btn ghost" type="button" id="trClose" style="align-self:flex-start;padding:4px 10px">Close</button></div>
   <div class="tr-body"><ol class="tl" id="trLine"></ol>
-    <div class="section-title" style="margin:6px 0 4px"><h2 style="font-size:14px">Assignment history</h2></div><ul class="tr-hist" id="trHist"></ul></div>
+    <div class="section-title" style="margin:6px 0 4px"><h2 style="font-size:14px">Assignment history</h2></div><ul class="tr-hist" id="trHist"></ul>
+    <div class="section-title" style="margin:14px 0 4px"><h2 style="font-size:14px">Approval steps (CPRHistory)</h2></div><ol class="steps" id="trSteps"></ol></div>
 </dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -924,7 +946,7 @@ function picNameFor(unit) {
   for (const [rs, name] of Object.entries(PIC_LIST)) if (picKey(rs) === k) return name;
   return null;
 }
-const HCOL = { revise: "Revise To", cpr: "Capital Req ID", unit: "Unit", role: "Role", user: "Username", submit: "Submit Date", approve: "Approval Date", status: "Document Status", seq: "Sequence", asset: "Asset Code", category: "Category Type", subject: "Subject", amount: "Total Amount" };
+const HCOL = { consult: "Consult To", noteReq: "Notes Requester", noteAppr: "Notes Approver", noteCons: "Notes Consult", revise: "Revise To", cpr: "Capital Req ID", unit: "Unit", role: "Role", user: "Username", submit: "Submit Date", approve: "Approval Date", status: "Document Status", seq: "Sequence", asset: "Asset Code", category: "Category Type", subject: "Subject", amount: "Total Amount" };
 // only these two are needed: new CPRs that are still waiting have no approval yet, so "Approval Date" may be missing
 const HREQUIRED = ["cpr", "submit"];
 let HIST = null; // { rows, fileName } of the last history upload, kept in memory for role re-mapping
@@ -947,6 +969,30 @@ function unitMapFromRecs() {
 }
 // approval steps that come BEFORE Key Account HO in the CPR flow
 const PRE_KA_ROLES = new Set(["requester", "accounting unit", "accounting ho", "accounting staff", "purchasing head hu"]);
+// ---------- approval steps of each CPR (from CPRHistory), shown when a CPR number is clicked ----------
+// one row = [seq, role, user, submit, approval, reviseTo, consultTo, noteRequester, noteApprover, noteConsult]
+const cutNote = (v) => (v === null || v === undefined || String(v).trim() === "" ? null : String(v).trim().slice(0, 300));
+function stepRow(x) { return [x[HCOL.seq] ?? null, x[HCOL.role] ?? null, x[HCOL.user] ?? null, toStamp(x[HCOL.submit]), toStamp(x[HCOL.approve]), cutNote(x[HCOL.revise]), cutNote(x[HCOL.consult]), cutNote(x[HCOL.noteReq]), cutNote(x[HCOL.noteAppr]), cutNote(x[HCOL.noteCons])]; }
+const stepBucket = (cpr) => { const p = String(cpr).split("-"); return p.length >= 4 ? `${p[2]}-${p[3]}-${p[1]}` : "other"; };   // e.g. "26-09-1003"
+const STEP_CACHE = new Map();
+async function loadSteps(cpr) {
+  const b = stepBucket(cpr);
+  if (!STEP_CACHE.has(b)) { let items = {}; if (DB) { try { const d = await DB.doc("steps/" + b).get(); items = d.exists ? d.data().items || {} : {}; } catch {} } STEP_CACHE.set(b, items); }
+  return STEP_CACHE.get(b)[cpr] || null;
+}
+async function saveSteps(fresh, gone) {
+  // fresh: Map cpr -> rows (only CPRs whose newest version came from this upload); gone: CPRs that left the queue
+  const byB = new Map();
+  for (const [cpr, rows] of fresh) { const b = stepBucket(cpr); if (!byB.has(b)) byB.set(b, { set: new Map(), del: [] }); byB.get(b).set.set(cpr, rows); }
+  for (const cpr of gone) { const b = stepBucket(cpr); if (!byB.has(b)) byB.set(b, { set: new Map(), del: [] }); byB.get(b).del.push(cpr); }
+  for (const [b, ch] of byB) {
+    const d = await DB.doc("steps/" + b).get(); const items = { ...(d.exists ? d.data().items || {} : {}) };
+    for (const [cpr, rows] of ch.set) items[cpr] = rows;
+    for (const cpr of ch.del) delete items[cpr];
+    if (Object.keys(items).length) await DB.doc("steps/" + b).set({ items }); else if (d.exists) await DB.doc("steps/" + b).delete();
+    STEP_CACHE.set(b, items);
+  }
+}
 // rework episodes stored as "start:end:who;..." (who: D = Purchasing Director, H = Purchasing Head HO; end empty = still open)
 const reworkList = (r) => (r.rwk ? String(r.rwk).split(";").map((x) => { const [a, b, w] = x.split(":"); return { start: Number(a), end: b === "" ? null : Number(b), who: w === "D" ? "Purchasing Director" : "Purchasing Head HO" }; }) : []);
 const inRework = (r) => !!(r.stage && String(r.stage).startsWith("At Key Account – Rework"));
@@ -985,7 +1031,7 @@ function pivotHistory(rows) {
     for (const [, rs] of srcs) { const sc = score(rs); if (!best || sc[0] > bestScore[0] || (sc[0] === bestScore[0] && (sc[1] > bestScore[1] || (sc[1] === bestScore[1] && order > bestOrder)))) { best = rs; bestScore = sc; bestOrder = order; } order++; }
     byCpr.set(id, best); olderVersions++;
   }
-  const recs = [], removed = [], removedLast = {}; let dropped = 0, skipped = 0;
+  const recs = [], removed = [], removedLast = {}, steps = new Map(); let dropped = 0, skipped = 0;
   const roleKey = (x) => normRole(x[HCOL.role]).replace(/[^a-z]/g, "");
   const isKaRole = (x) => roleKey(x).includes("keyaccount");
   const isPurchHo = (x) => roleKey(x) === "purchasingho";
@@ -1060,8 +1106,9 @@ function pivotHistory(rows) {
       backFirst: dayOf(backFirstAt), backOutFirst: dayOf(firstPhoDone), rework: reworks.length || null, kaUser,
       rwk: reworks.filter((e) => e.toKa).map((e) => `${dayOf(e.st)}:${e.end ? dayOf(e.end) : ""}:${e.who}`).join(";") || null
     }));
+    steps.set(String(id), list.map(stepRow));
   }
-  return { recs, dropped, skipped, removed, removedLast, olderVersions, cprs: byCpr.size };
+  return { recs, dropped, skipped, removed, removedLast, olderVersions, steps, cprs: byCpr.size };
 }
 // put new records over the saved ones: same CPR number -> filled values replace old ones
 // fields that the approval history describes completely: a missing value there means "not happened yet"
@@ -1114,6 +1161,8 @@ async function applyHistory(rows, fileName, roleKa, roleBack) {
   const newerStored = (f) => { const o = stored.get(f.cpr); return o && o.lastAct !== null && o.lastAct !== undefined && f.lastAct !== null && f.lastAct !== undefined && o.lastAct > f.lastAct; };
   const keptOld = result.recs.filter(newerStored).length;
   result.recs = result.recs.filter((f) => !newerStored(f)); result.keptOld = keptOld;
+  if (DB && canSave()) { try { await saveSteps(new Map(result.recs.map((r) => [r.cpr, result.steps.get(r.cpr)])), [...gone]); } catch { /* steps are a convenience: the queue itself is saved separately */ } }
+  else for (const r of result.recs) { const b = stepBucket(r.cpr); if (!STEP_CACHE.has(b)) STEP_CACHE.set(b, {}); STEP_CACHE.get(b)[r.cpr] = result.steps.get(r.cpr); }
   const base = IS_SAMPLE ? [] : RECS.filter((r) => !gone.has(r.cpr));
   META.hasKa = false; void feedHasKa; // worklot data: the DSS assigns the KA
   RECS = mergeRecs(base, result.recs, HIST_KEYS).map(finishRec);
@@ -1485,6 +1534,7 @@ $("btnClearSaved").addEventListener("click", async () => {
     const tm = await DB.doc("train/meta").get(); const tn = tm.exists ? tm.data().chunks || 0 : 0;
     for (let i = 0; i < tn; i++) await DB.doc("train/chunk-" + i).delete();
     await DB.doc("train/meta").delete(); await DB.doc("settings/models").delete();
+    try { const st = await DB.collection("steps").get(); for (const d of st.docs) await DB.doc("steps/" + d.id).delete(); } catch {}
     await clearAlloc();
     location.reload();
   } catch (err) { setStatus("Deletion failed: " + (err.message || err.code)); }
@@ -2639,6 +2689,60 @@ function progressStatus(c) {
   if (r.back === null) return ["With approver", "serious"];
   return ["At KA – Sequence 8", "info"];
 }
+/* ---------- Approval steps of one CPR (CPRHistory), newest export kept ---------- */
+const STAMP_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}:\d{2}(?::\d{2})?))?/;
+const fmtStampDay = (st) => { const m = STAMP_RE.exec(String(st || "")); return m ? `${m[3]}/${m[2]}/${m[1]}` : ""; };
+const fmtStampTime = (st) => { const m = STAMP_RE.exec(String(st || "")); return m && m[4] ? m[4] : ""; };
+const stampMs = (st) => { const m = STAMP_RE.exec(String(st || "")); return m ? Date.parse(`${m[1]}-${m[2]}-${m[3]}T${m[4] || "00:00"}`) : NaN; };
+function fmtDuration(a, b) {
+  if (!a || !b) return ""; const ms = stampMs(b) - stampMs(a); if (!(ms >= 0)) return "";
+  const min = Math.round(ms / 60000); if (min < 60) return `${min} minutes`;
+  const h = ms / 3600000; if (h < 24) return `${fmtNum(h, 1)} hours`; return `${fmtNum(h / 24, 1)} days`;
+}
+async function renderSteps(cpr) {
+  const box = $("trSteps"); box.replaceChildren(el("li", { class: "note" }, "Loading the approval steps …"));
+  const rows = await loadSteps(cpr);
+  if ($("trTitle").textContent !== cpr) return;   // another CPR was opened meanwhile
+  if (!rows || !rows.length) { box.replaceChildren(el("li", { class: "note", style: "display:block" }, "No approval steps stored for this CPR yet. Upload its CPRHistory to see every step here.")); return; }
+  const time = (x) => x[4] || x[3] || "";
+  const list = rows.map((x, i) => ({ x, i })).sort((a, b) => (time(a.x) < time(b.x) ? -1 : time(a.x) > time(b.x) ? 1 : (Number(a.x[0]) - Number(b.x[0])) || a.i - b.i));
+  const pretty = (v) => String(v || "").replace(/\b\w/g, (ch) => ch.toUpperCase()).replace(/\bHo\b/g, "HO").replace(/\bHu\b/g, "HU").replace(/\bFc\b/g, "FC").replace(/\bCeo\b/g, "CEO");
+  let first = true; const returnedAt = new Map();   // role -> time it was sent back to that role (revise / rework)
+  box.replaceChildren(...list.map(({ x }) => {
+    const [seq, role, user, submit, approve, revise, consult, nReq, nAppr, nCons] = x;
+    const r = normRole(role), key = r.replace(/[^a-z]/g, "");
+    const isSubmit = first && r === "requester" && !approve; first = false;
+    const late = r === "purchasing head ho" || r === "purchasing director";
+    const isKa = key.includes("keyaccount") || key === "purchasingho";
+    let kind = "approved", badge = "Approval – approved";
+    if (isSubmit) { kind = "submit"; badge = "Submit"; }
+    else if (revise && late) { kind = "rework"; badge = `Rework → ${pretty(revise)}`; }
+    else if (revise) { kind = "revise"; badge = `Revise → ${pretty(revise)}`; }
+    else if (consult) { kind = "consult"; badge = `Consult → ${consult}`; }
+    else if (!approve) { kind = "pending"; badge = "Pending"; }
+    const stamp = isSubmit ? submit : approve || submit;
+    const li = el("li", { class: kind + (isKa ? " ka" : "") });
+    const t = el("div", { class: "t" }, fmtStampDay(stamp)); t.append(el("small", {}, fmtStampTime(stamp)));
+    const card = el("div", { class: "card2" });
+    const sq = el("div", { class: "seq" }); sq.append(el("small", {}, "SEQ"), document.createTextNode(seq ?? "–"));
+    const roleLbl = el("div", { class: "role" }, pretty(role) + (key.includes("keyaccount") ? " · KA Sequence 3" : key === "purchasingho" ? " · KA Sequence 8" : ""));
+    const actor = el("div", { class: "actor" }, "Actor: "); actor.append(el("b", {}, user || "System"));
+    const right = el("div", { class: "right" }); right.append(el("span", { class: "badge " + kind }, badge));
+    // time spent at this step: from its Submit Date, or - when the step was sent back to this role for revision/rework -
+    // from that moment (the export keeps the original Submit Date on the repeated row)
+    const back = returnedAt.get(r);
+    const startAt = back && submit && approve && stampMs(back) > stampMs(submit) && stampMs(back) <= stampMs(approve) ? back : submit;
+    if (back && startAt === back) returnedAt.delete(r);
+    const dur = isSubmit ? "" : fmtDuration(startAt, approve); if (dur) right.append(el("span", { class: "dur" }, "⏱ " + dur));
+    if (revise && approve) returnedAt.set(normRole(revise), approve);
+    card.append(sq, roleLbl, right, actor);
+    const wm = el("div", { class: "when-m" }, `${fmtStampDay(stamp)} ${fmtStampTime(stamp)}`); card.append(wm);
+    const notes = [["Req note", nReq], ["Approver note", nAppr], ["Consult note", nCons]].filter(([, v]) => v);
+    if (notes.length) { const n = el("div", { class: "notes" }); for (const [k, v] of notes) { const d = el("div"); d.append(el("b", {}, k + ": "), document.createTextNode(v)); n.append(d); } card.append(n); }
+    li.append(t, el("span", { class: "dot" }), card);
+    return li;
+  }));
+}
 /* ---------- CPR tracking panel: click a CPR number to see its journey ---------- */
 const cprLink = (cpr) => Object.assign(el("button", { class: "linkbtn", type: "button", title: "Track this CPR" }, cpr), { onclick: () => openTrack(cpr) });
 function openTrack(cpr) {
@@ -2697,6 +2801,7 @@ function openTrack(cpr) {
   if (IGNORED[r.cpr]) hist.push(el("li", {}, `Dismissed on ${fmtStamp(IGNORED[r.cpr].at)}`));
   $("trHist").replaceChildren(...hist);
   $("track").showModal();
+  renderSteps(cpr);
 }
 $("trClose").addEventListener("click", () => $("track").close());
 $("track").addEventListener("click", (e) => { if (e.target === $("track")) $("track").close(); }); // click outside closes
