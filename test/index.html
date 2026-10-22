@@ -850,10 +850,12 @@ async function readWorkbook(file) {
 
 $("fileCpr").addEventListener("change", async (e) => {
   const file = pickFiles(e.target.files); if (!file) return;
+  const fromSetup = !$("emptyCard").hidden;
   setStatus(`Reading ${file.name} …`);
   await new Promise((r) => setTimeout(r, 30));
   try {
     const { rows: allRows, columns } = await readWorkbook(file);
+    if (fromSetup) SETUP_PENDING = true;
     // CPRSummary rows (one per CPR) and CPRHistory rows (one per step) may be chosen together
     const sumRows = allRows.filter(isSummaryRow), rows = allRows.filter((r) => !isSummaryRow(r));
     const before = new Set(IS_SAMPLE ? [] : RECS.map((r) => r.cpr));
@@ -894,6 +896,7 @@ $("fileCpr").addEventListener("change", async (e) => {
     $("sampleBanner").hidden = true; updateModeBanner();
     $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPRs`;
     SIM = null; SIM_KA = new Map(); // allocation waits for "Run allocation"
+    if (fromSetup) await setSetupPending(true);
     renderAll();
     let saved = "";
     if (DB) {
@@ -1385,7 +1388,7 @@ async function initDb() {
     if (pic.exists) PIC_LIST = pic.data().list || null;
     try { await loadPo(); } catch {}
     try { await loadProgress(); } catch {}
-    try { await loadTrain(); await loadModelChoice(); await loadKaUsers(); } catch {}
+    try { await loadTrain(); await loadModelChoice(); await loadKaUsers(); await loadSetup(); } catch {}
     await loadLog(); renderLog(); await loadSpv();
     if (!meta.exists) { renderSavedInfo(); renderQuality(); renderKa(); return; }
     setStatus("Loading stored data …");
@@ -1615,7 +1618,7 @@ $("btnClearSaved").addEventListener("click", async () => {
     for (let i = 0; i < tn; i++) await DB.doc("train/chunk-" + i).delete();
     await DB.doc("train/meta").delete(); await DB.doc("settings/models").delete();
     try { const st = await DB.collection("steps").get(); for (const d of st.docs) await DB.doc("steps/" + d.id).delete(); } catch {}
-    await DB.doc("settings/kausers").delete();
+    await DB.doc("settings/kausers").delete(); await DB.doc("settings/setup").delete();
     await clearAlloc();
     location.reload();
   } catch (err) { setStatus("Deletion failed: " + (err.message || err.code)); }
@@ -3378,7 +3381,7 @@ function renderAll() { renderEmptyState(); renderKa(); renderQuality(); renderSi
 // before the CPR queue is uploaded: no sample data on screen, only what to upload
 function renderEmptyState() {
   // the setup page stays until the first allocation has been run (nothing is allocated automatically)
-  const empty = IS_SAMPLE || (!SIM && !RECS.some((r) => LOCKED.has(r.cpr)));
+  const empty = IS_SAMPLE || SETUP_PENDING || (!SIM && !RECS.some((r) => LOCKED.has(r.cpr)));
   document.body.classList.toggle("no-data", empty);
   $("emptyCard").hidden = !empty;
   if (!empty) return;
@@ -3404,7 +3407,11 @@ function renderEmptyState() {
     allocStep()
   );
 }
-// step 4 of the setup page: the allocation options, then Run allocation
+// files uploaded from the setup page: the page stays (steps 1-3) until Run allocation is selected there
+let SETUP_PENDING = false;
+async function setSetupPending(on) { SETUP_PENDING = on; if (DB && canSave()) { try { if (on) await DB.doc("settings/setup").set({ pending: true }); else await DB.doc("settings/setup").delete(); } catch {} } }
+async function loadSetup() { if (!DB) return; try { const d = await DB.doc("settings/setup").get(); SETUP_PENDING = !!(d.exists && d.data().pending); } catch {} }
+// step 3 of the setup page: the allocation options, then Run allocation
 function allocStep() {
   const ready = !IS_SAMPLE && !!PIC_LIST;
   const li = el("li", { class: "alloc" }); li.append(el("span", { class: "num" }, "3"));
@@ -3420,7 +3427,9 @@ function allocStep() {
   const pic = el("label", { class: "check" }); const cb = el("input", { type: "checkbox", id: "e4Pic" }); cb.checked = $("sPic").checked; pic.append(cb, document.createTextNode(" Prioritize hospital PIC"));
   const run = Object.assign(el("button", { class: "btn", type: "button", id: "e4Run" }, "Run allocation"), { onclick: async () => {
     $("sFrom").value = $("e4From").value; $("sTo").value = $("e4To").value; $("sVendor").value = $("e4Vendor").value; $("sMax").value = $("e4Max").value; $("sPic").checked = $("e4Pic").checked;
-    run.disabled = true; run.textContent = "Allocating …"; await runSimulation(); showTab("distribusi");
+    run.disabled = true; run.textContent = "Allocating …"; await runSimulation();
+    if (SIM) await setSetupPending(false); else { run.disabled = false; run.textContent = "Run allocation"; }
+    renderAll(); showTab("distribusi");
   } });
   f.append(pic, run);
   li.append(f);
