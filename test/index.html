@@ -3118,13 +3118,25 @@ function progressStatus(c) {
     if (r.backOut !== null) return ["Done · Sequence 8 approved", "good"];
   }
   if (isInactive(r)) return ["Rejected · auto (no progress > 30 days)", "bad"];
-  const pos = posLabel(r);   // "Sequence N : Role" read from CPRHistory / CPRSummary
-  if (inRework(r)) return [pos || "At KA – Rework", "warn"];
-  if (!p) return ["No update yet", "muted"];
-  if (r.kaIn === null) return [pos || "Before KA", "warn"];
-  if (r.kaOut === null) return [pos || "At KA – Sequence 3", "info"];
-  if (r.back === null) return [pos || "With approver", "serious"];
-  return [pos || "At KA – Sequence 8", "info"];
+  // every CPR still in progress is shown as "Sequence N : Role": read from CPRHistory / CPRSummary, else the usual step for its phase
+  const pos = posLabel(r) || fallbackPos(r);
+  if (inRework(r)) return [pos, "warn"];
+  if (r.kaIn === null) return [pos, "warn"];
+  if (r.kaOut === null) return [pos, "info"];
+  if (r.back === null) return [pos, "serious"];
+  return [pos, "info"];
+}
+// the usual approval flow (most common role per sequence in the 2023-2026 history)
+const DEFAULT_FLOW = { 1: "Accounting Unit", 2: "Purchasing Head HU", 3: "Key Account HO", 4: "Division Head", 5: "FC Unit", 6: "CEO Unit", 7: "Budget Controller", 8: "Purchasing HO", 9: "Purchasing Head HO", 10: "Purchasing Director" };
+function fallbackPos(r) {
+  const label = (q) => `Sequence ${q} : ${DEFAULT_FLOW[q] || "Approver"}`;
+  const next = (r.lastSeq ?? null) !== null ? r.lastSeq + 1 : null;
+  if (inRework(r)) return "Sequence 8 : Purchasing HO – Rework";
+  if (/draft/i.test(r.hstatus || "")) return "Sequence 0 : Requester (Draft)";
+  if (r.kaIn === null) return label(next !== null ? Math.min(Math.max(next, 1), 2) : 1);   // before KA: Accounting Unit or Purchasing Head HU
+  if (r.kaOut === null) return label(3);
+  if (r.back === null) return label(next !== null ? Math.min(Math.max(next, 4), 7) : 4);    // with the approvers between Sequence 3 and 8
+  return label(8);
 }
 /* ---------- Approval steps of one CPR (CPRHistory), newest export kept ---------- */
 const STAMP_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}:\d{2}(?::\d{2})?))?/;
@@ -3405,11 +3417,11 @@ function actionItems() {
   const D = dataDate(), out = [];
   for (const c of SIM.assigned) {
     const r = c.r; if (r.backOut !== null || r.done) continue;
-    if (!IGNORED[r.cpr] && isInactive(r)) { const AD = activityDate(), last = lastActivity(r); out.push({ c, type: "stale", days: AD - last, status: `No progress for ${AD - last} days (last activity ${fmtDay(last)}); rejected automatically. Not counted as KA workload.`, where: posLabel(r) || r.stage || "Before Key Account", canMove: false }); continue; }
+    if (!IGNORED[r.cpr] && isInactive(r)) { const AD = activityDate(), last = lastActivity(r); out.push({ c, type: "stale", days: AD - last, status: `No progress for ${AD - last} days (last activity ${fmtDay(last)}); rejected automatically. Not counted as KA workload.`, where: posLabel(r) || fallbackPos(r), canMove: false }); continue; }
     // without a progress update after the CPR entered KA, its status is unknown: not a problem yet
     if (!r.prog || D === null || D < (r.kaIn ?? r.create)) continue;
     if (IGNORED[r.cpr]) { out.push({ c, type: "ignored", days: 0, status: `Dismissed ${fmtStamp(IGNORED[r.cpr].at)}`, where: "–", canMove: false }); continue; }
-    const where = posLabel(r) || r.stage ? `${posLabel(r) || r.stage}${r.stageSince !== null && r.stageSince !== undefined ? " since " + fmtShort(r.stageSince) : ""}` : "–";
+    const where = `${posLabel(r) || fallbackPos(r)}${r.stageSince !== null && r.stageSince !== undefined ? " since " + fmtShort(r.stageSince) : ""}`;
     if (r.kaIn !== null && r.kaOut === null) {
       const d = D - r.kaIn; if (d > 3) out.push({ c, type: "late", days: d, status: `Sequence 3 not completed after ${d} days`, where: "Key Account HO", canMove: true });
     } else if (r.kaIn === null) {
