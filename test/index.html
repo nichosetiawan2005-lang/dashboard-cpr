@@ -1074,7 +1074,7 @@ function applySummary(sum) {
       const code = String(id).split("-")[1];
       r = finishRec({ cpr: id, unit: unitMapFromRecs()[code] || String(x.row[SCOL.unit] ?? ""), vendor: "(kosong)", vendorName: String(x.row[SCOL.subject] ?? "").slice(0, 60), ka: null, kaName: null,
         create: x.createdAt ? toDay(x.createdAt.slice(0, 10)) : null, phIn: null, phOut: null, kaIn: null, kaOut: null, back: null, backOut: null, capex: x.row[SCOL.category] ? String(x.row[SCOL.category]) : null,
-        createAt: x.createdAt, submitAt: x.submittedAt, kaInAt: null, kaOutAt: null, backAt: null, backOutAt: null, stage: /draft/i.test(x.status) ? "Draft (requester)" : null, stageSince: null,
+        createAt: x.createdAt, submitAt: x.submittedAt, kaInAt: null, kaOutAt: null, backAt: null, backOutAt: null, stage: /draft/i.test(x.status) ? "Draft (requester)" : null, pos: /draft/i.test(x.status) ? "Sequence 0 : Requester (Draft)" : null, stageSince: null,
         lastAct: x.submittedAt ? toDay(x.submittedAt.slice(0, 10)) : x.createdAt ? toDay(x.createdAt.slice(0, 10)) : null, hstatus: x.status || null });
       RECS.push(r); known.set(id, r); added++;
     } else updated++;
@@ -1083,12 +1083,14 @@ function applySummary(sum) {
     r.waiting = x.waiting.join(",") || null;
     if (!/in review/i.test(x.status) || !x.waiting.length || inRework(r)) continue;
     if (x.waiting.some((u) => users.has(u))) {   // the CPR is with a KA right now
-      if (r.kaOut === null) { if (r.kaIn === null) { r.kaIn = r.lastAct; r.kaInAt = null; } r.stage = "At Key Account (Sequence 3)"; r.stageSince = r.kaIn; }
-      else if (r.backOutFirst == null && r.backOut === null) { if (r.back === null) { r.back = r.lastAct; r.backAt = null; } r.stage = "At Key Account (Sequence 8)"; r.stageSince = r.back; }
+      if (r.kaOut === null) { if (r.kaIn === null) { r.kaIn = r.lastAct; r.kaInAt = null; } r.stage = "At Key Account (Sequence 3)"; r.stageSince = r.kaIn; r.pos = `Sequence ${seqOfRole(HIST_ROLE_SEQS, "Key Account HO", (r.lastSeq ?? 0) + 1)} : Key Account HO`; }
+      else if (r.backOutFirst == null && r.backOut === null) { if (r.back === null) { r.back = r.lastAct; r.backAt = null; } r.stage = "At Key Account (Sequence 8)"; r.stageSince = r.back; r.pos = `Sequence ${seqOfRole(HIST_ROLE_SEQS, "Purchasing HO", Math.max((r.lastSeq ?? 0) + 1, 4))} : Purchasing HO`; }
     } else {   // with someone else: an arrival guessed from CPRHistory alone is withdrawn
       if (r.stage === "At Key Account (Sequence 3)" && r.kaOut === null) { r.kaIn = null; r.kaInAt = null; }
       if (r.stage === "At Key Account (Sequence 8)" && r.backOut === null) { r.back = null; r.backAt = null; }
       r.stage = "Waiting for " + x.waiting.join(", "); r.stageSince = r.lastAct;
+      const us = HIST_USER_STEPS[String(x.waiting[0]).toLowerCase()];
+      if (us) r.pos = `Sequence ${seqOfRole(HIST_ROLE_SEQS, us, (r.lastSeq ?? 0) + 1)} : ${us}`;
     }
     finishRec(r);
   }
@@ -1115,7 +1117,7 @@ function ovRows() {
   // the catalogue, or (for data uploaded before it existed) the queue records
   const base = CATALOG.size ? [...CATALOG.values()] : RECS.filter((r) => r.hstatus).map((r) => ({ cpr: r.cpr, unit: r.unit, subject: r.vendorName, status: r.hstatus, create: r.create, lastAct: r.lastAct, stage: r.stage, erp: r.erp, waiting: r.waiting }));
   const live = new Map(RECS.map((r) => [r.cpr, r])), alloc = SIM ? new Map(SIM.assigned.map((c) => [c.r.cpr, c])) : new Map();
-  return base.map((x) => { const r = live.get(x.cpr), c = alloc.get(x.cpr); return { ...x, stage: (r && r.stage) || x.stage, erp: x.erp || (r && r.erp) || null, ka: c ? c.ka : null, inQueue: !!r }; });
+  return base.map((x) => { const r = live.get(x.cpr), c = alloc.get(x.cpr); return { ...x, stage: (r && r.stage) || x.stage, pos: (r && r.pos) || x.pos || null, erp: x.erp || (r && r.erp) || null, ka: c ? c.ka : null, inQueue: !!r }; });
 }
 function renderLateAlert() {
   const items = SIM ? actionItems().filter((x) => x.type === "late" || x.type === "pre" || x.type === "post") : [];
@@ -1155,7 +1157,7 @@ function renderOverview() {
     { key: "subject", label: "Description", sortable: false, render: (x) => el("div", { class: "cellwrap" }, x.subject || "–") },
     { key: "create", label: "Created", sortable: false, render: (x) => fmtDay(x.create) },
     { key: "status", label: "Status", sortable: false, render: (x) => pill(x.status || "–", kind(x.status)) },
-    { key: "stage", label: "Current position", sortable: false, render: (x) => el("div", { class: "cellwrap" }, x.stage || (x.waiting ? "Waiting for " + x.waiting.split(",").join(", ") : "–")) },
+    { key: "stage", label: "Current position", sortable: false, render: (x) => el("div", { class: "cellwrap" }, /^approved$/i.test(x.status || "") ? "Fully approved" : x.pos || x.stage || (x.waiting ? "Waiting for " + x.waiting.split(",").join(", ") : "–")) },
     { key: "lastAct", label: "Last activity", sortable: false, render: (x) => fmtDay(x.lastAct) },
     { key: "ka", label: "Key Account", sortable: false, render: (x) => (x.ka ? kaLabel(x.ka) : "–") },
     { key: "erp", label: "ERP ID (PR / PO)", sortable: false, render: (x) => x.erp || "–" }
@@ -1167,7 +1169,7 @@ $("ovPrev").addEventListener("click", () => { OV.page = Math.max(0, OV.page - 1)
 $("ovNext").addEventListener("click", () => { OV.page += 1; renderOverview(); });
 // ---------- catalogue of every CPR (Overview tab): status, dates, current position, ERP ID ----------
 let CATALOG = new Map();
-const CAT_FIELDS = ["cpr", "unit", "subject", "status", "create", "lastAct", "stage", "erp", "waiting"];
+const CAT_FIELDS = ["cpr", "unit", "subject", "status", "create", "lastAct", "stage", "erp", "waiting", "pos"];
 async function saveCatalog() {
   if (!DB || !canSave()) return;
   const rows = [...CATALOG.values()].map((x) => CAT_FIELDS.map((k) => x[k] ?? null)), n = Math.ceil(rows.length / CHUNK);
@@ -1233,6 +1235,24 @@ function pivotHistory(rows) {
   const pretty = (x) => normRole(x[HCOL.role]).replace(/\b\w/g, (ch) => ch.toUpperCase()).replace(/\bHo\b/g, "HO").replace(/\bHu\b/g, "HU").replace(/\bFc\b/g, "FC").replace(/\bCeo\b/g, "CEO");
   const maxOf = (list, col) => list.map((x) => toStamp(x[col])).filter(Boolean).sort().slice(-1)[0] || null;
   const dayOf = (st) => (st ? toDay(st.slice(0, 10)) : null);
+  // current position as "Sequence N : Role": each approver's usual step, and the usual next role after a role
+  const sq = (x) => Number(x[HCOL.seq]);
+  const userStepCount = new Map(), nextCount = new Map(), roleSeqCount = new Map();
+  const bump = (m, k, v) => { if (!m.has(k)) m.set(k, new Map()); const n = m.get(k); n.set(v, (n.get(v) || 0) + 1); };
+  for (const list of byCpr.values()) {
+    const bySeq = list.slice().sort((a, b) => sq(a) - sq(b));
+    for (const x of bySeq) { if (normRole(x[HCOL.role]) === "requester") continue; const u = String(x[HCOL.user] ?? "").trim().toLowerCase(); if (u) bump(userStepCount, u, pretty(x)); bump(roleSeqCount, pretty(x), sq(x)); }
+    // steps can be skipped (e.g. no CEO step for small amounts): the next role is the next approver in the list, whatever its number
+    const appr = bySeq.filter((x) => normRole(x[HCOL.role]) !== "requester");
+    for (let i = 0; i + 1 < appr.length; i++) if (sq(appr[i + 1]) > sq(appr[i])) bump(nextCount, roleKey(appr[i]), pretty(appr[i + 1]));
+  }
+  const top = (m) => (m ? [...m].sort((a, b) => b[1] - a[1])[0][0] : null);
+  const userSteps = {}; for (const [u, m] of userStepCount) userSteps[u] = top(m);
+  // the sequence numbers each role usually has (a role can sit at different numbers in different approval flows)
+  const roleSeqs = {}; for (const [role, m] of roleSeqCount) { const tot = [...m.values()].reduce((a, b) => a + b, 0); roleSeqs[role] = [...m].filter(([, n]) => n >= Math.max(3, tot * 0.02)).map(([q]) => q).sort((a, b) => a - b); }
+  const seqFor = (role, minSeq) => seqOfRole(roleSeqs, role, minSeq);
+  const nextRoleOf = (x) => top(nextCount.get(roleKey(x)));
+  const posOf = (seq, role) => `Sequence ${seq} : ${role}`;
   for (const [id, list] of byCpr) {
     const last = list[list.length - 1];
     const status = String(last[HCOL.status] ?? "").trim();
@@ -1246,7 +1266,8 @@ function pivotHistory(rows) {
       const code = String(id).split("-")[1] || String(last[HCOL.unit]);
       catalog.set(String(id), { cpr: String(id), unit: known[code] || String(last[HCOL.asset] ?? "").split(".")[0].trim() || String(last[HCOL.unit]), subject: String(last[HCOL.subject] ?? "").slice(0, 80),
         status, create: firstSub ? toDay(firstSub.slice(0, 10)) : null, lastAct: removedLast[String(id)],
-        stage: /reject|cancel|batal|tolak/i.test(status) && lastRow ? `Rejected at ${pretty(lastRow)}${lastRow[HCOL.user] ? " (" + lastRow[HCOL.user] + ")" : ""}` : null, erp: null, waiting: null });
+        stage: /reject|cancel|batal|tolak/i.test(status) && lastRow ? `Rejected at ${pretty(lastRow)}${lastRow[HCOL.user] ? " (" + lastRow[HCOL.user] + ")" : ""}` : null, erp: null, waiting: null,
+        pos: /reject|cancel|batal|tolak/i.test(status) && lastRow ? posOf(sq(lastRow), pretty(lastRow) + " – Rejected") : null });
       steps.set(String(id), list.map(stepRow));
     }
     if (/reject|cancel|batal|tolak/i.test(status)) { dropped++; removed.push(String(id)); continue; }
@@ -1300,6 +1321,18 @@ function pivotHistory(rows) {
     else if (pending.length) { const pr = pending[pending.length - 1]; stage = normRole(pr[HCOL.role]) === "requester" ? "Returned to requester" : "With " + pretty(pr); stageAt = toStamp(pr[HCOL.submit]); }
     else if (lastApproved) { stage = normRole(lastApproved[HCOL.role]) === "requester" ? "Resubmitted by requester" : "Next approver after " + pretty(lastApproved); stageAt = toStamp(lastApproved[HCOL.approve]); }
     else { stage = "Submitted, waiting for the first approver"; stageAt = created; }
+    // the same position as "Sequence N : Role" (the export has no row for the step now waiting, so its sequence = last approved + 1)
+    let pos = null;
+    const target = (roleName) => list.filter((y) => roleKey(y) === normRole(roleName).replace(/[^a-z]/g, "")).slice(-1)[0] || null;
+    if (/^approved$/i.test(status)) pos = null;
+    else if (openRework && openRework.toKa) { const t = target(lastApproved[HCOL.revise]); pos = posOf(t ? sq(t) : 8, (t ? pretty(t) : "Purchasing HO") + " – Rework"); }
+    else if (inReview && lastApproved && reviseTo(lastApproved)) { const t = target(lastApproved[HCOL.revise]); pos = posOf(t ? sq(t) : 0, pretty({ [HCOL.role]: lastApproved[HCOL.revise] }) + " – Revision"); }
+    else if (atKa) { const role = atKa === 3 ? "Key Account HO" : "Purchasing HO"; pos = posOf(seqFor(role, lastApproved ? sq(lastApproved) + 1 : atKa), role); }
+    else if (/draft/i.test(status) && !pending.length) pos = posOf(0, "Requester (Draft)");
+    else if (pending.length) { const pr = pending[pending.length - 1]; pos = posOf(sq(pr), pretty(pr)); }
+    else if (lastApproved) { const role = nextRoleOf(lastApproved); pos = posOf(role ? seqFor(role, sq(lastApproved) + 1) : sq(lastApproved) + 1, role || "Next approver"); }
+    else pos = posOf(1, "First approver");
+    const lastSeq = lastApproved ? sq(lastApproved) : 0;
     const lastStamp = list.flatMap((x) => [toStamp(x[HCOL.submit]), toStamp(x[HCOL.approve])]).filter(Boolean).sort().slice(-1)[0] || null;
     const code = String(id).split("-")[1] || String(last[HCOL.unit]);
     const assetUnit = String(last[HCOL.asset] ?? "").split(".")[0].trim();
@@ -1311,7 +1344,7 @@ function pivotHistory(rows) {
       capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
       createAt: created, submitAt: null,
       kaInAt, kaOutAt, backAt, backOutAt: phoDone,
-      stage, stageSince: dayOf(stageAt), lastAct: dayOf(lastStamp), hstatus: status || null,
+      stage, stageSince: dayOf(stageAt), lastAct: dayOf(lastStamp), hstatus: status || null, pos, lastSeq,
       backFirst: dayOf(backFirstAt), backOutFirst: dayOf(firstPhoDone), rework: reworks.length || null, kaUser,
       backFirstAt, backOutFirstAt: firstPhoDone,
       ka3User: kaRows.map((x) => x[HCOL.user]).filter(Boolean).slice(-1)[0] || null,
@@ -1319,11 +1352,11 @@ function pivotHistory(rows) {
       rwk: reworks.filter((e) => e.toKa).map((e) => `${dayOf(e.st)}:${e.end ? dayOf(e.end) : ""}:${e.who}`).join(";") || null
     }));
   }
-  return { recs, dropped, skipped, removed, removedLast, olderVersions, steps, catalog, kaUsers: kaUsersFound, cprs: byCpr.size };
+  return { recs, dropped, skipped, removed, removedLast, olderVersions, steps, catalog, kaUsers: kaUsersFound, userSteps, roleSeqs, cprs: byCpr.size };
 }
 // put new records over the saved ones: same CPR number -> filled values replace old ones
 // fields that the approval history describes completely: a missing value there means "not happened yet"
-const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt", "waiting"];
+const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt", "waiting", "pos", "lastSeq"];
 function mergeRecs(base, fresh, authoritative = []) {
   const map = new Map(base.map((r) => [r.cpr, r]));
   for (const r of fresh) {
@@ -1364,7 +1397,8 @@ async function applyHistory(rows, fileName, roleKa, roleBack) {
   roleKa = roleKa ?? guessRole(roles, "ka"); roleBack = roleBack ?? guessRole(roles, "back");
   const result = pivotHistory(rows);
   const before = HIST_KA_USERS.size; for (const u of result.kaUsers) HIST_KA_USERS.add(u);
-  if (HIST_KA_USERS.size !== before && DB && canSave()) { try { await DB.doc("settings/kausers").set({ users: [...HIST_KA_USERS] }); } catch {} }
+  const stepsBefore = JSON.stringify([HIST_USER_STEPS, HIST_ROLE_SEQS]); HIST_USER_STEPS = { ...HIST_USER_STEPS, ...result.userSteps }; HIST_ROLE_SEQS = { ...HIST_ROLE_SEQS, ...result.roleSeqs };
+  if ((HIST_KA_USERS.size !== before || JSON.stringify([HIST_USER_STEPS, HIST_ROLE_SEQS]) !== stepsBefore) && DB && canSave()) { try { await DB.doc("settings/kausers").set({ users: [...HIST_KA_USERS], steps: HIST_USER_STEPS, roleSeqs: HIST_ROLE_SEQS }); } catch {} }
   HIST = { rows, fileName, roleKa, roleBack, result };
   const feedHasKa = result.recs.some((r) => r.ka);
   // CPRs rejected (or never routed to KA) in this upload leave the queue, even if an earlier upload saved them
@@ -1502,7 +1536,7 @@ if (SB) {
 
 let DB = null, DB_READY = false, LOCKED = new Map(), SAVED_AT = null;
 const CHUNK = 1000;
-const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt", "waiting", "erp", "sumCreate"];
+const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt", "waiting", "erp", "sumCreate", "pos", "lastSeq"];
 const useLocks = () => !!DB && !IS_SAMPLE && !META.hasKa;
 const canSave = () => !!DB && (!SB || IS_ADMIN);
 const monthKey = (d) => dayToIso(d).slice(0, 7);
@@ -2115,8 +2149,12 @@ function workStats(list) {
 // KA performance straight from CPRHistory: who approved Sequence 3 / Sequence 8, how long it took, and rework
 // only users that are a known KA (Hospital PIC List, or a KA name recorded in the forecast history), e.g. not Purchasing Head HO
 let HIST_KA_USERS = new Set();   // users that mainly approve KA steps in CPRHistory (stored in settings/kausers)
+let HIST_USER_STEPS = {};         // user -> the role they usually approve as (stored in settings/kausers)
+let HIST_ROLE_SEQS = {};          // role -> the sequence numbers it usually has (stored in settings/kausers)
+// the first usual sequence number of a role at or after minSeq (minSeq when the role is unknown)
+function seqOfRole(map, role, minSeq) { const q = (map[role] || []).find((x) => x >= minSeq); return q ?? minSeq; }
 const userKa = (u) => { if (!u) return null; const ka = poKa({ ka: u, kaName: null }).ka; return (META.kaList || []).includes(ka) || kaNameOf(u) || HIST_KA_USERS.has(String(u).toLowerCase()) ? ka : null; };
-async function loadKaUsers() { if (!DB) return; try { const d = await DB.doc("settings/kausers").get(); HIST_KA_USERS = new Set(d.exists ? d.data().users || [] : []); } catch {} }
+async function loadKaUsers() { if (!DB) return; try { const d = await DB.doc("settings/kausers").get(); HIST_KA_USERS = new Set(d.exists ? d.data().users || [] : []); HIST_USER_STEPS = d.exists ? d.data().steps || {} : {}; HIST_ROLE_SEQS = d.exists ? d.data().roleSeqs || {} : {}; } catch {} }
 function renderKaFromHistory(view) {
   if (!$("poFrom").value || !$("poTo").value) { const D = dataDate(); if (D !== null) { $("poTo").value = dayToIso(D); $("poFrom").value = dayToIso(D - 90); } }
   const from = isoToDay($("poFrom").value), to = isoToDay($("poTo").value);
@@ -3007,16 +3045,17 @@ function progressStatus(c) {
   if (IGNORED[r.cpr]) return ["Dismissed", "muted"];
   if (p && isRejected(p)) return ["Rejected", "muted"];
   if (isInactive(r)) return ["Inactive (no progress > 30 days)", "muted"];
-  if (inRework(r)) return ["At KA – Rework", "warn"];
+  const pos = r.pos || null;   // "Sequence N : Role" read from CPRHistory / CPRSummary
+  if (inRework(r)) return [pos || "At KA – Rework", "warn"];
   if (r.erp && /^po/i.test(r.erp)) return ["Completed (PO)", "good"];
   if (r.erp) return ["PR created", "good"];
   if (p && p.po !== null) return ["Completed (PO)", "good"];
   if (r.backOut !== null) return ["Sequence 8 completed", "good"];
   if (!p) return ["No update yet", "muted"];
-  if (r.kaIn === null) return ["Before KA", "warn"];
-  if (r.kaOut === null) return ["At KA – Sequence 3", "info"];
-  if (r.back === null) return ["With approver", "serious"];
-  return ["At KA – Sequence 8", "info"];
+  if (r.kaIn === null) return [pos || "Before KA", "warn"];
+  if (r.kaOut === null) return [pos || "At KA – Sequence 3", "info"];
+  if (r.back === null) return [pos || "With approver", "serious"];
+  return [pos || "At KA – Sequence 8", "info"];
 }
 /* ---------- Approval steps of one CPR (CPRHistory), newest export kept ---------- */
 const STAMP_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}:\d{2}(?::\d{2})?))?/;
