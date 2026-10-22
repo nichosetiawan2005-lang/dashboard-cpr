@@ -2824,10 +2824,19 @@ function simulate() {
   const newLoad = () => kaList.map(() => new Float64Array(nDays));
   const off = (d) => d - minDay;
   // days the KA holds the CPR: Sequence 3, Sequence 8 and every rework (returned by Purchasing Head HO / Director)
-  const activeDays = (c) => { const out = new Set(); for (let i = 0; i < c.w1; i++) out.add(off(c.s1 + i)); for (let i = 0; i < c.w2; i++) out.add(off(c.s2 + i)); for (const e of c.rw || []) for (let d = e.start; d <= (e.end ?? e.start); d++) out.add(off(d)); return [...out].filter((x) => x >= 0 && x < nDays); };
+  // a step ends on its ACTUAL approval date when the data has it: a completed CPR leaves the KA's workload the day after;
+  // a step not yet approved is assumed to take the usual duration (median Sequence 3 / Sequence 8 days)
+  const setEnds = (c) => {
+    const r = c.r; if (!r) { c.e1 = c.s1 + c.w1 - 1; c.e2 = c.s2 + c.w2 - 1; return; }
+    const out8 = r.backOutFirst ?? r.backOut;
+    c.e1 = r.kaOut !== null && r.kaOut >= c.s1 ? r.kaOut : c.s1 + c.w1 - 1;
+    c.e2 = out8 !== null && out8 !== undefined && out8 >= c.s2 ? out8 : c.s2 + c.w2 - 1;
+    if (r.done) { if (r.kaOut === null) c.e1 = Math.min(c.e1, c.s1); if (out8 == null) c.e2 = Math.min(c.e2, c.s2 - 1); }
+  };
+  const activeDays = (c) => { const out = new Set(); if (c.e1 === undefined) setEnds(c); for (let d = c.s1; d <= c.e1; d++) out.add(off(d)); for (let d = c.s2; d <= c.e2; d++) out.add(off(d)); for (const e of c.rw || []) for (let d = e.start; d <= (e.end ?? e.start); d++) out.add(off(d)); return [...out].filter((x) => x >= 0 && x < nDays); };
   const add = (L, c, sign) => { if (c.r && (IGNORED[c.r.cpr] || isInactive(c.r))) return; // dismissed by SPV or inactive: no load for the KA
     const a = L[kaIdx.get(c.ka)]; for (const d of activeDays(c)) a[d] += sign * c.weight; };
-  const lastDay = (c) => c.s2 + c.w2 - 1;
+  const lastDay = (c) => (c.e2 !== undefined ? Math.max(c.e2, c.s2) : c.s2 + c.w2 - 1);
   const holding = (c, day) => c.s1 <= day && day <= lastDay(c);
   const peak = (L, ka, days, w) => { const a = L[kaIdx.get(ka)]; let p = 0; for (const d of days) p = Math.max(p, a[d] + w); return p; };
 
@@ -2911,7 +2920,7 @@ function simulate() {
     // the range always contains the estimate itself
     if (c.f1Lo !== null) { c.f1Lo = Math.min(c.f1Lo, c.f1); c.f1Hi = Math.max(c.f1Hi, c.f1); }
     if (c.f2Lo !== null) { c.f2Lo = Math.min(c.f2Lo, c.f2); c.f2Hi = Math.max(c.f2Hi, c.f2); }
-    c.s1 = c.predArrival; c.s2 = c.s1 + w1 + c.f2;
+    c.s1 = c.predArrival; c.s2 = c.s1 + w1 + c.f2; setEnds(c);
     push(byCreate, r.create, c); if (r.kaIn !== null) push(byArrive, r.kaIn, c); if (r.kaOut !== null) push(byKaOut, r.kaOut, c); const backW = r.backFirst ?? r.back; if (backW !== null && backW !== undefined) push(byBack, backW, c);
   }
   const vendorHolder = (vendor, day) => { if (!hasVendor(vendor)) return null; for (const x of byVendor.get(vendor) || []) if (holding(x, day)) return x.ka; return null; };
@@ -2945,7 +2954,7 @@ function simulate() {
       if (!byVendor.has(c.vendor)) byVendor.set(c.vendor, []); byVendor.get(c.vendor).push(c);
     }
     for (const c of byArrive.get(day) || []) {
-      if (!c.ka) continue; add(L, c, -1); c.s1 = day; c.s2 = day + c.w1 + c.f2; add(L, c, 1);
+      if (!c.ka) continue; add(L, c, -1); c.s1 = day; c.s2 = day + c.w1 + c.f2; setEnds(c); add(L, c, 1);
       checkAbsence(c);
       // automatic rule 2: on arrival (before work starts) the KA is over the limit and another present KA still has room
       // only for CPRs given a KA in this run: a KA saved in an earlier allocation never moves because of workload
@@ -2954,8 +2963,8 @@ function simulate() {
         if (best && bestPeak <= maxPerDay) moveTo(c, best, `${kaLabel(c.ka)} exceeded the limit of ${fmtNum(maxPerDay)} CPRs/day when the CPR arrived`);
       }
     }
-    for (const c of byKaOut.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s2 = day + c.f2; add(L, c, 1); }
-    for (const c of byBack.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s2 = day; add(L, c, 1); }
+    for (const c of byKaOut.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s2 = day + c.f2; setEnds(c); add(L, c, 1); }
+    for (const c of byBack.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s2 = day; setEnds(c); add(L, c, 1); }
   }
   const lastDay2 = Math.max(end, ...assigned.map((c) => (META.hasKa ? c.r.back : lastDay(c))));
   const workDays = workDaysUntil(lastDay2);
@@ -3025,13 +3034,16 @@ function renderSim() {
   warn.replaceChildren(el("div"));
   warn.firstChild.innerHTML = `<b>The forecast model is not active yet.</b> The models learn from the uploaded CPRHistory + CPRSummary, and fewer than 100 CPRs with an arrival at KA are available yet. Estimates now use the median per hospital. Please upload the <b>complete CPRHistory and CPRSummary</b> (several months, all statuses), then select Run allocation.`;
   const lg = (items) => items.map(([name, c]) => `<span><i style="background:${c}"></i>${name}</span>`).join("");
-  const kas = s.kaList.slice().sort((a, b) => (s.dssCount[b] || 0) - (s.dssCount[a] || 0));
-  $("subKaCount").textContent = s.actual ? "DSS allocation compared with the actual allocation" : "DSS allocation";
-  $("lgKaCount").innerHTML = s.actual ? lg([["DSS", "var(--s1)"], ["Actual", "var(--s2)"]]) : "";
+  // active = not completed yet (and not inactive / dismissed): only these are still the KA's workload
+  const activeCount = {}, doneCount = {};
+  for (const c of s.assigned) { const r = c.r; if (r.done) doneCount[c.ka] = (doneCount[c.ka] || 0) + 1; else if (!IGNORED[r.cpr] && !isInactive(r)) activeCount[c.ka] = (activeCount[c.ka] || 0) + 1; }
+  const kas = s.kaList.slice().sort((a, b) => (s.actual ? (s.dssCount[b] || 0) - (s.dssCount[a] || 0) : (activeCount[b] || 0) - (activeCount[a] || 0)));
+  $("subKaCount").textContent = s.actual ? "DSS allocation compared with the actual allocation" : "Active = not completed yet, so still the KA's workload. A CPR leaves the active count (and the daily workload) as soon as the data shows it completed.";
+  $("lgKaCount").innerHTML = s.actual ? lg([["DSS", "var(--s1)"], ["Actual", "var(--s2)"]]) : lg([["Active", "var(--s1)"], ["Completed", "var(--s2)"]]);
   barChartH($("chKaCount"), kas.map(kaLabel), s.actual ? [
     { name: "DSS", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) },
     { name: "Actual", color: "var(--s2)", values: kas.map((k) => s.actualCount[k] || 0) }
-  ] : [{ name: "CPR", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) }], { dec: 0, label: "Number of CPRs per KA" });
+  ] : [{ name: "Active", color: "var(--s1)", values: kas.map((k) => activeCount[k] || 0) }, { name: "Completed", color: "var(--s2)", values: kas.map((k) => doneCount[k] || 0) }], { dec: 0, label: "Number of CPRs per KA" });
   const mtxt = (m, what) => (m ? `${m.chosen.family} (${m.chosen.setting})${m.chosen.valMae !== null && m.chosen.valMae !== undefined ? `, chosen by the lowest validation MAE (${fmtNum(m.chosen.valMae, 2)} days)` : ""}, trained on ${fmtInt(m.n)} CPRs from PO Data` : `median per hospital, because fewer than 100 CPRs with ${what} are available in PO Data`);
   $("simNote").textContent = `Arrival at KA (Forecast 1): ${mtxt(s.models && s.models.f1, "an arrival date")}. Return to KA (Forecast 2): ${mtxt(s.models && s.models.f2, "a return date")}. Review duration is assumed to be ${s.w1} day${s.w1 === 1 ? "" : "s"} (Sequence 3) and ${s.w2} day${s.w2 === 1 ? "" : "s"} (Sequence 8). Workload limit: ${fmtNum(s.maxPerDay)} CPRs per KA per day${s.userMax ? " (set manually)" : " (automatic)"}.`;
   incState.page = 0; renderIncoming();
