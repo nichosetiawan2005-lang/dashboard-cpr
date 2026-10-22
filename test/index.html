@@ -423,6 +423,17 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblAbs"></table></div>
     </div>
 
+    <div class="section-title"><h2>KA replaced (left the team)</h2><p>When a KA leaves, the CPRs still in progress under that KA go to the replacement and are fixed there; completed work stays under the former KA's name in KA Performance.</p></div>
+    <div class="card">
+      <div class="filters" style="border:0;padding:0;margin:0" id="chgForm">
+        <div class="field"><label for="chgUser">Former KA (username)</label><input type="text" id="chgUser" list="chgUsers" placeholder="e.g. maria.nugraheni"><datalist id="chgUsers"></datalist></div>
+        <div class="field"><label for="chgName">Name</label><input type="text" id="chgName" placeholder="e.g. Puspa"></div>
+        <div class="field"><label for="chgTo">Replaced by</label><select id="chgTo"></select></div>
+        <button class="btn" type="button" id="chgAdd">Save</button>
+      </div>
+      <div class="tbl-wrap" style="margin-top:10px"><table id="tblChg"></table></div>
+    </div>
+
     <div class="section-title"><h2>Reassignment log</h2><p>Every reassignment is recorded: when, which CPR, from whom, to whom, the reason, and by whom.</p></div>
     <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="tblTr"></table></div>
   </section>
@@ -1081,7 +1092,7 @@ function dataKaUser(r) {
   if (r.waiting) { const users = kaUsers(); const u = String(r.waiting).split(",").find((x) => users.has(x)); if (u) return u; }
   return null;
 }
-const dataKa = (r) => { const u = dataKaUser(r); return u ? poKa({ ka: u, kaName: null }).ka : null; };
+const dataKa = (r) => { const u = dataKaUser(r); if (!u) return null; const ch = kaChange(u); if (ch && !r.done) return ch.to; return poKa({ ka: u, kaName: null }).ka; };
 // ---------- Overview tab: totals per status, the CPRs behind each box, and tracking for any CPR ----------
 const OV_GROUPS = [
   { key: "all", label: "Total CPR", desc: "every CPR in the data", test: () => true },
@@ -1493,7 +1504,7 @@ async function initDb() {
     if (pic.exists) PIC_LIST = pic.data().list || null;
     try { await loadPo(); } catch {}
     try { await loadProgress(); } catch {}
-    try { await loadTrain(); await loadModelChoice(); await loadKaUsers(); await loadSetup(); await loadCatalog(); } catch {}
+    try { await loadTrain(); await loadModelChoice(); await loadKaUsers(); await loadSetup(); await loadCatalog(); await loadKaChanges(); } catch {}
     await loadLog(); renderLog(); await loadSpv();
     if (!meta.exists) { renderSavedInfo(); renderQuality(); renderKa(); return; }
     setStatus("Loading stored data …");
@@ -1805,7 +1816,36 @@ function buildPoRecords(rows) {
 // who did the work: the KA the DSS assigned (saved), otherwise the KA written in the file
 // username -> display name ("maria.nugraheni" -> "Puspa"), learned from files that have the "User KA" column
 let KA_NAMES = null, KA_NAMES_N = -1;
+// ---------- KA that left the team -> replacement ----------
+// default (agreed with the KA HO team): Puspa (maria.nugraheni) left and was replaced by Samantha
+const KA_CHANGES_DEFAULT = [{ user: "maria.nugraheni", name: "Puspa", to: "Samantha", at: null }];
+let KA_CHANGES = KA_CHANGES_DEFAULT.slice();
+const kaChange = (u) => (u ? KA_CHANGES.find((x) => x.user === String(u).toLowerCase()) || null : null);
+async function loadKaChanges() { if (!DB) return; try { const d = await DB.doc("settings/kachanges").get(); KA_CHANGES = d.exists ? d.data().items || [] : KA_CHANGES_DEFAULT.slice(); } catch {} }
+async function saveKaChanges() { if (DB && canSave()) await DB.doc("settings/kachanges").set({ items: KA_CHANGES }); }
+function renderKaChanges() {
+  if (!$("tblChg")) return;
+  const editable = canSave() && !IS_SAMPLE; $("chgForm").hidden = !editable;
+  const kas = SIM ? SIM.kaList.filter((k) => (META.kaList || []).includes(k)) : META.kaList || [];
+  const cur = $("chgTo").value; $("chgTo").replaceChildren(...kas.map((k) => el("option", { value: k }, kaLabel(k)))); if (kas.includes(cur)) $("chgTo").value = cur;
+  $("chgUsers").replaceChildren(...[...HIST_KA_USERS].sort().map((u) => el("option", { value: u })));
+  renderTable($("tblChg"), [
+    { key: "name", label: "Former KA", sortable: false, render: (x) => `${x.name || x.user} (${x.user})` },
+    { key: "to", label: "Replaced by", sortable: false, render: (x) => kaLabel(x.to) },
+    { key: "open", label: "CPRs in progress moved", num: true, sortable: false, render: (x) => fmtInt(SIM ? SIM.assigned.filter((c) => c.replacedFrom === x.user).length : 0) },
+    { key: "act", label: "", sortable: false, render: (x) => (editable ? Object.assign(el("button", { class: "btn ghost", type: "button" }, "Remove"), { onclick: async () => { KA_CHANGES = KA_CHANGES.filter((y) => y !== x); await saveKaChanges(); await logEvent({ type: "KA replaced", note: `removed: ${x.user} → ${x.to}` }); await runSimulation(); } }) : "") }
+  ], KA_CHANGES);
+}
+$("chgAdd").addEventListener("click", async () => {
+  const user = $("chgUser").value.trim().toLowerCase(), name = $("chgName").value.trim(), to = $("chgTo").value;
+  if (!user || !to) { setStatus("Please enter the former KA's username and the replacement."); return; }
+  KA_CHANGES = KA_CHANGES.filter((x) => x.user !== user).concat([{ user, name: name || null, to, at: new Date().toISOString() }]);
+  try { await saveKaChanges(); await logEvent({ type: "KA replaced", note: `${name || user} (${user}) → ${kaLabel(to)}` }); } catch (err) { setStatus("Not saved: " + saveErrorText(err)); return; }
+  $("chgUser").value = ""; $("chgName").value = "";
+  await runSimulation(); setStatus(`${name || user} is replaced by ${kaLabel(to)}: CPRs still in progress have moved to ${kaLabel(to)}.`);
+});
 function kaNameOf(user) {
+  const ch = kaChange(user); if (ch && ch.name) return ch.name;
   if (KA_NAMES_N !== PO_RECS.length) {
     const g = new Map(); for (const r of PO_RECS) if (r.ka && r.kaName) { const k = r.ka.toLowerCase(); if (!g.has(k)) g.set(k, []); g.get(k).push(r.kaName); }
     KA_NAMES = new Map([...g].map(([k, a]) => [k, mode(a)])); KA_NAMES_N = PO_RECS.length;
@@ -2763,9 +2803,10 @@ function simulate() {
     // the KA in the data (already processing the CPR) is fixed; otherwise a transfer (by SPV or automatic) overrides the original assignment
     const fromData = META.hasKa ? null : dataKa(r);
     const lock = fromData ? { ka: fromData, rule: "Diproses KA", weight: 1, fixed: true } : tr ? { ka: tr.to, rule: "Dialihkan", weight: 1 } : saved;
+    const replacedFrom = fromData && !r.done && kaChange(dataKaUser(r)) ? String(dataKaUser(r)).toLowerCase() : null;
     const [lo, hi] = f1Range(r);
     const c = {
-      r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2, transfer: tr || null, rw: reworkList(r),
+      r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2, transfer: tr || null, rw: reworkList(r), replacedFrom,
       f1Lo: lo, f1Hi: hi, f1Base: Math.round(f1Unit[r.unit] ?? f1All), f2P80,
       f1: f1Pred(r), f2: null, // forecasts always use the latest model; only the KA is locked
       lock: lock && kaList.includes(lock.ka) ? lock : null
@@ -3320,7 +3361,7 @@ $("trCancel").addEventListener("click", () => { $("trCard").hidden = true; });
 $("trSave").addEventListener("click", async () => {
   const cpr = $("trCpr").value.trim(), c = findAssigned(cpr), to = $("trTo").value;
   if (!c) { $("trMsg").textContent = "The CPR number was not found in the current allocation."; return; }
-  if (c.lock && c.lock.fixed) { $("trMsg").textContent = `This CPR is already being processed by ${kaLabel(c.ka)} according to the uploaded data (${dataKaUser(c.r)}), so its KA cannot be changed.`; return; }
+  if (c.lock && c.lock.fixed) { $("trMsg").textContent = c.replacedFrom ? `This CPR was taken over by ${kaLabel(c.ka)} from ${kaNameOf(c.replacedFrom) || c.replacedFrom}, who left; change the replacement in "KA replaced" if needed.` : `This CPR is already being processed by ${kaLabel(c.ka)} according to the uploaded data (${dataKaUser(c.r)}), so its KA cannot be changed.`; return; }
   if (!to || to === c.ka) { $("trMsg").textContent = "Please select a different target KA."; return; }
   const t = { at: new Date().toISOString(), cpr, unit: c.unit, from: c.ka, to, reason: $("trReason").value, note: $("trNote").value.trim(), by: "SPV" };
   try {
@@ -3496,7 +3537,7 @@ function showTab(name) {
   try { localStorage.setItem("cprTab", name); } catch {}
 }
 document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
-function renderAll() { renderEmptyState(); renderOverview(); renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
+function renderAll() { renderEmptyState(); renderOverview(); renderKaChanges(); renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
 // before the CPR queue is uploaded: no sample data on screen, only what to upload
 function renderEmptyState() {
   // the setup page stays until the first allocation has been run (nothing is allocated automatically)
