@@ -1133,8 +1133,11 @@ function renderOverview() {
   if (!$("ovTiles")) return;
   try { renderLateAlert(); } catch (e) {}
   const rows = ovRows();
+  // the ERP ID (PR / PO number) is only in CPRSummary: without it "Completed" cannot be counted
+  const hasErp = rows.some((x) => x.erp);
   $("ovTiles").replaceChildren(...OV_GROUPS.map((g) => {
-    const t = tile(g.label, fmtInt(rows.filter(g.test).length), "", g.desc);
+    const noErp = g.key === "completed" && !hasErp;
+    const t = tile(g.label, noErp ? "–" : fmtInt(rows.filter(g.test).length), "", noErp ? "upload the CPRSummary to see this (ERP ID is only in CPRSummary)" : g.desc);
     t.classList.toggle("sel", OV.group === g.key);
     t.tabIndex = 0; t.setAttribute("role", "button");
     const pick = () => { OV = { group: g.key, page: 0 }; renderOverview(); };
