@@ -862,14 +862,14 @@ $("fileCpr").addEventListener("change", async (e) => {
     if (sumRows.length && !rows.length && IS_SAMPLE) { setStatus("This is a CPRSummary file. Please select the CPRHistory export together with it: the history gives the approval steps, the summary gives the current holder and the PR / PO number."); e.target.value = ""; return; }
     if (sumRows.length && !rows.length) {
       const sres = applySummary(buildSummary(sumRows)); inFile = sres.updated + sres.added; applyProgress();
-      fmtNote = ` CPRSummary: current holder and PR / PO number updated for ${fmtInt(sres.updated)} CPRs${sres.added ? `, ${fmtInt(sres.added)} draft CPRs added` : ""}.`;
+      fmtNote = ` CPRSummary: current holder and PR / PO number updated for ${fmtInt(sres.updated)} CPRs${sres.added ? `; ${fmtInt(sres.added)} CPRs found only in the summary were added` : ""}.`;
     } else if (isHistory(columns)) {
       const missingH = HREQUIRED.filter((k) => !columns.includes(HCOL[k]));
       if (missingH.length) { setStatus(`The queue file is incomplete: column(s) ${missingH.map((k) => `"${HCOL[k]}"`).join(", ")} not found.`); return; }
       const wasSample = IS_SAMPLE;
       BASE_BEFORE_HIST = IS_SAMPLE ? [] : RECS.slice();
       const res = await applyHistory(rows, file.name); inFile = res.recs.length;
-      if (sumRows.length) { const sres = applySummary(buildSummary(sumRows)); applyProgress(); fmtNote += ` CPRSummary included: current holder and PR / PO number for ${fmtInt(sres.updated)} CPRs${sres.added ? `, ${fmtInt(sres.added)} draft CPRs added` : ""}.`; }
+      if (sumRows.length) { const sres = applySummary(buildSummary(sumRows)); applyProgress(); fmtNote += ` CPRSummary included: current holder and PR / PO number for ${fmtInt(sres.updated)} CPRs${sres.added ? `; ${fmtInt(sres.added)} CPRs found only in the summary were added (no approval steps for them: upload their CPRHistory too)` : ""}.`; }
       IS_SAMPLE = false; META.fileName = file.name; SAVED_AT = null;
       META.rawRows = rows.length; META.duplicates = 0; META.negatives = 0;
       META.format = "history"; META.columnsFound = Object.fromEntries(Object.keys(HCOL).map((k) => [k, columns.includes(HCOL[k])]));
@@ -2775,7 +2775,7 @@ function renderSim() {
   const warn = $("histWarn");
   warn.hidden = !!(s.models && s.models.f1);
   warn.replaceChildren(el("div"));
-  warn.firstChild.innerHTML = `<b>The forecast model is not active yet.</b> The models learn from the CPRHistory + CPRSummary history stored for forecasting, and fewer than 100 usable CPRs are stored (data uploaded before this version is not included). Estimates now use the median per hospital, which can be much longer than the model. Please upload <b>CPR_Cleaned</b> (2023–2026 history, the same file as the analysis notebook) and the latest <b>PO Data</b> again, then select Run allocation.`;
+  warn.firstChild.innerHTML = `<b>The forecast model is not active yet.</b> The models learn from the uploaded CPRHistory + CPRSummary, and fewer than 100 CPRs with an arrival at KA are available yet. Estimates now use the median per hospital. Please upload the <b>complete CPRHistory and CPRSummary</b> (several months, all statuses), then select Run allocation.`;
   const lg = (items) => items.map(([name, c]) => `<span><i style="background:${c}"></i>${name}</span>`).join("");
   const kas = s.kaList.slice().sort((a, b) => (s.dssCount[b] || 0) - (s.dssCount[a] || 0));
   $("subKaCount").textContent = s.actual ? "DSS allocation compared with the actual allocation" : "DSS allocation";
@@ -3378,7 +3378,7 @@ function renderAll() { renderEmptyState(); renderKa(); renderQuality(); renderSi
 // before the CPR queue is uploaded: no sample data on screen, only what to upload
 function renderEmptyState() {
   // the setup page stays until the first allocation has been run (nothing is allocated automatically)
-  const empty = IS_SAMPLE || (!SIM && !LOCKED.size);
+  const empty = IS_SAMPLE || (!SIM && !RECS.some((r) => LOCKED.has(r.cpr)));
   document.body.classList.toggle("no-data", empty);
   $("emptyCard").hidden = !empty;
   if (!empty) return;
