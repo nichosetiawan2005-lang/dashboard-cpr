@@ -226,6 +226,9 @@ body.no-data #lblCpr, body.no-data #lblPic, body.no-data #picKeepWrap { display:
 #emptySteps li .txt { flex: 1 1 260px; }
 #emptySteps li .txt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 #emptySteps li.alloc { align-items: flex-start; }
+.alertbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--warn); border-left-width: 4px; border-radius: 8px; background: var(--card, transparent); font-size: 13.5px; }
+.alertbar b { font-weight: 600; } .alertbar .grow { flex: 1 1 auto; } .alertbar a { cursor: pointer; text-decoration: underline; color: inherit; }
+.tab .cnt { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 6px; border-radius: 9px; background: var(--warn); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
 .capbox { margin-top: 10px; } .capbox summary { cursor: pointer; font-weight: 600; font-size: 13.5px; } .capbox .sub { margin: 6px 0; }
 .capgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 14px; }
 .capgrid label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
@@ -310,6 +313,7 @@ body.locked #loginForm .btn { width: 100%; }
   <!-- PEMBAGIAN CPR -->
   <section class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
     <div class="section-title" style="margin-top:16px"><h2>All CPRs</h2><p id="ovNote">Every CPR in the uploaded CPRHistory / CPRSummary, whatever its status. Select a box to list its CPRs; select a CPR number to see its approval steps.</p></div>
+    <div class="alertbar" id="ovAlert" hidden></div>
     <div class="tiles ovtiles" id="ovTiles"></div>
     <div class="card" style="margin-top:12px"><h3 id="ovTitle">All CPRs</h3>
       <div class="filters" style="border:0;padding:0;margin:8px 0">
@@ -1113,8 +1117,19 @@ function ovRows() {
   const live = new Map(RECS.map((r) => [r.cpr, r])), alloc = SIM ? new Map(SIM.assigned.map((c) => [c.r.cpr, c])) : new Map();
   return base.map((x) => { const r = live.get(x.cpr), c = alloc.get(x.cpr); return { ...x, stage: (r && r.stage) || x.stage, erp: x.erp || (r && r.erp) || null, ka: c ? c.ka : null, inQueue: !!r }; });
 }
+function renderLateAlert() {
+  const items = SIM ? actionItems().filter((x) => x.type === "late" || x.type === "pre" || x.type === "post") : [];
+  const tab = $("tab-spv"); tab.replaceChildren("Supervisor Control"); if (items.length) tab.append(el("span", { class: "cnt", title: "CPRs that need attention" }, fmtInt(items.length)));
+  const bar = $("ovAlert"); bar.hidden = !items.length; if (!items.length) return;
+  const n = (t) => items.filter((x) => x.type === t).length;
+  const go = (f) => { showTab("spv"); $("actFilter").value = f; renderSpv(); };
+  const link = (t, f) => { const a = el("a", { role: "button", tabIndex: 0 }, t); a.onclick = () => go(f); a.onkeydown = (e) => { if (e.key === "Enter") go(f); }; return a; };
+  bar.replaceChildren(el("b", {}, `${fmtInt(items.length)} CPRs are late`), ...[["late", "Sequence 3 overdue"], ["pre", "delayed before KA"], ["post", "pending with approver"]].filter(([t]) => n(t)).map(([t, l]) => link(`${n(t)} ${l}`, t)),
+    el("span", { class: "grow" }), el("span", { class: "note", style: "margin:0" }, `data as of ${fmtDay(dataDate())}`));
+}
 function renderOverview() {
   if (!$("ovTiles")) return;
+  try { renderLateAlert(); } catch (e) {}
   const rows = ovRows();
   $("ovTiles").replaceChildren(...OV_GROUPS.map((g) => {
     const t = tile(g.label, fmtInt(rows.filter(g.test).length), "", g.desc);
@@ -2628,6 +2643,13 @@ function predictF2(r, approveDay) {
   const row = { unit: r.unit, isNew: 1, approve: approveDay, recentAll: a, recentUnit: u };
   return roundHalfEven(Math.max(0, Math.expm1(m.f(f2Features(row, m.st)))));
 }
+// likely range of Forecast 2 (P20-P80 of the model errors), in days after the KA approval
+function predictF2Range(r, approveDay) {
+  const m = MODELS && MODELS.f2; if (!m || m.q20 === undefined) return [null, null];
+  const [a, u] = MODELS.recent(r.unit, approveDay);
+  const lg = m.f(f2Features({ unit: r.unit, isNew: 1, approve: approveDay, recentAll: a, recentUnit: u }, m.st));
+  return [roundHalfEven(Math.max(0, Math.expm1(lg + m.q20))), roundHalfEven(Math.max(0, Math.expm1(lg + m.q80)))];
+}
 
 /* ---------- Simulation (DSS allocation) ---------- */
 async function runSimulation(opts = {}) {
@@ -2705,6 +2727,7 @@ function simulate() {
   const useModels = MODELS && MODELS.key === modelKey();
   const f1Pred = (r) => { const p = useModels ? predictF1(r) : null; return p ? p.days : Math.round(f1Unit[r.unit] ?? f1All); };
   const f1Range = (r) => { const p = useModels ? predictF1(r) : null; return p ? [p.lo, p.hi] : [null, null]; };
+  const f2Range = (r, approveDay) => (useModels ? predictF2Range(r, approveDay) : [null, null]);
   const f2Pred = (r, approveDay) => { const p = useModels ? predictF2(r, approveDay) : null; return p !== null ? p : Math.round(f2Unit[r.unit] ?? f2All); };
   // P80 of "KA approve -> back to KA": beyond this a CPR counts as stuck at the approvers
   const f2P80 = quantile(baseF2.map((r) => r.f2), 0.8) ?? 7;
@@ -2818,7 +2841,12 @@ function simulate() {
     };
     c.predArrival = r.create + c.f1;
     // Forecast 2 starts at the KA approval: the actual date from PO Data, else arrival + Sequence 3 duration
-    c.f2 = f2Pred(r, r.kaOut !== null ? r.kaOut : (r.kaIn ?? c.predArrival) + w1);
+    const apDay = r.kaOut !== null ? r.kaOut : (r.kaIn ?? c.predArrival) + w1;
+    c.f2 = f2Pred(r, apDay);
+    [c.f2Lo, c.f2Hi] = f2Range(r, apDay);
+    // the range always contains the estimate itself
+    if (c.f1Lo !== null) { c.f1Lo = Math.min(c.f1Lo, c.f1); c.f1Hi = Math.max(c.f1Hi, c.f1); }
+    if (c.f2Lo !== null) { c.f2Lo = Math.min(c.f2Lo, c.f2); c.f2Hi = Math.max(c.f2Hi, c.f2); }
     c.s1 = c.predArrival; c.s2 = c.s1 + w1 + c.f2;
     push(byCreate, r.create, c); if (r.kaIn !== null) push(byArrive, r.kaIn, c); if (r.kaOut !== null) push(byKaOut, r.kaOut, c); const backW = r.backFirst ?? r.back; if (backW !== null && backW !== undefined) push(byBack, backW, c);
   }
@@ -3115,7 +3143,7 @@ function openTrack(cpr) {
     ["Arrived at Key Account", c.f1Lo !== null && c.f1Lo !== undefined ? `forecast range ${fmtDay(r.create + c.f1Lo)} – ${fmtDay(r.create + c.f1Hi)}` : "", arrive, arriveEst],
     ["Sequence 3 approved by KA", "", r.kaOut, kaOutEst],
     ["With other approvers", r.stage && r.back === null && r.kaOut !== null ? `currently: ${r.stage}` : r.back !== null ? "until the CPR returned to KA" : "", r.back !== null ? (r.backFirst ?? r.back) : null, null, null, r.kaOut !== null && r.back === null],
-    ["Returned to KA (Sequence 8)", "", r.backFirst ?? r.back, backEst],
+    ["Returned to KA (Sequence 8)", returnRange(c) ? `forecast range ${fmtDay(returnRange(c)[0])} – ${fmtDay(returnRange(c)[1])}` : "", r.backFirst ?? r.back, backEst],
     ["Sequence 8 approved", "", r.backOutFirst ?? r.backOut, (r.back ?? backEst) + w2],
     ...reworkList(r).flatMap((e, n) => [
       [`Rework ${n + 1}: returned by ${e.who}`, "back to the KA for correction", e.start, null],
@@ -3157,13 +3185,29 @@ $("track").addEventListener("click", (e) => { if (e.target === $("track")) $("tr
 // estimated return to KA shown in the tables: actual approval (PO Data) or (arrival + Sequence 3 days), plus Forecast 2;
 // arrival = the PO Data date when confirmed, else the Forecast 1 estimate (same basis as the Estimated Arrival column)
 const estReturn = (c) => (c.r.back !== null ? c.r.back : (c.r.kaOut !== null ? c.r.kaOut : (actualArrival(c.r) ?? c.predArrival) + c.w1) + c.f2);
-// return to KA: the actual date from PO Data, else Forecast 2; an estimate already past the data date is marked overdue
+// likely ranges (P20-P80 of the model errors); only while the step has not happened yet
+const retBase = (c) => (c.r.kaOut !== null ? c.r.kaOut : (actualArrival(c.r) ?? c.predArrival) + c.w1);
+const arrivalRange = (c) => (actualArrival(c.r) === null && c.f1Lo !== null && c.f1Lo !== undefined ? [c.r.create + c.f1Lo, c.r.create + c.f1Hi] : null);
+const returnRange = (c) => (c.r.back === null && c.f2Lo !== null && c.f2Lo !== undefined ? [retBase(c) + c.f2Lo, retBase(c) + c.f2Hi] : null);
+const rangeText = (a) => (a[0] === a[1] ? fmtShort(a[0]) : `${fmtShort(a[0])} – ${fmtShort(a[1])}`);
+const smallNote = (t, color) => el("div", { style: `font-size:11px;color:${color || "var(--muted)"}` }, t);
+// estimated date + likely range; "late" once the data date is past the end of the range
+function arrivalText(c) {
+  const box = el("div"); box.append(el("div", {}, fmtDay(c.predArrival)));
+  const rg = arrivalRange(c), D = dataDate();
+  if (rg) box.append(smallNote("likely " + rangeText(rg)));
+  if (rg && !c.r.done && c.r.prog && D !== null && D > rg[1]) box.append(smallNote(`late ${D - rg[1]} days`, "var(--warn)"));
+  return box;
+}
+// return to KA: the actual date from the data, else Forecast 2 with its likely range
 function returnText(c) {
   const box = el("div");
-  const D = dataDate(), late = c.r.back === null && c.r.prog && D !== null && estReturn(c) < D && !c.r.done;
+  const D = dataDate(), rg = returnRange(c), limit = rg ? rg[1] : estReturn(c);
+  const late = c.r.back === null && c.r.prog && D !== null && limit < D && !c.r.done;
   box.append(el("div", {}, fmtDay(estReturn(c))));
-  if (c.r.back !== null) box.append(el("div", { class: "note", style: "margin:0;font-size:11px" }, "actual"));
-  if (late) box.append(el("div", { style: "font-size:11px;color:var(--warn)" }, "overdue"));
+  if (c.r.back !== null) box.append(smallNote("actual"));
+  else if (rg) box.append(smallNote("likely " + rangeText(rg)));
+  if (late) box.append(smallNote(`late ${D - limit} days`, "var(--warn)"));
   return box;
 }
 const actualArrival = (r) => (r.prog && r.prog.kaIn !== null && r.prog.kaIn !== undefined ? r.prog.kaIn : null);
@@ -3178,7 +3222,7 @@ function renderIncoming() {
     { key: "unit", label: "Hospital", sortable: false },
     { key: "desc", label: "Description", wrap: true, sortable: false, render: (c) => c.r.vendorName ? String(c.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 60) : "–" },
     { key: "create", label: "Created", sortable: false, render: (c) => (c.r.createAt ? fmtStampShort(c.r.createAt) : fmtDay(c.r.create)) },
-    { key: "est", label: "Estimated Arrival at Key Account", sortable: false, render: (c) => fmtDay(c.predArrival) },
+    { key: "est", label: "Estimated Arrival at Key Account", sortable: false, render: (c) => arrivalText(c) },
     { key: "act", label: "Actual Arrival at Key Account", sortable: false, render: (c) => (actualArrival(c.r) !== null ? fmtDay(actualArrival(c.r)) : "–") },
     { key: "ret", label: "Estimated Return to Key Account", sortable: false, render: (c) => returnText(c) },
     { key: "ka", label: "Key Account", sortable: false, render: (c) => kaLabel(c.ka) },
@@ -3194,8 +3238,8 @@ $("incPrev").addEventListener("click", () => { incState.page = Math.max(0, incSt
 $("incNext").addEventListener("click", () => { incState.page++; renderIncoming(); });
 $("incCopy").addEventListener("click", async () => {
   if (!SIM) return;
-  const lines = [["CPR Number", "Hospital", "Description", "Created", "Estimated Arrival at Key Account", "Actual Arrival at Key Account", "Estimated Return to Key Account", "Key Account", "Status", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
-  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), actualArrival(c.r) !== null ? dayToIso(actualArrival(c.r)) : "", dayToIso(estReturn(c)), kaLabel(c.ka), progressStatus(c)[0], ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
+  const lines = [["CPR Number", "Hospital", "Description", "Created", "Estimated Arrival at Key Account", "Likely arrival range", "Actual Arrival at Key Account", "Estimated Return to Key Account", "Likely return range", "Key Account", "Status", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
+  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), arrivalRange(c) ? arrivalRange(c).map(dayToIso).join(" – ") : "", actualArrival(c.r) !== null ? dayToIso(actualArrival(c.r)) : "", dayToIso(estReturn(c)), returnRange(c) ? returnRange(c).map(dayToIso).join(" – ") : "", kaLabel(c.ka), progressStatus(c)[0], ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
   const text = lines.join("\n");
   try { await navigator.clipboard.writeText(text); setStatus(`${fmtInt(lines.length - 1)} rows copied. Paste into Excel with Ctrl+V.`); }
   catch { const ta = el("textarea", { style: "position:fixed;left:-9999px" }); ta.value = text; document.body.append(ta); ta.select(); const ok = document.execCommand && document.execCommand("copy"); ta.remove(); setStatus(ok ? `${fmtInt(lines.length - 1)} rows copied.` : "The browser blocked automatic copying. Please select the table and copy it manually."); }
@@ -3260,9 +3304,10 @@ function actionItems() {
       const d = D - r.kaIn; if (d > 3) out.push({ c, type: "late", days: d, status: `Sequence 3 not completed after ${d} days`, where: "Key Account HO", canMove: true });
     } else if (r.kaIn === null) {
       const due = r.create + (c.f1Hi ?? c.f1); const d = D - due;
-      if (d > 0) out.push({ c, type: "pre", days: d, status: `Not yet at KA, ${d} days past the forecast limit`, where, canMove: true });
+      if (d > 0) out.push({ c, type: "pre", days: d, status: `Not yet at KA, ${d} days past the end of the forecast range (${fmtDay(due)})`, where, canMove: true });
     } else if (r.kaOut !== null && r.back === null) {
-      const d = D - r.kaOut; if (d > c.f2P80) out.push({ c, type: "post", days: d, status: `Awaiting approver for ${d} days (typically ≤ ${fmtNum(c.f2P80, 0)})`, where, canMove: true });
+      const lim = c.f2Hi ?? c.f2P80, d = D - r.kaOut;
+      if (d > lim) out.push({ c, type: "post", days: d - lim, status: `Awaiting approver for ${d} days; expected back at KA by ${fmtDay(r.kaOut + lim)} (end of the forecast range)`, where, canMove: true });
     }
   }
   return out.sort((a, b) => b.days - a.days);
@@ -3288,8 +3333,8 @@ function renderSpv() {
     tile("No update yet", fmtInt(SIM ? SIM.assigned.filter((c) => !c.r.prog && !IGNORED[c.r.cpr]).length : 0), "CPRs", "not yet in PO Data; status unknown"),
     tile("Completed", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.done).length : 0), "CPRs", "converted into PO, Sequence 8 completed, or rejected"),
     tile("Sequence 3 overdue", fmtInt(items.filter((x) => x.type === "late").length), "CPRs", "more than 3 days at KA"),
-    tile("Delayed before KA", fmtInt(items.filter((x) => x.type === "pre").length), "CPRs", "past the forecast limit (P80)"),
-    tile("Pending with approver", fmtInt(items.filter((x) => x.type === "post").length), "CPRs", "after KA Sequence 3"),
+    tile("Delayed before KA", fmtInt(items.filter((x) => x.type === "pre").length), "CPRs", "past the end of the arrival forecast range"),
+    tile("Pending with approver", fmtInt(items.filter((x) => x.type === "post").length), "CPRs", "after KA Sequence 3, past the end of the return forecast range"),
     tile("Inactive", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `no progress > ${STALE_DAYS} days before Sequence 3; not counted as workload, data kept`),
     tile("KAs absent today", fmtInt(new Set(ABSENCES.filter((a) => today >= a.from && today <= a.to).map((a) => a.ka)).size), "people", ""),
     tile("Reassignments (last 7 days)", fmtInt(activeTransfers().filter((t) => Date.parse(t.at) >= week).length), "", `${fmtInt(activeTransfers().filter((t) => t.by === "SPV").length)} by supervisor in total`)
@@ -3462,6 +3507,8 @@ function renderBukti() {
     const e = t.rows.map((x) => Math.abs(x[1])), eb = t.rows.map((x) => Math.abs(x[2]));
     const mae = mean(e), maeB = mean(eb);
     tiles.push(tile(`${name} · MAE`, fmtNum(mae, 2), "days", `${fmtInt(t.rows.length)} CPRs, ${fmtDay(t.from)} – ${fmtDay(t.to)} · baseline ${fmtNum(maeB, 2)} days (${mae < maeB ? "model is more accurate" : "model is not yet more accurate"})`));
+    const cov = t.rows.filter((x) => x[3] !== undefined);
+    if (cov.length) tiles.push(tile(`${name} · inside the likely range`, fmtNum((cov.filter((x) => x[3] === 1).length / cov.length) * 100, 0), "%", "share of test CPRs whose actual date fell inside the range shown in the dashboard (P20–P80 of the model errors)"));
     tiles.push(tile(`${name} · within ±2 days`, fmtNum((e.filter((x) => x <= 2).length / e.length) * 100, 0), "%", `exact: ${fmtNum((e.filter((x) => x === 0).length / e.length) * 100, 0)}% · more than 5 days off: ${fmtNum((e.filter((x) => x > 5).length / e.length) * 100, 0)}%`));
   }
   $("bkFcTiles").replaceChildren(...tiles);
