@@ -773,6 +773,7 @@ function hoursBetween(a, b) {
 }
 // derived values of one CPR (durations in days, negatives become empty)
 function finishRec(rec) {
+  if (rec.cpr && (!rec.unit || /^\d+$/.test(String(rec.unit).trim()))) rec.unit = unitName(rec.unit, rec.cpr);
   rec.isNew = META.hasKa ? !!rec.ka : true; // without a KA column every CPR is treated as the current process
   rec.f1 = diff(rec.kaIn, rec.create); rec.rev1 = diff(rec.kaOut, rec.kaIn);
   rec.f2 = diff(rec.back, rec.kaOut); rec.rev2 = diff(rec.backOut, rec.back);
@@ -1016,9 +1017,22 @@ function guessRole(roles, kind) {
   return roles.find((r) => clean(r).includes("purchasingho") && !clean(r).includes("head")) || "";
 }
 // unit code ("2003") -> hospital ("SHLC"): learned from data already loaded, else from Asset Code ("SHLC.26.52.PR14 : ...")
+// hospital code in the CPR number (cpr-2001-...) -> hospital name used everywhere in the dashboard
+const DEFAULT_UNIT_MAP = { "0000": "SHHO", "1001": "SHJB", "1002": "SHPL", "1003": "SHMD", "1004": "SHBB", "1005": "SHLL", "2001": "SHLV", "2002": "SHKJ", "2003": "SHLC", "2004": "SHSB", "2005": "MRCCC", "2006": "SHCN", "2007": "RSUS LV",
+  "2008": "SHTB", "2009": "SHPW", "2010": "ASRI", "2011": "SHST", "2012": "SHCB", "2013": "SHBT", "2014": "SHBS", "2015": "SHYG", "2016": "SHBG", "2017": "SHJR", "2018": "SHSR", "2019": "SHKD", "2020": "RSU SW", "2022": "SHMA",
+  "3001": "SHBP", "3003": "SHPR", "3004": "SHBJ", "4001": "SHMN", "4002": "SHMK", "4003": "SHBN", "4004": "SHPD", "4005": "SHAB", "5001": "SHDP", "5004": "SHKP", "5005": "SHLB", "5006": "SHMT", "5008": "SOE", "8203": "STC", "8207": "CRS", "8301": "SHAG" };
+let UNIT_MAP_CACHE = { n: -1, map: {} };
+// a hospital given as a number (or missing) is replaced by its name; names are kept as they are
+function unitName(u, cpr) {
+  const v = String(u ?? "").trim();
+  const code = /^\d{3,5}$/.test(v) ? v : !v || v === "(kosong)" ? String(cpr || "").split("-")[1] : null;
+  if (!code) return v;
+  if (UNIT_MAP_CACHE.n !== RECS.length) UNIT_MAP_CACHE = { n: RECS.length, map: unitMapFromRecs() };
+  return UNIT_MAP_CACHE.map[code] || DEFAULT_UNIT_MAP[code] || v || code;
+}
 function unitMapFromRecs() {
   const g = new Map();
-  for (const r of [...PO_RECS, ...RECS]) { const code = String(r.cpr).split("-")[1]; if (!code || !r.unit || r.unit === "(kosong)") continue; if (!g.has(code)) g.set(code, []); g.get(code).push(r.unit); }
+  for (const r of [...PO_RECS, ...RECS]) { const code = String(r.cpr).split("-")[1]; if (!code || !r.unit || r.unit === "(kosong)" || /^\d+$/.test(String(r.unit).trim())) continue; if (!g.has(code)) g.set(code, []); g.get(code).push(r.unit); }
   const out = {}; for (const [k, a] of g) out[k] = mode(a); return out;
 }
 // approval steps that come BEFORE Key Account HO in the CPR flow
@@ -1070,14 +1084,14 @@ function applySummary(sum) {
   META.hasKa = false; deriveMeta();   // the KA list must come from the Hospital PIC List before KA users are recognised
   const known = new Map(RECS.map((r) => [r.cpr, r])); const users = kaUserSet(); let added = 0, updated = 0;
   for (const [id, x] of sum) {
-    { const o = CATALOG.get(id) || { cpr: id, unit: String(x.row[SCOL.unit] ?? ""), subject: String(x.row[SCOL.subject] ?? "").slice(0, 80), lastAct: null, stage: null };
+    { const o = CATALOG.get(id) || { cpr: id, unit: unitName(String(x.row[SCOL.unit] ?? ""), id), subject: String(x.row[SCOL.subject] ?? "").slice(0, 80), lastAct: null, stage: null };
       CATALOG.set(id, { ...o, status: x.status || o.status, erp: x.erp || o.erp || null, waiting: x.waiting.join(",") || null, create: x.createdAt ? toDay(x.createdAt.slice(0, 10)) : o.create ?? null }); }
     if (/reject|cancel|batal|tolak/i.test(x.status)) continue;
     let r = known.get(id);
     if (!r) {
       if (!/draft|in review/i.test(x.status)) continue;
       const code = String(id).split("-")[1];
-      r = finishRec({ cpr: id, unit: unitMapFromRecs()[code] || String(x.row[SCOL.unit] ?? ""), vendor: "(kosong)", vendorName: String(x.row[SCOL.subject] ?? "").slice(0, 60), ka: null, kaName: null,
+      r = finishRec({ cpr: id, unit: unitName(unitMapFromRecs()[code] || DEFAULT_UNIT_MAP[code] || String(x.row[SCOL.unit] ?? ""), id), vendor: "(kosong)", vendorName: String(x.row[SCOL.subject] ?? "").slice(0, 60), ka: null, kaName: null,
         create: x.createdAt ? toDay(x.createdAt.slice(0, 10)) : null, phIn: null, phOut: null, kaIn: null, kaOut: null, back: null, backOut: null, capex: x.row[SCOL.category] ? String(x.row[SCOL.category]) : null,
         createAt: x.createdAt, submitAt: x.submittedAt, kaInAt: null, kaOutAt: null, backAt: null, backOutAt: null, stage: /draft/i.test(x.status) ? "Draft (requester)" : null, pos: /draft/i.test(x.status) ? "Sequence 0 : Requester (Draft)" : null, stageSince: null,
         lastAct: x.submittedAt ? toDay(x.submittedAt.slice(0, 10)) : x.createdAt ? toDay(x.createdAt.slice(0, 10)) : null, hstatus: x.status || null });
@@ -1124,7 +1138,7 @@ function ovRows() {
   // the catalogue, or (for data uploaded before it existed) the queue records
   const base = CATALOG.size ? [...CATALOG.values()] : RECS.filter((r) => r.hstatus).map((r) => ({ cpr: r.cpr, unit: r.unit, subject: r.vendorName, status: r.hstatus, create: r.create, lastAct: r.lastAct, stage: r.stage, erp: r.erp, waiting: r.waiting }));
   const live = new Map(RECS.map((r) => [r.cpr, r])), alloc = SIM ? new Map(SIM.assigned.map((c) => [c.r.cpr, c])) : new Map();
-  return base.map((x) => { const r = live.get(x.cpr), c = alloc.get(x.cpr); const auto = r && /review|draft/i.test(x.status || "") && isInactive(r);
+  return base.map((x0) => { const x = { ...x0, unit: unitName(x0.unit, x0.cpr) }; const r = live.get(x.cpr), c = alloc.get(x.cpr); const auto = r && /review|draft/i.test(x.status || "") && isInactive(r);
     return { ...x, status: auto ? "Rejected (auto, no progress > 30 days)" : x.status, stage: (r && r.stage) || x.stage, pos: (r && posLabel(r)) || x.pos || null, erp: x.erp || (r && r.erp) || null, ka: c ? c.ka : null, inQueue: !!r }; });
 }
 function renderLateAlert() {
@@ -1276,7 +1290,7 @@ function pivotHistory(rows) {
       const byTime = list.slice().sort((a, b) => ((toStamp(a[HCOL.approve]) || toStamp(a[HCOL.submit]) || "") < (toStamp(b[HCOL.approve]) || toStamp(b[HCOL.submit]) || "") ? -1 : 1));
       const lastRow = byTime[byTime.length - 1];
       const code = String(id).split("-")[1] || String(last[HCOL.unit]);
-      catalog.set(String(id), { cpr: String(id), unit: known[code] || String(last[HCOL.asset] ?? "").split(".")[0].trim() || String(last[HCOL.unit]), subject: String(last[HCOL.subject] ?? "").slice(0, 80),
+      catalog.set(String(id), { cpr: String(id), unit: unitName(known[code] || DEFAULT_UNIT_MAP[code] || String(last[HCOL.asset] ?? "").split(".")[0].trim() || String(last[HCOL.unit]), id), subject: String(last[HCOL.subject] ?? "").slice(0, 80),
         status, create: firstSub ? toDay(firstSub.slice(0, 10)) : null, lastAct: removedLast[String(id)],
         stage: /reject|cancel|batal|tolak/i.test(status) && lastRow ? `Rejected at ${pretty(lastRow)}${lastRow[HCOL.user] ? " (" + lastRow[HCOL.user] + ")" : ""}` : null, erp: null, waiting: null,
         pos: /reject|cancel|batal|tolak/i.test(status) && lastRow ? posOf(sq(lastRow), pretty(lastRow) + " – Rejected") : null });
@@ -1349,7 +1363,7 @@ function pivotHistory(rows) {
     const code = String(id).split("-")[1] || String(last[HCOL.unit]);
     const assetUnit = String(last[HCOL.asset] ?? "").split(".")[0].trim();
     recs.push(finishRec({
-      cpr: String(id), unit: known[code] || assetUnit || String(last[HCOL.unit]), vendor: "(kosong)", vendorName: String(last[HCOL.subject] ?? "").slice(0, 60),
+      cpr: String(id), unit: unitName(known[code] || DEFAULT_UNIT_MAP[code] || assetUnit || String(last[HCOL.unit]), id), vendor: "(kosong)", vendorName: String(last[HCOL.subject] ?? "").slice(0, 60),
       ka: null, kaName: null,
       create: dayOf(created), phIn: null, phOut: null,
       kaIn: dayOf(kaInAt), kaOut: dayOf(kaOutAt), back: dayOf(backAt), backOut: dayOf(phoDone),
