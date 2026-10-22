@@ -226,6 +226,10 @@ body.no-data #lblCpr, body.no-data #lblPic, body.no-data #picKeepWrap { display:
 #emptySteps li .txt { flex: 1 1 260px; }
 #emptySteps li .txt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 #emptySteps li.alloc { align-items: flex-start; }
+.capbox { margin-top: 10px; } .capbox summary { cursor: pointer; font-weight: 600; font-size: 13.5px; } .capbox .sub { margin: 6px 0; }
+.capgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 14px; }
+.capgrid label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.capgrid input { width: 72px; }
 .ovtiles .tile { cursor: pointer; transition: box-shadow .15s, border-color .15s; }
 .ovtiles .tile:hover { border-color: var(--accent); }
 .ovtiles .tile.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -329,6 +333,7 @@ body.locked #loginForm .btn { width: 100%; }
         <button class="btn" id="sRun" type="button">Run allocation</button>
         <button class="btn ghost" id="sReset" type="button" hidden>Reallocate all</button>
       </div>
+      <details class="capbox" id="capBox"><summary>KA capacity for CPR review (%)</summary><div class="sub">Lower it for a KA with other work that is not in the system (e.g. creating POs, pipeline work). 50% = about half the CPRs of a KA at 100%, and half the daily limit; 0% = no new CPRs. Applies to CPRs allocated from now on.</div><div class="capgrid" id="capGrid"></div></details>
       <p class="note" id="runInfo" style="font-weight:500;color:var(--fg)"></p>
       <p class="note" id="simNote"></p>
     </div>
@@ -1500,7 +1505,7 @@ async function initDb() {
     const meta = await DB.doc("cpr/meta").get();
     const pic = await DB.doc("settings/pic").get();
     const params = await DB.doc("settings/params").get();
-    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = !!p.usePic; HIST_MODE = p.histMode || "selesai"; $("histMode").value = HIST_MODE; }
+    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = !!p.usePic; HIST_MODE = p.histMode || "selesai"; $("histMode").value = HIST_MODE; CAPACITY = p.capacity || {}; }
     if (pic.exists) PIC_LIST = pic.data().list || null;
     try { await loadPo(); } catch {}
     try { await loadProgress(); } catch {}
@@ -1547,7 +1552,7 @@ async function saveData() {
 }
 async function saveParams() {
   if (!DB) return;
-  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: $("sPic").checked, histMode: HIST_MODE });
+  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: $("sPic").checked, histMode: HIST_MODE, capacity: CAPACITY });
   const meta = await DB.doc("cpr/meta").get();
   if (meta.exists && !IS_SAMPLE) await DB.doc("cpr/meta").update({ simFrom: $("sFrom").value, simTo: $("sTo").value });
 }
@@ -2775,7 +2780,7 @@ function simulate() {
   // best KA for a CPR: lowest peak load among KAs that are present on its review days
   const bestKa = (c, days, exclude) => {
     let best = null, bestPeak = Infinity;
-    for (const k of allocKas) { if (k === exclude || absent(k, days)) continue; const pk = peak(L, k, days, c.weight || 1); if (pk < bestPeak) { bestPeak = pk; best = k; } }
+    for (const k of allocKas) { if (k === exclude || absent(k, days) || capOf(k) <= 0) continue; const pk = peak(L, k, days, c.weight || 1) / capOf(k); if (pk < bestPeak) { bestPeak = pk; best = k; } }   // workload relative to the KA's capacity
     return { best, bestPeak };
   };
   const moveTo = (c, to, reason) => {
@@ -2832,15 +2837,15 @@ function simulate() {
         continue;
       }
       const hv = vendorHolder(c.vendor, c.s1);
-      if (hv && !absent(hv, days) && peak(L, hv, days, vf) <= maxPerDay) { ka = hv; weight = vf; rule = "Vendor sama"; }
+      if (hv && !absent(hv, days) && capOf(hv) > 0 && peak(L, hv, days, vf) <= maxPerDay * capOf(hv)) { ka = hv; weight = vf; rule = "Vendor sama"; }
       if (!ka && usePic) {
         const p = pic[c.unit];
         const fair = assigned.length / kaList.length + 1; // fair share so far (average per KA)
-        if (p && kaIdx.has(p) && !absent(p, days) && (cnt[p] || 0) <= fair && peak(L, p, days, 1) <= maxPerDay) { ka = p; rule = "PIC unit"; }
+        if (p && kaIdx.has(p) && !absent(p, days) && capOf(p) > 0 && (cnt[p] || 0) <= fair * capOf(p) && peak(L, p, days, 1) <= maxPerDay * capOf(p)) { ka = p; rule = "PIC unit"; }
       }
       if (!ka) {
         let { best, bestPeak } = bestKa({ weight: 1 }, days, null);
-        if (!best) { for (const k of allocKas) { const pk = peak(L, k, days, 1); if (pk < bestPeak) { bestPeak = pk; best = k; } } } // everyone absent
+        if (!best) { for (const k of allocKas) { if (capOf(k) <= 0) continue; const pk = peak(L, k, days, 1) / capOf(k); if (pk < bestPeak) { bestPeak = pk; best = k; } } } // everyone absent
         ka = best; rule = bestPeak <= maxPerDay ? "Beban terendah" : "Exception";
       }
       c.ka = ka; c.weight = weight; c.rule = rule; rules[rule]++;
@@ -2852,7 +2857,7 @@ function simulate() {
       checkAbsence(c);
       // automatic rule 2: on arrival (before work starts) the KA is over the limit and another present KA still has room
       // only for CPRs given a KA in this run: a KA saved in an earlier allocation never moves because of workload
-      if (!c.locked && !(c.transfer && c.transfer.by === "SPV") && notStarted(c) && peak(L, c.ka, review1Offs(c), 0) > maxPerDay) {
+      if (!c.locked && !(c.transfer && c.transfer.by === "SPV") && notStarted(c) && peak(L, c.ka, review1Offs(c), 0) > maxPerDay * capOf(c.ka)) {
         const { best, bestPeak } = bestKa(c, activeDays(c), c.ka);
         if (best && bestPeak <= maxPerDay) moveTo(c, best, `${kaLabel(c.ka)} exceeded the limit of ${fmtNum(maxPerDay)} CPRs/day when the CPR arrived`);
       }
@@ -2893,6 +2898,7 @@ function cmpTile(k, a, b, unit, lowerIsBetter = true, dec = 1) {
 }
 let incState = { page: 0, q: "" };
 function renderSim() {
+  try { syncCap(); } catch (e) {}
   const s = SIM;
   if (!s) {
     const step = (ok, text) => el("li", { style: ok ? "color:var(--good)" : "" }, (ok ? "✓ " : "○ ") + text);
@@ -3567,6 +3573,18 @@ function renderEmptyState() {
     allocStep()
   );
 }
+// ---------- capacity per KA (% of a full CPR-review load) ----------
+let CAPACITY = {};   // ka -> percent (missing = 100)
+const capOf = (ka) => Math.max(0, Math.min(100, CAPACITY[ka] ?? 100)) / 100;
+function capInputs(container) {
+  const kas = (META.kaList || []).slice();
+  container.replaceChildren(...kas.map((ka) => {
+    const l = el("label", {}, kaLabel(ka)); const i = el("input", { type: "number", min: "0", max: "100", step: "5" }); i.value = String(CAPACITY[ka] ?? 100);
+    i.onchange = () => { const v = Math.max(0, Math.min(100, Number(i.value))); if (Number.isFinite(v)) { if (v === 100) delete CAPACITY[ka]; else CAPACITY[ka] = v; } i.value = String(CAPACITY[ka] ?? 100); syncCap(); };
+    l.append(i); return l;
+  }));
+}
+function syncCap() { for (const id of ["capGrid", "capGrid4"]) { const c = document.getElementById(id); if (c) capInputs(c); } const n = Object.keys(CAPACITY).length; const sm = document.querySelector("#capBox summary"); if (sm) sm.textContent = `KA capacity for CPR review (%)${n ? ` · ${n} KA${n > 1 ? "s" : ""} below 100%` : ""}`; }
 // files uploaded from the setup page: the page stays (steps 1-3) until Run allocation is selected there
 let SETUP_PENDING = false;
 async function setSetupPending(on) { SETUP_PENDING = on; if (DB && canSave()) { try { if (on) await DB.doc("settings/setup").set({ pending: true }); else await DB.doc("settings/setup").delete(); } catch {} } }
@@ -3591,7 +3609,9 @@ function allocStep() {
     if (SIM) await setSetupPending(false); else { run.disabled = false; run.textContent = "Run allocation"; }
     renderAll(); showTab("distribusi");
   } });
-  f.append(pic, run);
+  const cap = el("details", { class: "capbox", style: "flex-basis:100%" }); cap.append(el("summary", {}, "KA capacity for CPR review (%) – optional")); cap.append(el("div", { class: "sub" }, "Lower it for a KA with other work that is not in the system (e.g. creating POs, pipeline work). 50% = about half the CPRs of a KA at 100%; 0% = no new CPRs."));
+  const g4 = el("div", { class: "capgrid", id: "capGrid4" }); cap.append(g4); capInputs(g4);
+  f.append(pic, run, cap);
   li.append(f);
   return li;
 }
