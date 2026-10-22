@@ -814,7 +814,8 @@ function pickFiles(list) {
 async function readWorkbook(file) {
   if (file.files) {
     const rows = [], columns = [];
-    for (const f of file.files) { const t = await readWorkbook(f); for (const r of t.rows) rows.push(r); for (const c of t.columns) if (!columns.includes(c)) columns.push(c); }
+    let idx = 0;
+    for (const f of file.files) { const t = await readWorkbook(f); for (const r of t.rows) { r.__file = idx; rows.push(r); } for (const c of t.columns) if (!columns.includes(c)) columns.push(c); idx++; }
     return { rows, columns };
   }
   const buf = await file.arrayBuffer();
@@ -971,7 +972,20 @@ function pivotHistory(rows) {
     if (seen.has(key)) continue; seen.add(key);
     if (!byCpr.has(id)) byCpr.set(id, []); byCpr.get(id).push(r);
   }
-  const recs = [], removed = []; let dropped = 0, skipped = 0;
+  // the same CPR in several files (or several "Source File" exports): use only the most up-to-date export of that CPR
+  // = the one with the latest Submit/Approval time; on a tie, the one with more steps, then the later file
+  const srcOf = (r) => String(r["Source File"] ?? r.__file ?? 0);
+  let olderVersions = 0;
+  for (const [id, list] of byCpr) {
+    const srcs = new Map();
+    for (const r of list) { const k = srcOf(r); if (!srcs.has(k)) srcs.set(k, []); srcs.get(k).push(r); }
+    if (srcs.size < 2) continue;
+    const score = (rs) => [rs.flatMap((x) => [toStamp(x[HCOL.submit]), toStamp(x[HCOL.approve])]).filter(Boolean).sort().slice(-1)[0] || "", rs.length];
+    let best = null, bestScore = null, order = 0, bestOrder = -1;
+    for (const [, rs] of srcs) { const sc = score(rs); if (!best || sc[0] > bestScore[0] || (sc[0] === bestScore[0] && (sc[1] > bestScore[1] || (sc[1] === bestScore[1] && order > bestOrder)))) { best = rs; bestScore = sc; bestOrder = order; } order++; }
+    byCpr.set(id, best); olderVersions++;
+  }
+  const recs = [], removed = [], removedLast = {}; let dropped = 0, skipped = 0;
   const roleKey = (x) => normRole(x[HCOL.role]).replace(/[^a-z]/g, "");
   const isKaRole = (x) => roleKey(x).includes("keyaccount");
   const isPurchHo = (x) => roleKey(x) === "purchasingho";
@@ -981,6 +995,8 @@ function pivotHistory(rows) {
   for (const [id, list] of byCpr) {
     const last = list[list.length - 1];
     const status = String(last[HCOL.status] ?? "").trim();
+    const lastSeen = list.flatMap((x) => [toStamp(x[HCOL.submit]), toStamp(x[HCOL.approve])]).filter(Boolean).sort().slice(-1)[0] || null;
+    removedLast[String(id)] = lastSeen ? toDay(lastSeen.slice(0, 10)) : null;
     if (/reject|cancel|batal|tolak/i.test(status)) { dropped++; removed.push(String(id)); continue; }
     const req = list.filter((x) => normRole(x[HCOL.role]) === "requester" || Number(x[HCOL.seq]) === 0);
     const created = (req.length ? req : list).map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort()[0] || null;
@@ -1045,7 +1061,7 @@ function pivotHistory(rows) {
       rwk: reworks.filter((e) => e.toKa).map((e) => `${dayOf(e.st)}:${e.end ? dayOf(e.end) : ""}:${e.who}`).join(";") || null
     }));
   }
-  return { recs, dropped, skipped, removed, cprs: byCpr.size };
+  return { recs, dropped, skipped, removed, removedLast, olderVersions, cprs: byCpr.size };
 }
 // put new records over the saved ones: same CPR number -> filled values replace old ones
 // fields that the approval history describes completely: a missing value there means "not happened yet"
@@ -1076,7 +1092,7 @@ function renderHistInfo() {
   }
   const res = HIST.result;
   $("histMode").value = HIST_MODE;
-  $("histNote").textContent = `${fmtInt(HIST.rows.length)} rows → ${fmtInt(res.cprs)} CPRs (${fmtInt(res.dropped)} rejected/cancelled CPRs excluded${res.skipped ? `; ${fmtInt(res.skipped)} CPRs never routed to Key Account HO excluded` : ""}). `
+  $("histNote").textContent = `${fmtInt(HIST.rows.length)} rows → ${fmtInt(res.cprs)} CPRs (${fmtInt(res.dropped)} rejected/cancelled CPRs excluded${res.skipped ? `; ${fmtInt(res.skipped)} CPRs never routed to Key Account HO excluded` : ""}${res.olderVersions ? `; ${fmtInt(res.olderVersions)} CPRs found in several files, the most up-to-date version used` : ""}${res.keptOld ? `; ${fmtInt(res.keptOld)} CPRs kept their stored, more recent version` : ""}). `
     + "Each CPR is read top to bottom through its approval steps: the Key Account row gives the arrival at KA and the Sequence 3 approval, the Purchasing HO row gives the return to KA and the Sequence 8 approval, and the last pending or approved row gives the current stage. "
     + "This file contains no Vendor ID, so the same-vendor rule does not apply to CPRs from this file.";
   renderTable($("tblRoles"), [
@@ -1092,7 +1108,12 @@ async function applyHistory(rows, fileName, roleKa, roleBack) {
   HIST = { rows, fileName, roleKa, roleBack, result };
   const feedHasKa = result.recs.some((r) => r.ka);
   // CPRs rejected (or never routed to KA) in this upload leave the queue, even if an earlier upload saved them
-  const gone = new Set(result.removed);
+  // a CPR already stored with more recent activity keeps its stored (newer) version
+  const stored = new Map((IS_SAMPLE ? [] : RECS).map((r) => [r.cpr, r]));
+  const gone = new Set(result.removed.filter((id) => { const o = stored.get(id), d = result.removedLast[id]; return !(o && o.lastAct != null && d != null && o.lastAct > d); }));
+  const newerStored = (f) => { const o = stored.get(f.cpr); return o && o.lastAct !== null && o.lastAct !== undefined && f.lastAct !== null && f.lastAct !== undefined && o.lastAct > f.lastAct; };
+  const keptOld = result.recs.filter(newerStored).length;
+  result.recs = result.recs.filter((f) => !newerStored(f)); result.keptOld = keptOld;
   const base = IS_SAMPLE ? [] : RECS.filter((r) => !gone.has(r.cpr));
   META.hasKa = false; void feedHasKa; // worklot data: the DSS assigns the KA
   RECS = mergeRecs(base, result.recs, HIST_KEYS).map(finishRec);
