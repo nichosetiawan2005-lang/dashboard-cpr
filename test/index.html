@@ -224,6 +224,7 @@ body.no-data #lblCpr, body.no-data #lblPic, body.no-data #picKeepWrap { display:
 #emptySteps li.done .num { background: var(--good-bg); color: var(--good); }
 #emptySteps li .txt { flex: 1 1 260px; }
 #emptySteps li .txt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+#emptySteps li.alloc { align-items: flex-start; }
 body.locked .top, body.locked .wrap > :not(#loginCard) { display: none !important; }
 body.locked .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
 body.locked #loginCard { display: block !important; width: 100%; max-width: 440px; padding: 28px; }
@@ -423,7 +424,7 @@ body.locked #loginForm .btn { width: 100%; }
         <button class="btn" id="fcApply" type="button">Apply and retrain</button>
         <button class="btn ghost" id="fcReset" type="button">Reset to notebook default</button>
       </div>
-      <div class="filters" style="border:0;padding:0;margin:10px 0 0"><label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload forecast history (CPR_Cleaned)<input type="file" id="filePo" accept=".xlsx,.xls,.csv" multiple></label></div>
+      <input type="file" id="filePo" hidden><span id="lblPo" hidden></span>
       <p class="note" id="fcHistInfo" style="margin-top:6px"></p>
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblFcCompare"></table></div>
       <p class="note" id="fcSetNote"></p>
@@ -852,24 +853,31 @@ $("fileCpr").addEventListener("change", async (e) => {
   setStatus(`Reading ${file.name} …`);
   await new Promise((r) => setTimeout(r, 30));
   try {
-    const { rows, columns } = await readWorkbook(file);
+    const { rows: allRows, columns } = await readWorkbook(file);
+    // CPRSummary rows (one per CPR) and CPRHistory rows (one per step) may be chosen together
+    const sumRows = allRows.filter(isSummaryRow), rows = allRows.filter((r) => !isSummaryRow(r));
     const before = new Set(IS_SAMPLE ? [] : RECS.map((r) => r.cpr));
     const hadData = !IS_SAMPLE;
     let fmtNote = "", inFile = 0;
-    if (isHistory(columns)) {
+    if (sumRows.length && !rows.length && IS_SAMPLE) { setStatus("This is a CPRSummary file. Please select the CPRHistory export together with it: the history gives the approval steps, the summary gives the current holder and the PR / PO number."); e.target.value = ""; return; }
+    if (sumRows.length && !rows.length) {
+      const sres = applySummary(buildSummary(sumRows)); inFile = sres.updated + sres.added; applyProgress();
+      fmtNote = ` CPRSummary: current holder and PR / PO number updated for ${fmtInt(sres.updated)} CPRs${sres.added ? `, ${fmtInt(sres.added)} draft CPRs added` : ""}.`;
+    } else if (isHistory(columns)) {
       const missingH = HREQUIRED.filter((k) => !columns.includes(HCOL[k]));
       if (missingH.length) { setStatus(`The queue file is incomplete: column(s) ${missingH.map((k) => `"${HCOL[k]}"`).join(", ")} not found.`); return; }
       const wasSample = IS_SAMPLE;
       BASE_BEFORE_HIST = IS_SAMPLE ? [] : RECS.slice();
       const res = await applyHistory(rows, file.name); inFile = res.recs.length;
+      if (sumRows.length) { const sres = applySummary(buildSummary(sumRows)); applyProgress(); fmtNote += ` CPRSummary included: current holder and PR / PO number for ${fmtInt(sres.updated)} CPRs${sres.added ? `, ${fmtInt(sres.added)} draft CPRs added` : ""}.`; }
       IS_SAMPLE = false; META.fileName = file.name; SAVED_AT = null;
       META.rawRows = rows.length; META.duplicates = 0; META.negatives = 0;
       META.format = "history"; META.columnsFound = Object.fromEntries(Object.keys(HCOL).map((k) => [k, columns.includes(HCOL[k])]));
-      fmtNote = ` CPR queue format: ${fmtInt(rows.length)} rows consolidated into ${fmtInt(res.cprs)} CPRs${wasSample ? "" : ", merged with stored data"}. Role mapping can be reviewed in the Data Management tab.`;
+      fmtNote += ` CPR queue format: ${fmtInt(rows.length)} rows consolidated into ${fmtInt(res.cprs)} CPRs${wasSample ? "" : ", merged with stored data"}. Role mapping can be reviewed in the Data Management tab.`;
     } else if (columns.includes(COL.cpr) && columns.includes(PO_COL.po)) {
       e.target.value = "";
       await loadKinerjaFile(file, rows, columns);
-      setStatus($("status").textContent + " This file is PO Data/CPR_Cleaned, so it is used for progress, KA performance and forecast history, not as the work queue. The work queue is uploaded from CPRHistory.");
+      setStatus($("status").textContent + " This file is PO Data/CPR_Cleaned, which is no longer needed: please upload the CPRHistory and CPRSummary exports.");
       return;
     } else {
       const missing = REQUIRED.filter((k) => !columns.includes(COL[k]));
@@ -877,6 +885,7 @@ $("fileCpr").addEventListener("change", async (e) => {
       const fresh = buildRecords(rows, columns); inFile = fresh.length;
       RECS = mergeRecs(IS_SAMPLE ? [] : RECS, fresh).map(finishRec); IS_SAMPLE = false; META.fileName = file.name; META.format = "cleaned"; HIST = null; SAVED_AT = null;
     }
+    if (META.format === "history" || sumRows.length) await rebuildTrain();
     if (DB) await loadLocks();
     // added CPRs: widen the period so they are picked up, existing CPRs keep their KA
     const added = RECS.filter((r) => !before.has(r.cpr) && r.create !== null);
@@ -992,6 +1001,64 @@ async function saveSteps(fresh, gone) {
     STEP_CACHE.set(b, items);
   }
 }
+// ---------- CPRSummary: one row per CPR - who holds it now (Waiting To Approve), ERP ID (PR / PO), Created Date ----------
+const SCOL = { cpr: "Capital Req ID", status: "Document Status", waiting: "Waiting To Approve", erp: "ERP ID", created: "Created Date & Time", submitted: "Submitted Date & Time", subject: "Subject", unit: "Unit", category: "Category Type" };
+const has = (r, k) => Object.prototype.hasOwnProperty.call(r, k);
+const isSummaryRow = (r) => has(r, SCOL.waiting) || (has(r, SCOL.created) && !has(r, HCOL.role));
+function buildSummary(rows) {
+  const m = new Map();
+  for (const r of rows) {
+    const id = r[SCOL.cpr]; if (!id) continue;
+    m.set(String(id), { status: String(r[SCOL.status] ?? "").trim(), waiting: String(r[SCOL.waiting] ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean),
+      erp: r[SCOL.erp] ? String(r[SCOL.erp]).split(",")[0].trim() : null, createdAt: toStamp(r[SCOL.created]), submittedAt: toStamp(r[SCOL.submitted]), row: r });
+  }
+  return m;
+}
+// usernames that work as KA = users seen on Key Account / Purchasing HO steps in CPRHistory
+// ...and that are a known KA (PIC list / KA name in the forecast history), so e.g. Purchasing Head HO is never taken for a KA
+function kaUserSet() { const set = new Set(); for (const r of RECS) for (const u of [r.ka3User, r.ka8User, r.kaUser]) if (u && userKa(u)) set.add(String(u).toLowerCase()); return set; }
+let KA_USERS_CACHE = { recs: null, n: -1, set: new Set() };
+function kaUsers() { if (KA_USERS_CACHE.recs !== RECS || KA_USERS_CACHE.n !== RECS.length) KA_USERS_CACHE = { recs: RECS, n: RECS.length, set: kaUserSet() }; return KA_USERS_CACHE.set; }
+// put the summary on the queue records: current holder, PR / PO number, created date; CPRs only in the summary (drafts) are added
+function applySummary(sum) {
+  META.hasKa = false; deriveMeta();   // the KA list must come from the Hospital PIC List before KA users are recognised
+  const known = new Map(RECS.map((r) => [r.cpr, r])); const users = kaUserSet(); let added = 0, updated = 0;
+  for (const [id, x] of sum) {
+    if (/reject|cancel|batal|tolak/i.test(x.status)) continue;
+    let r = known.get(id);
+    if (!r) {
+      if (!/draft|in review/i.test(x.status)) continue;
+      const code = String(id).split("-")[1];
+      r = finishRec({ cpr: id, unit: unitMapFromRecs()[code] || String(x.row[SCOL.unit] ?? ""), vendor: "(kosong)", vendorName: String(x.row[SCOL.subject] ?? "").slice(0, 60), ka: null, kaName: null,
+        create: x.createdAt ? toDay(x.createdAt.slice(0, 10)) : null, phIn: null, phOut: null, kaIn: null, kaOut: null, back: null, backOut: null, capex: x.row[SCOL.category] ? String(x.row[SCOL.category]) : null,
+        createAt: x.createdAt, submitAt: x.submittedAt, kaInAt: null, kaOutAt: null, backAt: null, backOutAt: null, stage: /draft/i.test(x.status) ? "Draft (requester)" : null, stageSince: null,
+        lastAct: x.submittedAt ? toDay(x.submittedAt.slice(0, 10)) : x.createdAt ? toDay(x.createdAt.slice(0, 10)) : null, hstatus: x.status || null });
+      RECS.push(r); known.set(id, r); added++;
+    } else updated++;
+    r.erp = x.erp || r.erp || null;
+    if (x.createdAt) { r.sumCreate = toDay(x.createdAt.slice(0, 10)); r.create = r.sumCreate; r.createAt = x.createdAt; }   // = "CPR Create Date" used to train the forecast
+    r.waiting = x.waiting.join(",") || null;
+    if (!/in review/i.test(x.status) || !x.waiting.length || inRework(r)) continue;
+    if (x.waiting.some((u) => users.has(u))) {   // the CPR is with a KA right now
+      if (r.kaOut === null) { if (r.kaIn === null) { r.kaIn = r.lastAct; r.kaInAt = null; } r.stage = "At Key Account (Sequence 3)"; r.stageSince = r.kaIn; }
+      else if (r.backOutFirst == null && r.backOut === null) { if (r.back === null) { r.back = r.lastAct; r.backAt = null; } r.stage = "At Key Account (Sequence 8)"; r.stageSince = r.back; }
+    } else {   // with someone else: an arrival guessed from CPRHistory alone is withdrawn
+      if (r.stage === "At Key Account (Sequence 3)" && r.kaOut === null) { r.kaIn = null; r.kaInAt = null; }
+      if (r.stage === "At Key Account (Sequence 8)" && r.backOut === null) { r.back = null; r.backAt = null; }
+      r.stage = "Waiting for " + x.waiting.join(", "); r.stageSince = r.lastAct;
+    }
+    finishRec(r);
+  }
+  return { added, updated };
+}
+// the KA who has actually taken the CPR according to the data (CPRHistory step or CPRSummary "Waiting To Approve"):
+// such a CPR is already being processed, so its KA cannot be changed by the allocation or by a reassignment
+function dataKaUser(r) {
+  for (const u of [r.ka8User, r.ka3User]) if (u && userKa(u)) return u;
+  if (r.waiting) { const users = kaUsers(); const u = String(r.waiting).split(",").find((x) => users.has(x)); if (u) return u; }
+  return null;
+}
+const dataKa = (r) => { const u = dataKaUser(r); return u ? poKa({ ka: u, kaName: null }).ka : null; };
 // rework episodes stored as "start:end:who;..." (who: D = Purchasing Director, H = Purchasing Head HO; end empty = still open)
 const reworkList = (r) => (r.rwk ? String(r.rwk).split(";").map((x) => { const [a, b, w] = x.split(":"); return { start: Number(a), end: b === "" ? null : Number(b), who: w === "D" ? "Purchasing Director" : "Purchasing Head HO" }; }) : []);
 const inRework = (r) => !!(r.stage && String(r.stage).startsWith("At Key Account – Rework"));
@@ -1031,6 +1098,10 @@ function pivotHistory(rows) {
     byCpr.set(id, best); olderVersions++;
   }
   const recs = [], removed = [], removedLast = {}, steps = new Map(); let dropped = 0, skipped = 0;
+  // a user is a KA when most of the steps they approve are Key Account / Purchasing HO steps (e.g. not Purchasing Head HO)
+  const roleCount = new Map();
+  for (const list of byCpr.values()) for (const x of list) { const u = String(x[HCOL.user] ?? "").trim().toLowerCase(); if (!u) continue; const k = normRole(x[HCOL.role]).replace(/[^a-z]/g, ""); const kaStep = k.includes("keyaccount") || k === "purchasingho"; if (!roleCount.has(u)) roleCount.set(u, [0, 0]); roleCount.get(u)[kaStep ? 0 : 1]++; }
+  const kaUsersFound = [...roleCount].filter(([, [a, b]]) => a >= 5 && a > b).map(([u]) => u);
   const roleKey = (x) => normRole(x[HCOL.role]).replace(/[^a-z]/g, "");
   const isKaRole = (x) => roleKey(x).includes("keyaccount");
   const isPurchHo = (x) => roleKey(x) === "purchasingho";
@@ -1113,11 +1184,11 @@ function pivotHistory(rows) {
     }));
     steps.set(String(id), list.map(stepRow));
   }
-  return { recs, dropped, skipped, removed, removedLast, olderVersions, steps, cprs: byCpr.size };
+  return { recs, dropped, skipped, removed, removedLast, olderVersions, steps, kaUsers: kaUsersFound, cprs: byCpr.size };
 }
 // put new records over the saved ones: same CPR number -> filled values replace old ones
 // fields that the approval history describes completely: a missing value there means "not happened yet"
-const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt"];
+const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt", "waiting"];
 function mergeRecs(base, fresh, authoritative = []) {
   const map = new Map(base.map((r) => [r.cpr, r]));
   for (const r of fresh) {
@@ -1157,6 +1228,8 @@ async function applyHistory(rows, fileName, roleKa, roleBack) {
   const roles = [...new Set(rows.map((r) => normRole(r[HCOL.role])))];
   roleKa = roleKa ?? guessRole(roles, "ka"); roleBack = roleBack ?? guessRole(roles, "back");
   const result = pivotHistory(rows);
+  const before = HIST_KA_USERS.size; for (const u of result.kaUsers) HIST_KA_USERS.add(u);
+  if (HIST_KA_USERS.size !== before && DB && canSave()) { try { await DB.doc("settings/kausers").set({ users: [...HIST_KA_USERS] }); } catch {} }
   HIST = { rows, fileName, roleKa, roleBack, result };
   const feedHasKa = result.recs.some((r) => r.ka);
   // CPRs rejected (or never routed to KA) in this upload leave the queue, even if an earlier upload saved them
@@ -1171,6 +1244,7 @@ async function applyHistory(rows, fileName, roleKa, roleBack) {
   const base = IS_SAMPLE ? [] : RECS.filter((r) => !gone.has(r.cpr));
   META.hasKa = false; void feedHasKa; // worklot data: the DSS assigns the KA
   RECS = mergeRecs(base, result.recs, HIST_KEYS).map(finishRec);
+  for (const r of RECS) if (r.sumCreate !== null && r.sumCreate !== undefined) r.create = r.sumCreate;
   applyProgress();
   setPoDates();   // KA performance period: the last 3 months of the new data
   return result;
@@ -1289,7 +1363,7 @@ if (SB) {
 
 let DB = null, DB_READY = false, LOCKED = new Map(), SAVED_AT = null;
 const CHUNK = 1000;
-const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt"];
+const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt", "waiting", "erp", "sumCreate"];
 const useLocks = () => !!DB && !IS_SAMPLE && !META.hasKa;
 const canSave = () => !!DB && (!SB || IS_ADMIN);
 const monthKey = (d) => dayToIso(d).slice(0, 7);
@@ -1311,7 +1385,7 @@ async function initDb() {
     if (pic.exists) PIC_LIST = pic.data().list || null;
     try { await loadPo(); } catch {}
     try { await loadProgress(); } catch {}
-    try { await loadTrain(); await loadModelChoice(); } catch {}
+    try { await loadTrain(); await loadModelChoice(); await loadKaUsers(); } catch {}
     await loadLog(); renderLog(); await loadSpv();
     if (!meta.exists) { renderSavedInfo(); renderQuality(); renderKa(); return; }
     setStatus("Loading stored data …");
@@ -1541,6 +1615,7 @@ $("btnClearSaved").addEventListener("click", async () => {
     for (let i = 0; i < tn; i++) await DB.doc("train/chunk-" + i).delete();
     await DB.doc("train/meta").delete(); await DB.doc("settings/models").delete();
     try { const st = await DB.collection("steps").get(); for (const d of st.docs) await DB.doc("steps/" + d.id).delete(); } catch {}
+    await DB.doc("settings/kausers").delete();
     await clearAlloc();
     location.reload();
   } catch (err) { setStatus("Deletion failed: " + (err.message || err.code)); }
@@ -1758,7 +1833,7 @@ function applyProgress() {
       if (!fromHist) { r.stage = p.stage ? String(p.stage).replace("Approver berikutnya setelah ", "Next approver after ") : null; r.stageSince = p.stageSince ?? null; }
     }
     r.prog = fromHist ? { kaIn: r.kaIn, kaOut: r.kaOut, back: r.back, backOut: r.backOut, po: p ? p.po : null, status: r.hstatus, stage: r.stage, stageSince: r.stageSince } : p || null;
-    r.done = !!((p && p.po !== null) || (r.backOut !== null && !inRework(r)) || (p && isRejected(p)) || /^approved$/i.test(r.hstatus || ""));
+    r.done = !!(r.erp || (p && p.po !== null) || (r.backOut !== null && !inRework(r)) || (p && isRejected(p)) || /^approved$/i.test(r.hstatus || ""));
     finishRec(r);
   }
 }
@@ -1870,7 +1945,9 @@ function workStats(list) {
 }
 // KA performance straight from CPRHistory: who approved Sequence 3 / Sequence 8, how long it took, and rework
 // only users that are a known KA (Hospital PIC List, or a KA name recorded in the forecast history), e.g. not Purchasing Head HO
-const userKa = (u) => { if (!u) return null; const ka = poKa({ ka: u, kaName: null }).ka; return (META.kaList || []).includes(ka) || kaNameOf(u) ? ka : null; };
+let HIST_KA_USERS = new Set();   // users that mainly approve KA steps in CPRHistory (stored in settings/kausers)
+const userKa = (u) => { if (!u) return null; const ka = poKa({ ka: u, kaName: null }).ka; return (META.kaList || []).includes(ka) || kaNameOf(u) || HIST_KA_USERS.has(String(u).toLowerCase()) ? ka : null; };
+async function loadKaUsers() { if (!DB) return; try { const d = await DB.doc("settings/kausers").get(); HIST_KA_USERS = new Set(d.exists ? d.data().users || [] : []); } catch {} }
 function renderKaFromHistory(view) {
   if (!$("poFrom").value || !$("poTo").value) { const D = dataDate(); if (D !== null) { $("poTo").value = dayToIso(D); $("poFrom").value = dayToIso(D - 90); } }
   const from = isoToDay($("poFrom").value), to = isoToDay($("poTo").value);
@@ -2054,6 +2131,22 @@ function updateTrain(rows) {
   TRAIN_META = { count: TRAIN.size, savedAt: new Date().toISOString(), version: (TRAIN_META ? TRAIN_META.version || 0 : 0) + 1 };
   MODELS = null;
   return added;
+}
+// forecast history = the CPR queue itself (CPRHistory + CPRSummary): rebuilt at every queue upload.
+// Its dates follow the CPR_Cleaned definitions (checked: 98-100% same day), Created Date comes from the summary.
+async function rebuildTrain() {
+  TRAIN = trainFromHistory();
+  TRAIN_META = { count: TRAIN.size, savedAt: new Date().toISOString(), version: (TRAIN_META ? TRAIN_META.version || 0 : 0) + 1, fileName: "CPRHistory + CPRSummary" };
+  MODELS = null;
+  if (DB && canSave()) { try { await saveTrain(); } catch {} }
+}
+function trainFromHistory() {
+  const m = new Map();
+  for (const r of RECS) {
+    if (!r.hstatus || r.create === null || r.create === undefined) continue;
+    m.set(r.cpr, { cpr: r.cpr, unit: r.unit, create: r.create, kaIn: r.kaIn, kaOut: r.kaOut, back: r.back, isNew: 1, capex: null, text: cleanText(r.vendorName, "").slice(0, 300) });
+  }
+  return m;
 }
 async function saveTrain() {
   if (!DB || !canSave()) return;
@@ -2332,8 +2425,8 @@ async function loadModelChoice() { if (!DB) return; try { const d = await DB.doc
 // Forecast settings card (Evaluation tab)
 function renderFcSettings() {
   $("fcHistInfo").textContent = TRAIN.size
-    ? `Forecast history in use: ${TRAIN_META && TRAIN_META.fileName ? TRAIN_META.fileName : "stored history"} · ${fmtInt(TRAIN.size)} CPRs${TRAIN_META && TRAIN_META.savedAt ? " · uploaded " + fmtStamp(TRAIN_META.savedAt) : ""}. It changes only when a new file is uploaded with "Upload forecast history" below (the new file replaces it).`
-    : "No forecast history yet: upload CPR_Cleaned with \"Upload forecast history\".";
+    ? `Forecast history in use: ${TRAIN_META && TRAIN_META.fileName ? TRAIN_META.fileName : "stored history"} · ${fmtInt(TRAIN.size)} CPRs${TRAIN_META && TRAIN_META.savedAt ? " · built " + fmtStamp(TRAIN_META.savedAt) : ""}. It is rebuilt from CPRHistory + CPRSummary at every CPR Queue upload.`
+    : "No forecast history yet: it is built automatically from the CPR Queue (CPRHistory + CPRSummary).";
   if (!$("fcModel").options.length) { $("fcModel").append(el("option", { value: "auto" }, "Automatic (lowest validation MAE)")); for (const c of CANDIDATES) $("fcModel").append(el("option", { value: `${c.family}|${c.setting}` }, `${c.family} (${c.setting})`)); }
   $("fcFrom").value = FC_SET.from || ""; $("fcOnlyNew").checked = !!FC_SET.onlyNew; $("fcMonths").value = String(FC_SET.months || 3);
   $("fcMax").value = FC_SET.maxDays ? String(FC_SET.maxDays) : ""; $("fcModel").value = FC_SET.model || "auto";
@@ -2465,6 +2558,10 @@ function simulate() {
   const w2 = Math.max(1, Math.round(median(baseF2.map((r) => r.rev2)) ?? 2));
   // KA list and PIC per unit
   const kaList = META.hasKa ? [...new Set(test.map((r) => r.ka))].sort() : META.kaList.slice();
+  // KAs that already process a CPR according to the data but are not in the PIC list (e.g. a former KA) still get a row
+  // new CPRs are only given to KAs in the Hospital PIC List; the extra KAs only keep the CPRs they already process
+  const allocKas = kaList.slice();
+  if (!META.hasKa) for (const r of test) { const k = dataKa(r); if (k && !kaList.includes(k)) kaList.push(k); }
   if (!kaList.length) throw new Error("the KA list is empty");
   const kaIdx = new Map(kaList.map((k, i) => [k, i]));
   const pic = {};
@@ -2529,7 +2626,7 @@ function simulate() {
   // best KA for a CPR: lowest peak load among KAs that are present on its review days
   const bestKa = (c, days, exclude) => {
     let best = null, bestPeak = Infinity;
-    for (const k of kaList) { if (k === exclude || absent(k, days)) continue; const pk = peak(L, k, days, c.weight || 1); if (pk < bestPeak) { bestPeak = pk; best = k; } }
+    for (const k of allocKas) { if (k === exclude || absent(k, days)) continue; const pk = peak(L, k, days, c.weight || 1); if (pk < bestPeak) { bestPeak = pk; best = k; } }
     return { best, bestPeak };
   };
   const moveTo = (c, to, reason) => {
@@ -2543,7 +2640,7 @@ function simulate() {
   const D = dataDate();
   // review-1 window of a CPR not yet started: planned review days, or - if it already sits at the KA - until the data date
   const pendingOffs = (c) => { const end = Math.max(c.s1 + c.w1 - 1, c.r.kaIn !== null && D !== null ? D : -Infinity); const out = []; for (let d = c.s1; d <= end; d++) out.push(off(d)); return out.filter((x) => x >= 0 && x < nDays); };
-  const checkAbsence = (c) => { if (IGNORED[c.r.cpr] || isInactive(c.r)) return;
+  const checkAbsence = (c) => { if (IGNORED[c.r.cpr] || isInactive(c.r) || (c.lock && c.lock.fixed)) return;
     if (!notStarted(c) || !ABSENCES.length || !absent(c.ka, pendingOffs(c))) return;
     const a = absenceFor(c.ka, c.s1, Math.max(c.s1 + c.w1 - 1, D ?? 0));
     const { best } = bestKa(c, activeDays(c), c.ka);
@@ -2554,8 +2651,9 @@ function simulate() {
   for (const r of test) {
     const tr = transferMap.get(r.cpr);
     const saved = useLocks() ? LOCKED.get(r.cpr) : null;
-    // a transfer (by SPV or automatic) overrides the original assignment
-    const lock = tr ? { ka: tr.to, rule: "Dialihkan", weight: 1 } : saved;
+    // the KA in the data (already processing the CPR) is fixed; otherwise a transfer (by SPV or automatic) overrides the original assignment
+    const fromData = META.hasKa ? null : dataKa(r);
+    const lock = fromData ? { ka: fromData, rule: "Diproses KA", weight: 1, fixed: true } : tr ? { ka: tr.to, rule: "Dialihkan", weight: 1 } : saved;
     const [lo, hi] = f1Range(r);
     const c = {
       r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2, transfer: tr || null, rw: reworkList(r),
@@ -2570,7 +2668,7 @@ function simulate() {
     push(byCreate, r.create, c); if (r.kaIn !== null) push(byArrive, r.kaIn, c); if (r.kaOut !== null) push(byKaOut, r.kaOut, c); const backW = r.backFirst ?? r.back; if (backW !== null && backW !== undefined) push(byBack, backW, c);
   }
   const vendorHolder = (vendor, day) => { if (!hasVendor(vendor)) return null; for (const x of byVendor.get(vendor) || []) if (holding(x, day)) return x.ka; return null; };
-  const rules = { "Vendor sama": 0, "PIC unit": 0, "Beban terendah": 0, "Dialihkan": 0, "Exception": 0 };
+  const rules = { "Diproses KA": 0, "Vendor sama": 0, "PIC unit": 0, "Beban terendah": 0, "Dialihkan": 0, "Exception": 0 };
   for (let day = minDay; day <= maxActual + 60; day++) {
     for (const c of byCreate.get(day) || []) {
       const days = activeDays(c);
@@ -2592,7 +2690,7 @@ function simulate() {
       }
       if (!ka) {
         let { best, bestPeak } = bestKa({ weight: 1 }, days, null);
-        if (!best) { for (const k of kaList) { const pk = peak(L, k, days, 1); if (pk < bestPeak) { bestPeak = pk; best = k; } } } // everyone absent
+        if (!best) { for (const k of allocKas) { const pk = peak(L, k, days, 1); if (pk < bestPeak) { bestPeak = pk; best = k; } } } // everyone absent
         ka = best; rule = bestPeak <= maxPerDay ? "Beban terendah" : "Exception";
       }
       c.ka = ka; c.weight = weight; c.rule = rule; rules[rule]++;
@@ -2652,7 +2750,7 @@ function renderSim() {
     list.append(
       step(!!PIC_LIST || META.hasKa, PIC_LIST ? `Hospital PIC List: ${fmtInt(Object.keys(PIC_LIST).length)} hospitals` : META.hasKa ? "Hospital PIC List (optional for this data)" : "Upload the Hospital PIC List (list of KAs)"),
       step(!IS_SAMPLE, IS_SAMPLE ? "Upload the CPR Queue (CPRHistory)" : `CPR Queue: ${fmtInt(RECS.length)} CPRs from ${META.fileName || "file"}`),
-      step(TRAIN.size > 0, TRAIN.size ? `Forecast history (CPR_Cleaned): ${fmtInt(TRAIN.size)} CPRs` : "Upload the forecast history (CPR_Cleaned) in Evaluation → Forecast settings"),
+      step(TRAIN.size > 0, TRAIN.size ? `Forecast history (CPRHistory + CPRSummary): ${fmtInt(TRAIN.size)} CPRs` : "The forecast history is built automatically from the CPR Queue"),
       step(false, "Set the period and workload limit above, then select Run allocation")
     );
     const card = el("div", { class: "card", style: "grid-column:1/-1" });
@@ -2677,7 +2775,7 @@ function renderSim() {
   const warn = $("histWarn");
   warn.hidden = !!(s.models && s.models.f1);
   warn.replaceChildren(el("div"));
-  warn.firstChild.innerHTML = `<b>The forecast model is not active yet.</b> The models learn from the CPR_Cleaned history stored for forecasting, and fewer than 100 usable CPRs are stored (data uploaded before this version is not included). Estimates now use the median per hospital, which can be much longer than the model. Please upload <b>CPR_Cleaned</b> (2023–2026 history, the same file as the analysis notebook) and the latest <b>PO Data</b> again, then select Run allocation.`;
+  warn.firstChild.innerHTML = `<b>The forecast model is not active yet.</b> The models learn from the CPRHistory + CPRSummary history stored for forecasting, and fewer than 100 usable CPRs are stored (data uploaded before this version is not included). Estimates now use the median per hospital, which can be much longer than the model. Please upload <b>CPR_Cleaned</b> (2023–2026 history, the same file as the analysis notebook) and the latest <b>PO Data</b> again, then select Run allocation.`;
   const lg = (items) => items.map(([name, c]) => `<span><i style="background:${c}"></i>${name}</span>`).join("");
   const kas = s.kaList.slice().sort((a, b) => (s.dssCount[b] || 0) - (s.dssCount[a] || 0));
   $("subKaCount").textContent = s.actual ? "DSS allocation compared with the actual allocation" : "DSS allocation";
@@ -2714,9 +2812,9 @@ function incRows() {
     .filter((c) => !q || [c.r.cpr, c.unit, c.vendor, c.r.vendorName, kaLabel(c.ka), kaLabel(c.r.ka)].join(" ").toLowerCase().includes(q))
     .sort((a, b) => a.r.create - b.r.create || a.r.cpr.localeCompare(b.r.cpr));
 }
-const ruleKind = { "Vendor sama": "info", "PIC unit": "good", "Beban terendah": "warn", "Dialihkan": "serious", "Exception": "bad" };
+const ruleKind = { "Diproses KA": "muted", "Vendor sama": "info", "PIC unit": "good", "Beban terendah": "warn", "Dialihkan": "serious", "Exception": "bad" };
 // rule names are stored in Indonesian (saved allocations use them); this is how they are shown
-const RULE_LABEL = { "Vendor sama": "Same vendor", "PIC unit": "Hospital PIC", "Beban terendah": "Lowest workload", "Dialihkan": "Reassigned", "Exception": "Exception" };
+const RULE_LABEL = { "Diproses KA": "Processed by KA (from data)", "Vendor sama": "Same vendor", "PIC unit": "Hospital PIC", "Beban terendah": "Lowest workload", "Dialihkan": "Reassigned", "Exception": "Exception" };
 const ruleLabel = (r) => RULE_LABEL[r] || r;
 const byLabel = (b) => (b === "Otomatis" ? "Automatic" : b === "SPV" ? "Supervisor" : b);
 // short progress status of a CPR (details and follow-up notes stay in Supervisor Control)
@@ -2726,6 +2824,8 @@ function progressStatus(c) {
   if (p && isRejected(p)) return ["Rejected", "muted"];
   if (isInactive(r)) return ["Inactive (no progress > 30 days)", "muted"];
   if (inRework(r)) return ["At KA – Rework", "warn"];
+  if (r.erp && /^po/i.test(r.erp)) return ["Completed (PO)", "good"];
+  if (r.erp) return ["PR created", "good"];
   if (p && p.po !== null) return ["Completed (PO)", "good"];
   if (r.backOut !== null) return ["Sequence 8 completed", "good"];
   if (!p) return ["No update yet", "muted"];
@@ -3042,7 +3142,7 @@ function renderSpv() {
       if (!editable) return "";
       const btn = (label, fn) => Object.assign(el("button", { class: "btn ghost", type: "button", style: "padding:4px 10px;margin-left:4px" }, label), { onclick: fn });
       const box = el("span");
-      if (x.canMove) box.append(btn("Reassign", () => openTransfer(x.c.r.cpr)));
+      if (x.canMove && !(x.c.lock && x.c.lock.fixed)) box.append(btn("Reassign", () => openTransfer(x.c.r.cpr)));
       if (x.type === "ignored") box.append(btn("Restore", () => setIgnored([x.c.r.cpr], false)));
       else box.append(btn("Dismiss", () => setIgnored([x.c.r.cpr], true)));
       return box;
@@ -3081,7 +3181,7 @@ function updateTransferForm() {
   $("trFrom").textContent = c ? kaLabel(c.ka) : "–";
   // any stage can be reassigned; the form says where the CPR is so the supervisor knows what moves
   const r = c && c.r;
-  $("trMsg").textContent = !r ? "" : r.backOut !== null ? `Note: Sequence 8 was completed on ${fmtDay(r.backOut)}. Both KA reviews are done, so this change only updates the record.`
+  $("trMsg").textContent = !r ? "" : c.lock && c.lock.fixed ? `Already processed by ${kaLabel(c.ka)} according to the uploaded data (${dataKaUser(r)}): the KA cannot be changed.` : r.backOut !== null ? `Note: Sequence 8 was completed on ${fmtDay(r.backOut)}. Both KA reviews are done, so this change only updates the record.`
     : r.back !== null ? `Note: Sequence 3 was completed on ${fmtDay(r.kaOut)} and the CPR is back for Sequence 8. The new KA will handle Sequence 8.`
     : r.kaOut !== null ? `Note: Sequence 3 was completed on ${fmtDay(r.kaOut)}; the CPR is with other approvers. The new KA will handle Sequence 8 when it returns.`
     : r.kaIn !== null ? `The CPR is at Key Account for Sequence 3 (since ${fmtDay(r.kaIn)}).` : "The CPR has not reached Key Account yet.";
@@ -3098,6 +3198,7 @@ $("trCancel").addEventListener("click", () => { $("trCard").hidden = true; });
 $("trSave").addEventListener("click", async () => {
   const cpr = $("trCpr").value.trim(), c = findAssigned(cpr), to = $("trTo").value;
   if (!c) { $("trMsg").textContent = "The CPR number was not found in the current allocation."; return; }
+  if (c.lock && c.lock.fixed) { $("trMsg").textContent = `This CPR is already being processed by ${kaLabel(c.ka)} according to the uploaded data (${dataKaUser(c.r)}), so its KA cannot be changed.`; return; }
   if (!to || to === c.ka) { $("trMsg").textContent = "Please select a different target KA."; return; }
   const t = { at: new Date().toISOString(), cpr, unit: c.unit, from: c.ka, to, reason: $("trReason").value, note: $("trNote").value.trim(), by: "SPV" };
   try {
@@ -3188,7 +3289,7 @@ function renderBukti() {
   const tiles = [];
   for (const [name, m] of [["Forecast 1 · arrival at KA", SIM.models && SIM.models.f1], ["Forecast 2 · return to KA", SIM.models && SIM.models.f2]]) {
     const t = m && m.test;
-    if (!t) { tiles.push(tile(name, "–", "", "Not enough history to test (upload CPR_Cleaned with at least 3 recent months)")); continue; }
+    if (!t) { tiles.push(tile(name, "–", "", "Not enough history to test (at least 3 recent months of CPRHistory are needed)")); continue; }
     const e = t.rows.map((x) => Math.abs(x[1])), eb = t.rows.map((x) => Math.abs(x[2]));
     const mae = mean(e), maeB = mean(eb);
     tiles.push(tile(`${name} · MAE`, fmtNum(mae, 2), "days", `${fmtInt(t.rows.length)} CPRs, ${fmtDay(t.from)} – ${fmtDay(t.to)} · baseline ${fmtNum(maeB, 2)} days (${mae < maeB ? "model is more accurate" : "model is not yet more accurate"})`));
@@ -3276,17 +3377,18 @@ document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () 
 function renderAll() { renderEmptyState(); renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
 // before the CPR queue is uploaded: no sample data on screen, only what to upload
 function renderEmptyState() {
-  const empty = IS_SAMPLE;
+  // the setup page stays until the first allocation has been run (nothing is allocated automatically)
+  const empty = IS_SAMPLE || (!SIM && !LOCKED.size);
   document.body.classList.toggle("no-data", empty);
   $("emptyCard").hidden = !empty;
   if (!empty) return;
   if (!canSave()) {
-    $("emptyTitle").textContent = "No data available yet";
-    $("emptySub").textContent = "The dashboard administrator has not uploaded any CPR data yet. Please check back later.";
+    $("emptyTitle").textContent = IS_SAMPLE ? "No data available yet" : "No allocation yet";
+    $("emptySub").textContent = IS_SAMPLE ? "The dashboard administrator has not uploaded any CPR data yet. Please check back later." : "The dashboard administrator has uploaded the data but has not run the allocation yet. Please check back later.";
     $("emptySteps").replaceChildren(); return;
   }
-  $("emptyTitle").textContent = "No data uploaded yet";
-  $("emptySub").textContent = "Upload the files below in this order. The dashboard opens once the CPR queue has been uploaded.";
+  $("emptyTitle").textContent = IS_SAMPLE ? "No data uploaded yet" : "Ready to allocate";
+  $("emptySub").textContent = "Upload the files below in this order, then choose the allocation options in step 3. Nothing is allocated until you select Run allocation; the dashboard opens afterwards.";
   const step = (n, done, title, detail, inputId, label) => {
     const li = el("li", { class: done ? "done" : "" }); li.append(el("span", { class: "num" }, done ? "✓" : String(n)));
     const txt = el("div", { class: "txt" }, title); txt.append(el("small", {}, detail)); li.append(txt);
@@ -3296,10 +3398,33 @@ function renderEmptyState() {
   const nPic = PIC_LIST ? Object.keys(PIC_LIST).length : 0, nHist = Math.max(TRAIN.size, PO_RECS.length);
   $("emptySteps").replaceChildren(
     step(1, nPic > 0, "Hospital PIC List", nPic ? `${fmtInt(nPic)} hospitals saved.` : "List of hospitals (RS) and their PIC Key Account.", "filePic", "Upload Hospital PIC List"),
-    step(2, nHist > 0, "Forecast history: CPR_Cleaned or PO Data", nHist ? `${fmtInt(nHist)} CPRs saved for the forecast.` : "Past CPRs that the forecast learns from.", "filePo", "Upload CPR_Cleaned / PO Data"),
-    step(3, false, "CPR Queue (SHG CPRHistory)", "The CPRs to be allocated to Key Accounts. Several exports can be selected at once.", "fileCpr", "Upload CPR Queue"),
-    step(4, false, "Run allocation", "Available after step 3, in the CPR Allocation tab.", null, null)
+    step(2, !IS_SAMPLE, "CPR Queue: SHG CPRHistory + CPRSummary", !IS_SAMPLE
+      ? `${fmtInt(RECS.length)} CPRs saved${RECS.some((r) => r.waiting || r.erp || r.sumCreate) ? " (history and summary)" : " (history only: add the CPRSummary for the current holder and PR / PO number)"}.`
+      : "Select the CPRHistory and the CPRSummary exports together (several files at once). The summary is optional but recommended.", "fileCpr", "Upload CPR Queue"),
+    allocStep()
   );
+}
+// step 4 of the setup page: the allocation options, then Run allocation
+function allocStep() {
+  const ready = !IS_SAMPLE && !!PIC_LIST;
+  const li = el("li", { class: "alloc" }); li.append(el("span", { class: "num" }, "3"));
+  const txt = el("div", { class: "txt" }, "Run allocation");
+  txt.append(el("small", {}, ready ? "Choose the options and run. CPRs that the data already shows with a KA keep that KA (already processed)." : "Available after steps 1 and 2."));
+  li.append(txt);
+  if (!ready) return li;
+  const f = el("div", { class: "filters", style: "border:0;padding:0;margin:8px 0 0;flex-basis:100%" });
+  const field = (id, label, type, value, extra = {}) => { const d = el("div", { class: "field" }); d.append(el("label", { for: id }, label)); const i = el("input", { id, type, ...extra }); i.value = value; d.append(i); return d; };
+  f.append(field("e4From", "CPR created from", "date", $("sFrom").value), field("e4To", "to", "date", $("sTo").value),
+    field("e4Vendor", "Same-vendor weight", "number", $("sVendor").value, { min: "0", max: "1", step: "0.1" }),
+    field("e4Max", "Daily workload limit", "number", $("sMax").value, { min: "1", step: "0.5", placeholder: "automatic" }));
+  const pic = el("label", { class: "check" }); const cb = el("input", { type: "checkbox", id: "e4Pic" }); cb.checked = $("sPic").checked; pic.append(cb, document.createTextNode(" Prioritize hospital PIC"));
+  const run = Object.assign(el("button", { class: "btn", type: "button", id: "e4Run" }, "Run allocation"), { onclick: async () => {
+    $("sFrom").value = $("e4From").value; $("sTo").value = $("e4To").value; $("sVendor").value = $("e4Vendor").value; $("sMax").value = $("e4Max").value; $("sPic").checked = $("e4Pic").checked;
+    run.disabled = true; run.textContent = "Allocating …"; await runSimulation(); showTab("distribusi");
+  } });
+  f.append(pic, run);
+  li.append(f);
+  return li;
 }
 let resizeTimer; window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => renderers[currentTab](), 150); });
 
