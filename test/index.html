@@ -339,11 +339,10 @@ body.locked #loginForm .btn { width: 100%; }
   <!-- KINERJA KA -->
   <section class="panel" id="panel-ka" role="tabpanel" aria-labelledby="tab-ka">
     <div class="card" style="margin-top:16px">
-      <h3>Performance data: PO Data</h3>
-      <div class="sub">PO Data (or CPR_Cleaned) serves two purposes: evaluating KA performance based on CPRs that have been converted into POs, and providing the history the forecast model learns from. A file uploaded here <b>replaces</b> the forecast history (use the full CPR_Cleaned export); "PO Data (optional)" in the header does not change the forecast. It does not add CPRs to the work queue; the queue is sourced only from CPRHistory.</div>
+      <h3>KA performance from CPRHistory</h3>
+      <div class="sub">Calculated directly from the uploaded CPRHistory: the KA is the user who approved the step, Sequence 3 = arrival at KA until the KA's approval, Sequence 8 = return to KA until the KA's approval (first round), rework = returned by Purchasing Head HO / Director. No extra upload is needed.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
-        <label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload PO Data / CPR_Cleaned<input type="file" id="filePo" accept=".xlsx,.xls,.csv" multiple></label>
-        <div class="field"><label for="poFrom">PO created from</label><input type="date" id="poFrom"></div>
+        <div class="field"><label for="poFrom">KA step approved from</label><input type="date" id="poFrom"></div>
         <div class="field"><label for="poTo">to</label><input type="date" id="poTo"></div>
       </div>
       <p class="note" id="poInfo"></p>
@@ -429,7 +428,8 @@ body.locked #loginForm .btn { width: 100%; }
         <button class="btn" id="fcApply" type="button">Apply and retrain</button>
         <button class="btn ghost" id="fcReset" type="button">Reset to notebook default</button>
       </div>
-      <p class="note" id="fcHistInfo" style="margin-top:10px"></p>
+      <div class="filters" style="border:0;padding:0;margin:10px 0 0"><label class="file-btn" for="filePo" id="lblPo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>Upload forecast history (CPR_Cleaned)<input type="file" id="filePo" accept=".xlsx,.xls,.csv" multiple></label></div>
+      <p class="note" id="fcHistInfo" style="margin-top:6px"></p>
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblFcCompare"></table></div>
       <p class="note" id="fcSetNote"></p>
     </div>
@@ -1111,6 +1111,9 @@ function pivotHistory(rows) {
       kaInAt, kaOutAt, backAt, backOutAt: phoDone,
       stage, stageSince: dayOf(stageAt), lastAct: dayOf(lastStamp), hstatus: status || null,
       backFirst: dayOf(backFirstAt), backOutFirst: dayOf(firstPhoDone), rework: reworks.length || null, kaUser,
+      backFirstAt, backOutFirstAt: firstPhoDone,
+      ka3User: kaRows.map((x) => x[HCOL.user]).filter(Boolean).slice(-1)[0] || null,
+      ka8User: (phoRows.find((x) => toStamp(x[HCOL.approve]) === firstPhoDone) || phoRows[0] || {})[HCOL.user] || null,
       rwk: reworks.filter((e) => e.toKa).map((e) => `${dayOf(e.st)}:${e.end ? dayOf(e.end) : ""}:${e.who}`).join(";") || null
     }));
     steps.set(String(id), list.map(stepRow));
@@ -1119,7 +1122,7 @@ function pivotHistory(rows) {
 }
 // put new records over the saved ones: same CPR number -> filled values replace old ones
 // fields that the approval history describes completely: a missing value there means "not happened yet"
-const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst"];
+const HIST_KEYS = ["kaIn", "kaOut", "back", "backOut", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt"];
 function mergeRecs(base, fresh, authoritative = []) {
   const map = new Map(base.map((r) => [r.cpr, r]));
   for (const r of fresh) {
@@ -1174,6 +1177,7 @@ async function applyHistory(rows, fileName, roleKa, roleBack) {
   META.hasKa = false; void feedHasKa; // worklot data: the DSS assigns the KA
   RECS = mergeRecs(base, result.recs, HIST_KEYS).map(finishRec);
   applyProgress();
+  setPoDates();   // KA performance period: the last 3 months of the new data
   return result;
 }
 
@@ -1290,7 +1294,7 @@ if (SB) {
 
 let DB = null, DB_READY = false, LOCKED = new Map(), SAVED_AT = null;
 const CHUNK = 1000;
-const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst"];
+const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt"];
 const useLocks = () => !!DB && !IS_SAMPLE && !META.hasKa;
 const canSave = () => !!DB && (!SB || IS_ADMIN);
 const monthKey = (d) => dayToIso(d).slice(0, 7);
@@ -1660,6 +1664,7 @@ async function loadPo() {
   setPoDates();
 }
 function setPoDates() {
+  if (RECS.some((r) => r.hstatus)) { const D = dataDate(); if (D !== null) { $("poTo").value = dayToIso(D); $("poFrom").value = dayToIso(D - 90); } return; }   // KA performance from CPRHistory: last 3 months
   const d = PO_RECS.map((r) => r.po).filter((x) => x !== null); if (!d.length) return;
   const max = Math.max(...d), min = Math.min(...d);
   $("poTo").value = dayToIso(max); $("poFrom").value = dayToIso(Math.max(min, max - 90)); // default: last 3 months of PO
@@ -1831,6 +1836,7 @@ function realKa(r) {
 function renderKa() {
   const view = loadView();
   $("lblPo").hidden = SB && !IS_ADMIN;
+  if (RECS.some((r) => r.hstatus)) return renderKaFromHistory(view);
   if (PO_RECS.length) return renderKaFromPo(view);
   $("poInfo").textContent = "No performance data yet. Processing times are temporarily calculated from the main CPR data.";
   const data = filtered().filter((r) => realKa(r) && (r.rev1 !== null || r.rev2 !== null));
@@ -1878,6 +1884,55 @@ function workStats(list) {
   for (const r of list) for (const d of [r.kaOut, r.backOut]) if (d !== null && d !== undefined && weekday(d) < 5) perDay.set(d, (perDay.get(d) || 0) + 1);
   const v = [...perDay.values()];
   return { perDay: mean(v), perDayP90: quantile(v, 0.9), r1h: median(list.map((r) => r.rev1h ?? null)), r2h: median(list.map((r) => r.rev2h ?? null)) };
+}
+// KA performance straight from CPRHistory: who approved Sequence 3 / Sequence 8, how long it took, and rework
+// only users that are a known KA (Hospital PIC List, or a KA name recorded in the forecast history), e.g. not Purchasing Head HO
+const userKa = (u) => { if (!u) return null; const ka = poKa({ ka: u, kaName: null }).ka; return (META.kaList || []).includes(ka) || kaNameOf(u) ? ka : null; };
+function renderKaFromHistory(view) {
+  if (!$("poFrom").value || !$("poTo").value) { const D = dataDate(); if (D !== null) { $("poTo").value = dayToIso(D); $("poFrom").value = dayToIso(D - 90); } }
+  const from = isoToDay($("poFrom").value), to = isoToDay($("poTo").value);
+  const inP = (d) => d !== null && d !== undefined && (from === null || d >= from) && (to === null || d <= to);
+  const g = new Map(); const get = (ka) => { if (!g.has(ka)) g.set(ka, { s3: [], s8: [], ev: [], rework: 0 }); return g.get(ka); };
+  let n3 = 0, n8 = 0, unknown = 0;
+  for (const r of RECS) {
+    if (!r.hstatus) continue;
+    if (inP(r.kaOut) && r.kaIn !== null) { const ka = userKa(r.ka3User); if (ka) { const x = get(ka); x.s3.push({ d: r.kaOut - r.kaIn, h: hoursBetween(r.kaInAt, r.kaOutAt) }); x.ev.push(r.kaOut); n3++; } else unknown++; }
+    const b8 = r.backOutFirst ?? null, a8 = r.backFirst ?? r.back;
+    if (inP(b8) && a8 !== null && a8 !== undefined) { const ka = userKa(r.ka8User); if (ka) { const x = get(ka); x.s8.push({ d: b8 - a8, h: hoursBetween(r.backFirstAt ?? r.backAt, r.backOutFirstAt ?? r.backOutAt) }); x.ev.push(b8); n8++; } else unknown++; }
+    for (const e of reworkList(r)) if (inP(e.start)) { const ka = userKa(r.ka8User || r.kaUser); if (ka) get(ka).rework++; }
+  }
+  if (view) for (const ka of SIM.kaList) get(ka);
+  $("poInfo").textContent = `${fmtInt(n3)} Sequence 3 approvals and ${fmtInt(n8)} Sequence 8 approvals between ${$("poFrom").value ? fmtDay(from) : "–"} and ${$("poTo").value ? fmtDay(to) : "–"}.` + (unknown ? ` ${fmtInt(unknown)} steps without a recognised KA user are excluded.` : "");
+  $("kaNote").textContent = "";
+  const rows = [...g.entries()].map(([ka, x]) => {
+    const r1 = mean(x.s3.map((y) => y.d)), r2 = mean(x.s8.map((y) => y.d));
+    const perDay = new Map(); for (const d of x.ev) if (weekday(d) < 5) perDay.set(d, (perDay.get(d) || 0) + 1);
+    const pd = [...perDay.values()], lv = view && view.perKa[ka];
+    return { ka, name: kaLabel(ka), n: x.s3.length, n8: x.s8.length, r1avg: r1, r2avg: r2, totAvg: r1 !== null && r2 !== null ? r1 + r2 : null,
+      r1h: median(x.s3.map((y) => y.h)), r2h: median(x.s8.map((y) => y.h)), perDay: mean(pd), perDayP90: quantile(pd, 0.9),
+      rework: x.rework, reworkRate: x.s8.length ? (x.rework / x.s8.length) * 100 : null, loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null };
+  }).sort((a, b) => (b.totAvg ?? 0) - (a.totAvg ?? 0));
+  const withWork = rows.filter((r) => r.n + r.n8 > 0);
+  barChartH($("chKa"), withWork.map((r) => `${r.name} (${r.n}/${r.n8})`), [
+    { name: "Average Sequence 3 (days)", color: "var(--s1)", values: withWork.map((r) => r.r1avg) },
+    { name: "Average Sequence 8 (days)", color: "var(--s2)", values: withWork.map((r) => r.r2avg) }
+  ], { stacked: true, dec: 1, label: "Average Sequence 3 + Sequence 8 time per KA (in brackets: Seq 3 / Seq 8 approvals)" });
+  renderTable($("tblKa"), [
+    { key: "name", label: "Key Account" },
+    { key: "n", label: "Sequence 3 approved", num: true, render: (r) => fmtInt(r.n) },
+    { key: "r1avg", label: "Sequence 3 (days)", num: true, render: (r) => fmtNum(r.r1avg) },
+    { key: "r1h", label: "Sequence 3 (hours, median)", num: true, render: (r) => fmtNum(r.r1h) },
+    { key: "n8", label: "Sequence 8 approved", num: true, render: (r) => fmtInt(r.n8) },
+    { key: "r2avg", label: "Sequence 8 (days)", num: true, render: (r) => fmtNum(r.r2avg) },
+    { key: "r2h", label: "Sequence 8 (hours, median)", num: true, render: (r) => fmtNum(r.r2h) },
+    { key: "totAvg", label: "Total Seq. 3 + Seq. 8 (days)", num: true, render: (r) => fmtNum(r.totAvg) },
+    { key: "rework", label: "Rework (returned by PH HO / Director)", num: true, render: (r) => fmtInt(r.rework) },
+    { key: "reworkRate", label: "Rework per Seq. 8 approved (%)", num: true, render: (r) => (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 0)) },
+    { key: "perDay", label: "Approvals/day (avg)", num: true, render: (r) => fmtNum(r.perDay) },
+    { key: "perDayP90", label: "Busiest day (P90)", num: true, render: (r) => fmtNum(r.perDayP90, 0) },
+    { key: "loadAvg", label: "Avg workload/day", num: true, render: (r) => fmtNum(r.loadAvg) }
+  ], rows, kaSort);
+  renderLoadTable(view);
 }
 function renderKaFromPo(view) {
   const from = isoToDay($("poFrom").value), to = isoToDay($("poTo").value);
@@ -2294,8 +2349,8 @@ async function loadModelChoice() { if (!DB) return; try { const d = await DB.doc
 // Forecast settings card (Evaluation tab)
 function renderFcSettings() {
   $("fcHistInfo").textContent = TRAIN.size
-    ? `Forecast history in use: ${TRAIN_META && TRAIN_META.fileName ? TRAIN_META.fileName : "stored history"} · ${fmtInt(TRAIN.size)} CPRs${TRAIN_META && TRAIN_META.savedAt ? " · uploaded " + fmtStamp(TRAIN_META.savedAt) : ""}. It changes only when a new file is uploaded with "Upload PO Data / CPR_Cleaned" in KA Performance (the new file replaces it); "PO Data (optional)" does not change the forecast.`
-    : "No forecast history yet: upload CPR_Cleaned with \"Upload PO Data / CPR_Cleaned\" in KA Performance.";
+    ? `Forecast history in use: ${TRAIN_META && TRAIN_META.fileName ? TRAIN_META.fileName : "stored history"} · ${fmtInt(TRAIN.size)} CPRs${TRAIN_META && TRAIN_META.savedAt ? " · uploaded " + fmtStamp(TRAIN_META.savedAt) : ""}. It changes only when a new file is uploaded with "Upload forecast history" below (the new file replaces it); "PO Data (optional)" does not change the forecast.`
+    : "No forecast history yet: upload CPR_Cleaned with \"Upload forecast history\".";
   if (!$("fcModel").options.length) { $("fcModel").append(el("option", { value: "auto" }, "Automatic (lowest validation MAE)")); for (const c of CANDIDATES) $("fcModel").append(el("option", { value: `${c.family}|${c.setting}` }, `${c.family} (${c.setting})`)); }
   $("fcFrom").value = FC_SET.from || ""; $("fcOnlyNew").checked = !!FC_SET.onlyNew; $("fcMonths").value = String(FC_SET.months || 3);
   $("fcMax").value = FC_SET.maxDays ? String(FC_SET.maxDays) : ""; $("fcModel").value = FC_SET.model || "auto";
