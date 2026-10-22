@@ -338,6 +338,8 @@ body.locked #loginForm .btn { width: 100%; }
         <button class="btn ghost" id="sReset" type="button" hidden>Reallocate all</button>
       </div>
       <details class="capbox" id="capBox"><summary>KA capacity for CPR review (%)</summary><div class="sub">Lower it for a KA with other work that is not in the system (e.g. creating POs, pipeline work). 50% = about half the CPRs of a KA at 100%, and half the daily limit; 0% = no new CPRs. Applies to CPRs allocated from now on.</div><div class="capgrid" id="capGrid"></div></details>
+      <details class="capbox" id="twBox"><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Matching about 2.4–3× Received, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
+        <div class="capgrid"><label>Received (Seq 3)<input type="number" id="twRec" min="0" step="0.1"></label><label>Matching (Seq 8)<input type="number" id="twMat" min="0" step="0.1"></label><label>Rework<input type="number" id="twRw" min="0" step="0.1"></label><label>× CPR &gt; Rp1 M<input type="number" id="twBig" min="1" step="0.1"></label></div></details>
       <p class="note" id="runInfo" style="font-weight:500;color:var(--fg)"></p>
       <p class="note" id="simNote"></p>
     </div>
@@ -345,6 +347,7 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="tiles" id="simTiles"></div>
     <p class="note" id="simCompare"></p>
     <div id="simResults"><div class="card" style="margin-top:12px"><h3 id="hKaCount">Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
+    <div class="card" style="margin-top:12px" id="cardTask" hidden><h3>Current task load per KA (weighted)</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div></div>
     <div class="card" style="margin-top:12px" id="cardKaDone" hidden><h3>Completed CPRs per KA</h3><div class="sub">History only: CPRs the KA has finished (PR / PO created, fully approved or Sequence 8 approved). Not counted as workload.</div><div class="chart" id="chKaDone"></div></div>
     <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. Status is read from CPRHistory (every approval step); details and follow-up actions are available in Supervisor Control.</p></div>
     <div class="filters" id="incFilters" style="margin:0 0 10px">
@@ -1374,7 +1377,7 @@ function pivotHistory(rows) {
       capex: last[HCOL.category] ? String(last[HCOL.category]) : null,
       createAt: created, submitAt: null,
       kaInAt, kaOutAt, backAt, backOutAt: phoDone,
-      stage, stageSince: dayOf(stageAt), lastAct: dayOf(lastStamp), hstatus: status || null, pos, lastSeq,
+      stage, stageSince: dayOf(stageAt), lastAct: dayOf(lastStamp), hstatus: status || null, pos, lastSeq, amount: Number(last[HCOL.amount]) || null,
       backFirst: dayOf(backFirstAt), backOutFirst: dayOf(firstPhoDone), rework: reworks.length || null, kaUser,
       backFirstAt, backOutFirstAt: firstPhoDone,
       ka3User: kaRows.map((x) => x[HCOL.user]).filter(Boolean).slice(-1)[0] || null,
@@ -1566,7 +1569,7 @@ if (SB) {
 
 let DB = null, DB_READY = false, LOCKED = new Map(), SAVED_AT = null;
 const CHUNK = 1000;
-const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt", "waiting", "erp", "sumCreate", "pos", "lastSeq"];
+const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt", "waiting", "erp", "sumCreate", "pos", "lastSeq", "amount"];
 const useLocks = () => !!DB && !IS_SAMPLE && !META.hasKa;
 const canSave = () => !!DB && (!SB || IS_ADMIN);
 const monthKey = (d) => dayToIso(d).slice(0, 7);
@@ -1584,7 +1587,7 @@ async function initDb() {
     const meta = await DB.doc("cpr/meta").get();
     const pic = await DB.doc("settings/pic").get();
     const params = await DB.doc("settings/params").get();
-    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = !!p.usePic; HIST_MODE = p.histMode || "selesai"; $("histMode").value = HIST_MODE; CAPACITY = p.capacity || {}; }
+    if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = !!p.usePic; HIST_MODE = p.histMode || "selesai"; $("histMode").value = HIST_MODE; CAPACITY = p.capacity || {}; TASK_W = { ...TW_DEFAULT, ...(p.taskW || {}) }; syncTw(); }
     if (pic.exists) PIC_LIST = pic.data().list || null;
     try { await loadPo(); } catch {}
     try { await loadProgress(); } catch {}
@@ -1631,7 +1634,7 @@ async function saveData() {
 }
 async function saveParams() {
   if (!DB) return;
-  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: $("sPic").checked, histMode: HIST_MODE, capacity: CAPACITY });
+  await DB.doc("settings/params").set({ vendor: parseFloat($("sVendor").value) || 0.5, max: parseFloat($("sMax").value) || 0, usePic: $("sPic").checked, histMode: HIST_MODE, capacity: CAPACITY, taskW: TASK_W });
   const meta = await DB.doc("cpr/meta").get();
   if (meta.exists && !IS_SAMPLE) await DB.doc("cpr/meta").update({ simFrom: $("sFrom").value, simTo: $("sTo").value });
 }
@@ -3086,7 +3089,7 @@ function cmpTile(k, a, b, unit, lowerIsBetter = true, dec = 1) {
 }
 let incState = { page: 0, q: "" };
 function renderSim() {
-  try { syncCap(); } catch (e) {}
+  try { syncCap(); syncTw(); renderTaskLoad(); } catch (e) {}
   const s = SIM;
   if (!s) {
     const step = (ok, text) => el("li", { style: ok ? "color:var(--good)" : "" }, (ok ? "✓ " : "○ ") + text);
@@ -3816,6 +3819,43 @@ function renderEmptyState() {
       : "Select the CPRHistory and the CPRSummary exports together (several files at once). The summary is optional but recommended.", "fileCpr", "Upload CPR Queue"),
     allocStep()
   );
+}
+// ---------- task weights (current task load only) ----------
+const TW_DEFAULT = { rec: 1, mat: 2.5, rw: 1, big: 1.3 };
+let TASK_W = { ...TW_DEFAULT };
+function syncTw() { const m = { twRec: "rec", twMat: "mat", twRw: "rw", twBig: "big" }; for (const [id, k] of Object.entries(m)) { const i = document.getElementById(id); if (i) i.value = String(TASK_W[k]); } }
+for (const [id, k] of [["twRec", "rec"], ["twMat", "mat"], ["twRw", "rw"], ["twBig", "big"]]) {
+  document.getElementById(id).addEventListener("change", async (e) => { const v = parseFloat(e.target.value); TASK_W[k] = Number.isFinite(v) && v >= 0 ? v : TW_DEFAULT[k]; syncTw(); try { renderTaskLoad(); } catch {} if (canSave() && !IS_SAMPLE) { try { await saveParams(); } catch {} } });
+}
+// the CPRs each KA is holding right now (data date), by task, and their weighted load
+function renderTaskLoad() {
+  const card = $("cardTask"); if (!SIM || SIM.actual) { card.hidden = true; return; } card.hidden = false;
+  const D = dataDate(), per = {};
+  for (const c of SIM.assigned) {
+    const r = c.r; if (r.done || isInactive(r) || IGNORED[r.cpr]) continue;
+    const back = r.backFirst ?? r.back, out8 = r.backOutFirst ?? r.backOut;
+    const task = inRework(r) ? "rw" : r.kaIn !== null && r.kaOut === null ? "rec" : back !== null && back !== undefined && (out8 === null || out8 === undefined) ? "mat" : null;
+    if (!task) continue;
+    const x = per[c.ka] || (per[c.ka] = { rec: 0, mat: 0, rw: 0, wRec: 0, wMat: 0, wRw: 0, big: 0 });
+    const mult = task === "mat" && Number(r.amount) > 1e9 ? TASK_W.big : 1; if (mult > 1) x.big++;
+    x[task]++; x["w" + task[0].toUpperCase() + task.slice(1)] += TASK_W[task] * mult;
+  }
+  const kas = Object.keys(per).map((ka) => ({ ka, name: kaLabel(ka), ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw, n: per[ka].rec + per[ka].mat + per[ka].rw })).sort((a, b) => b.total - a.total);
+  $("subTask").textContent = `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Received ×${fmtNum(TASK_W.rec, 1)}, Matching ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Matching of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed in Allocation settings.`;
+  $("lgTask").innerHTML = [["Received (Seq 3)", "var(--s1)"], ["Matching (Seq 8)", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
+  barChartH($("chTask"), kas.map((k) => `${k.name} (${k.n} CPRs)`), [
+    { name: "Received", color: "var(--s1)", values: kas.map((k) => k.wRec) },
+    { name: "Matching", color: "var(--s2)", values: kas.map((k) => k.wMat) },
+    { name: "Rework", color: "var(--s3, #8e5bd8)", values: kas.map((k) => k.wRw) }
+  ], { stacked: true, dec: 1, label: "Weighted task load per KA" });
+  renderTable($("tblTask"), [
+    { key: "name", label: "Key Account" },
+    { key: "rec", label: "Received (Seq 3)", num: true, render: (r) => fmtInt(r.rec) },
+    { key: "mat", label: "Matching (Seq 8)", num: true, render: (r) => fmtInt(r.mat) + (r.big ? ` (${r.big} > Rp1 M)` : "") },
+    { key: "rw", label: "Rework", num: true, render: (r) => fmtInt(r.rw) },
+    { key: "n", label: "CPRs held", num: true, render: (r) => fmtInt(r.n) },
+    { key: "total", label: "Weighted load", num: true, render: (r) => fmtNum(r.total, 1) }
+  ], kas);
 }
 // ---------- capacity per KA (% of a full CPR-review load) ----------
 let CAPACITY = {};   // ka -> percent (missing = 100)
