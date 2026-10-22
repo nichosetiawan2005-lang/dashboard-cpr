@@ -1090,7 +1090,7 @@ function applySummary(sum) {
       if (r.stage === "At Key Account (Sequence 8)" && r.backOut === null) { r.back = null; r.backAt = null; }
       r.stage = "Waiting for " + x.waiting.join(", "); r.stageSince = r.lastAct;
       const us = HIST_USER_STEPS[String(x.waiting[0]).toLowerCase()];
-      if (us) r.pos = `Sequence ${seqOfRole(HIST_ROLE_SEQS, us, (r.lastSeq ?? 0) + 1)} : ${us}`;
+      if (us) { const [role, q] = roleForUser(us, (r.lastSeq ?? 0) + 1); r.pos = `Sequence ${q} : ${role}`; }
     }
     finishRec(r);
   }
@@ -1117,7 +1117,7 @@ function ovRows() {
   // the catalogue, or (for data uploaded before it existed) the queue records
   const base = CATALOG.size ? [...CATALOG.values()] : RECS.filter((r) => r.hstatus).map((r) => ({ cpr: r.cpr, unit: r.unit, subject: r.vendorName, status: r.hstatus, create: r.create, lastAct: r.lastAct, stage: r.stage, erp: r.erp, waiting: r.waiting }));
   const live = new Map(RECS.map((r) => [r.cpr, r])), alloc = SIM ? new Map(SIM.assigned.map((c) => [c.r.cpr, c])) : new Map();
-  return base.map((x) => { const r = live.get(x.cpr), c = alloc.get(x.cpr); return { ...x, stage: (r && r.stage) || x.stage, pos: (r && r.pos) || x.pos || null, erp: x.erp || (r && r.erp) || null, ka: c ? c.ka : null, inQueue: !!r }; });
+  return base.map((x) => { const r = live.get(x.cpr), c = alloc.get(x.cpr); return { ...x, stage: (r && r.stage) || x.stage, pos: (r && posLabel(r)) || x.pos || null, erp: x.erp || (r && r.erp) || null, ka: c ? c.ka : null, inQueue: !!r }; });
 }
 function renderLateAlert() {
   const items = SIM ? actionItems().filter((x) => x.type === "late" || x.type === "pre" || x.type === "post") : [];
@@ -1247,7 +1247,8 @@ function pivotHistory(rows) {
     for (let i = 0; i + 1 < appr.length; i++) if (sq(appr[i + 1]) > sq(appr[i])) bump(nextCount, roleKey(appr[i]), pretty(appr[i + 1]));
   }
   const top = (m) => (m ? [...m].sort((a, b) => b[1] - a[1])[0][0] : null);
-  const userSteps = {}; for (const [u, m] of userStepCount) userSteps[u] = top(m);
+  // a user can approve in more than one role (e.g. Purchasing Head HU at one unit, Purchasing Head HO in other flows): keep up to 3, most used first
+  const userSteps = {}; for (const [u, m] of userStepCount) userSteps[u] = [...m].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([role]) => role);
   // the sequence numbers each role usually has (a role can sit at different numbers in different approval flows)
   const roleSeqs = {}; for (const [role, m] of roleSeqCount) { const tot = [...m.values()].reduce((a, b) => a + b, 0); roleSeqs[role] = [...m].filter(([, n]) => n >= Math.max(3, tot * 0.02)).map(([q]) => q).sort((a, b) => a - b); }
   const seqFor = (role, minSeq) => seqOfRole(roleSeqs, role, minSeq);
@@ -2151,6 +2152,31 @@ function workStats(list) {
 let HIST_KA_USERS = new Set();   // users that mainly approve KA steps in CPRHistory (stored in settings/kausers)
 let HIST_USER_STEPS = {};         // user -> the role they usually approve as (stored in settings/kausers)
 let HIST_ROLE_SEQS = {};          // role -> the sequence numbers it usually has (stored in settings/kausers)
+// usual sequence numbers when no CPRHistory with this information has been uploaded yet (from the 2023-2026 history)
+const DEFAULT_ROLE_SEQS = { "Accounting Unit": [1], "Accounting HO": [1], "Purchasing Head HU": [2], "Key Account HO": [3], "Division Head": [3, 4], "Group Head": [4], "FC Unit": [5], "FC HO": [5],
+  "CEO Unit": [6], "Managing Director": [6], "Budget Controller": [7], "FC Archetype": [7], "CEO Archetype": [8], "Purchasing HO": [8, 10], "Purchasing Head HO": [9, 11], "Purchasing Director": [10, 12] };
+const titleRole = (v) => String(v || "").trim().toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase()).replace(/\bHo\b/g, "HO").replace(/\bHu\b/g, "HU").replace(/\bFc\b/g, "FC").replace(/\bCeo\b/g, "CEO");
+// "Sequence N : Role" for a CPR: read at upload (r.pos), else derived from the stored position text
+function posLabel(r) {
+  if (!r) return null;
+  if (r.pos) return r.pos;
+  const st = String(r.stage || ""), seqs = { ...DEFAULT_ROLE_SEQS, ...HIST_ROLE_SEQS };
+  const first = (role) => (seqs[role] || [])[0];
+  let m;
+  if ((m = /^At Key Account \(Sequence (\d+)\)/.exec(st))) return m[1] === "3" ? `Sequence ${first("Key Account HO") ?? 3} : Key Account HO` : `Sequence ${first("Purchasing HO") ?? 8} : Purchasing HO`;
+  if ((m = /^At Key Account – Rework/.exec(st))) return `Sequence ${first("Purchasing HO") ?? 8} : Purchasing HO – Rework`;
+  if (/^Draft/.test(st)) return "Sequence 0 : Requester (Draft)";
+  if (/^Returned to requester/.test(st)) return "Sequence 0 : Requester";
+  if ((m = /^With (.+)$/.exec(st))) { const role = titleRole(m[1]); return first(role) !== undefined ? `Sequence ${first(role)} : ${role}` : null; }
+  if ((m = /^Waiting for (.+)$/.exec(st))) { const u = m[1].split(",")[0].trim().toLowerCase(), us = HIST_USER_STEPS[u]; if (!us) return null; const [role, q] = roleForUser(us, (r.lastSeq ?? 0) + 1); return `Sequence ${q} : ${role}`; }
+  return null;
+}
+// the user's role that fits a step at or after minSeq (the most used one when none fits)
+function roleForUser(us, minSeq) {
+  const roles = Array.isArray(us) ? us : [us], seqs = { ...DEFAULT_ROLE_SEQS, ...HIST_ROLE_SEQS };
+  for (const role of roles) { const q = (seqs[role] || []).find((x) => x >= minSeq); if (q !== undefined) return [role, q]; }
+  return [roles[0], seqOfRole(seqs, roles[0], minSeq)];
+}
 // the first usual sequence number of a role at or after minSeq (minSeq when the role is unknown)
 function seqOfRole(map, role, minSeq) { const q = (map[role] || []).find((x) => x >= minSeq); return q ?? minSeq; }
 const userKa = (u) => { if (!u) return null; const ka = poKa({ ka: u, kaName: null }).ka; return (META.kaList || []).includes(ka) || kaNameOf(u) || HIST_KA_USERS.has(String(u).toLowerCase()) ? ka : null; };
@@ -3045,7 +3071,7 @@ function progressStatus(c) {
   if (IGNORED[r.cpr]) return ["Dismissed", "muted"];
   if (p && isRejected(p)) return ["Rejected", "muted"];
   if (isInactive(r)) return ["Inactive (no progress > 30 days)", "muted"];
-  const pos = r.pos || null;   // "Sequence N : Role" read from CPRHistory / CPRSummary
+  const pos = posLabel(r);   // "Sequence N : Role" read from CPRHistory / CPRSummary
   if (inRework(r)) return [pos || "At KA – Rework", "warn"];
   if (r.erp && /^po/i.test(r.erp)) return ["Completed (PO)", "good"];
   if (r.erp) return ["PR created", "good"];
@@ -3338,7 +3364,7 @@ function actionItems() {
     // without a progress update after the CPR entered KA, its status is unknown: not a problem yet
     if (!r.prog || D === null || D < (r.kaIn ?? r.create)) continue;
     if (IGNORED[r.cpr]) { out.push({ c, type: "ignored", days: 0, status: `Dismissed ${fmtStamp(IGNORED[r.cpr].at)}`, where: "–", canMove: false }); continue; }
-    const where = r.stage ? `${r.stage}${r.stageSince !== null && r.stageSince !== undefined ? " since " + fmtShort(r.stageSince) : ""}` : "–";
+    const where = posLabel(r) || r.stage ? `${posLabel(r) || r.stage}${r.stageSince !== null && r.stageSince !== undefined ? " since " + fmtShort(r.stageSince) : ""}` : "–";
     if (r.kaIn !== null && r.kaOut === null) {
       const d = D - r.kaIn; if (d > 3) out.push({ c, type: "late", days: d, status: `Sequence 3 not completed after ${d} days`, where: "Key Account HO", canMove: true });
     } else if (r.kaIn === null) {
