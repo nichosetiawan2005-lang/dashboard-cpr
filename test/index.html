@@ -338,8 +338,6 @@ body.locked #loginForm .btn { width: 100%; }
         <button class="btn ghost" id="sReset" type="button" hidden>Reallocate all</button>
       </div>
       <details class="capbox" id="capBox"><summary>KA capacity for CPR review (%)</summary><div class="sub">Lower it for a KA with other work that is not in the system (e.g. creating POs, pipeline work). 50% = about half the CPRs of a KA at 100%, and half the daily limit; 0% = no new CPRs. Applies to CPRs allocated from now on.</div><div class="capgrid" id="capGrid"></div></details>
-      <details class="capbox" id="twBox"><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Matching about 2.4–3× Received, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
-        <div class="capgrid"><label>Received (Seq 3)<input type="number" id="twRec" min="0" step="0.1"></label><label>Matching (Seq 8)<input type="number" id="twMat" min="0" step="0.1"></label><label>Rework<input type="number" id="twRw" min="0" step="0.1"></label><label>× CPR &gt; Rp1 M<input type="number" id="twBig" min="1" step="0.1"></label></div></details>
       <p class="note" id="runInfo" style="font-weight:500;color:var(--fg)"></p>
       <p class="note" id="simNote"></p>
     </div>
@@ -347,7 +345,6 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="tiles" id="simTiles"></div>
     <p class="note" id="simCompare"></p>
     <div id="simResults"><div class="card" style="margin-top:12px"><h3 id="hKaCount">Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
-    <div class="card" style="margin-top:12px" id="cardTask" hidden><h3>Current task load per KA (weighted)</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div></div>
     <div class="card" style="margin-top:12px" id="cardKaDone" hidden><h3>Completed CPRs per KA</h3><div class="sub">History only: CPRs the KA has finished (PR / PO created, fully approved or Sequence 8 approved). Not counted as workload.</div><div class="chart" id="chKaDone"></div></div>
     <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. Status is read from CPRHistory (every approval step); details and follow-up actions are available in Supervisor Control.</p></div>
     <div class="filters" id="incFilters" style="margin:0 0 10px">
@@ -381,6 +378,9 @@ body.locked #loginForm .btn { width: 100%; }
     <p class="note" id="kaNote"></p>
     <div class="section-title"><h2>Average KA processing time per CPR</h2><p>Sequence 3 = from receipt by the KA until approval. Sequence 8 = from the CPR's return to the KA until approval. Time spent waiting for other approvers is excluded.</p></div>
     <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Sequence 3</span><span><i style="background:var(--s2)"></i>Sequence 8</span></div><div class="chart" id="chKa"></div></div>
+    <div class="section-title"><h2>Current task load</h2><p>CPRs each KA is holding right now (Received = Sequence 3, Matching = Sequence 8, Rework), weighted by how heavy each task is.</p></div>    <div class="card" id="cardTask" hidden><h3>Current task load per KA (weighted)</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div>
+      <details class="capbox" id="twBox"><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Matching about 2.4–3× Received, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
+        <div class="capgrid"><label>Received (Seq 3)<input type="number" id="twRec" min="0" step="0.1"></label><label>Matching (Seq 8)<input type="number" id="twMat" min="0" step="0.1"></label><label>Rework<input type="number" id="twRw" min="0" step="0.1"></label><label>× CPR &gt; Rp1 M<input type="number" id="twBig" min="1" step="0.1"></label></div></details></div>
     <div class="section-title"><h2>Rework per KA</h2><p>Rework = Purchasing Head HO or Purchasing Director sends the CPR back to the KA for correction after Sequence 8. Rework rate = CPRs sent back ÷ CPRs the KA approved at Sequence 8 in the period. Lower is better.</p></div>
     <div class="tiles" id="rwTiles"></div>
     <div class="card" style="margin-top:12px"><h3>Rework rate per KA (%)</h3><div class="sub">In brackets: CPRs sent back / CPRs approved at Sequence 8.</div><div class="chart" id="chRw"></div></div>
@@ -2128,6 +2128,7 @@ function realKa(r) {
   return (META.kaList || []).find((n) => u.includes(n.toLowerCase())) || r.ka;
 }
 function renderKa() {
+  try { syncTw(); renderTaskLoad(); } catch (e) {}
   const view = loadView();
   $("lblPo").hidden = SB && !IS_ADMIN;
   if (RECS.some((r) => r.hstatus)) return renderKaFromHistory(view);
@@ -3841,7 +3842,7 @@ function renderTaskLoad() {
     x[task]++; x["w" + task[0].toUpperCase() + task.slice(1)] += TASK_W[task] * mult;
   }
   const kas = Object.keys(per).map((ka) => ({ ka, name: kaLabel(ka), ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw, n: per[ka].rec + per[ka].mat + per[ka].rw })).sort((a, b) => b.total - a.total);
-  $("subTask").textContent = `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Received ×${fmtNum(TASK_W.rec, 1)}, Matching ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Matching of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed in Allocation settings.`;
+  $("subTask").textContent = `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Received ×${fmtNum(TASK_W.rec, 1)}, Matching ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Matching of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed below the table.`;
   $("lgTask").innerHTML = [["Received (Seq 3)", "var(--s1)"], ["Matching (Seq 8)", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
   barChartH($("chTask"), kas.map((k) => `${k.name} (${k.n} CPRs)`), [
     { name: "Received", color: "var(--s1)", values: kas.map((k) => k.wRec) },
