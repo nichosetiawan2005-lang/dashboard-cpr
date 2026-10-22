@@ -1101,6 +1101,8 @@ function applySummary(sum) {
 function dataKaUser(r) {
   for (const u of [r.ka8User, r.ka3User]) if (u && userKa(u)) return u;
   if (r.waiting) { const users = kaUsers(); const u = String(r.waiting).split(",").find((x) => users.has(x)); if (u) return u; }
+  // the KA step was approved by someone outside the KA team (e.g. a Purchasing Head HO): that already happened, so it stays with them
+  for (const u of [r.ka8User, r.ka3User]) if (u) return u;
   return null;
 }
 const dataKa = (r) => { const u = dataKaUser(r); if (!u) return null; const ch = kaChange(u); if (ch && !r.done) return ch.to; return poKa({ ka: u, kaName: null }).ka; };
@@ -2908,7 +2910,11 @@ function simulate() {
     const saved = useLocks() ? LOCKED.get(r.cpr) : null;
     // the KA in the data (already processing the CPR) is fixed; otherwise a transfer (by SPV or automatic) overrides the original assignment
     const fromData = META.hasKa ? null : dataKa(r);
-    const lock = fromData ? { ka: fromData, rule: "Diproses KA", weight: 1, fixed: true } : tr ? { ka: tr.to, rule: "Dialihkan", weight: 1 } : saved;
+    // already at KA according to CPRHistory, but the holder is not in the data (only CPRSummary names it): the hospital PIC is presumed,
+    // because the CPR has already been routed; it is not allocated again by workload
+    const presumed = !fromData && !META.hasKa && r.kaIn !== null && !r.done && pic[r.unit] && kaList.includes(pic[r.unit]) ? pic[r.unit] : null;
+    const lock = fromData ? { ka: fromData, rule: "Diproses KA", weight: 1, fixed: true } : tr ? { ka: tr.to, rule: "Dialihkan", weight: 1 } : saved && !(presumed && saved.rule !== "Sudah di KA" && saved.on > r.kaIn) ? saved : presumed ? { ka: presumed, rule: "Sudah di KA", weight: 1 } : saved;
+    // (a KA saved by the DSS only counts if it was chosen before the CPR reached KA; chosen afterwards it was only a guess)
     const replacedFrom = fromData && !r.done && kaChange(dataKaUser(r)) ? String(dataKaUser(r)).toLowerCase() : null;
     const [lo, hi] = f1Range(r);
     const c = {
@@ -2929,7 +2935,7 @@ function simulate() {
     push(byCreate, r.create, c); if (r.kaIn !== null) push(byArrive, r.kaIn, c); if (r.kaOut !== null) push(byKaOut, r.kaOut, c); const backW = r.backFirst ?? r.back; if (backW !== null && backW !== undefined) push(byBack, backW, c);
   }
   const vendorHolder = (vendor, day) => { if (!hasVendor(vendor)) return null; for (const x of byVendor.get(vendor) || []) if (holding(x, day)) return x.ka; return null; };
-  const rules = { "Diproses KA": 0, "Vendor sama": 0, "PIC unit": 0, "Beban terendah": 0, "Dialihkan": 0, "Exception": 0 };
+  const rules = { "Diproses KA": 0, "Sudah di KA": 0, "Vendor sama": 0, "PIC unit": 0, "Beban terendah": 0, "Dialihkan": 0, "Exception": 0 };
   for (let day = minDay; day <= maxActual + 60; day++) {
     for (const c of byCreate.get(day) || []) {
       const days = activeDays(c);
@@ -3077,9 +3083,9 @@ function incRows() {
     .filter((c) => !q || [c.r.cpr, c.unit, c.vendor, c.r.vendorName, kaLabel(c.ka), kaLabel(c.r.ka)].join(" ").toLowerCase().includes(q))
     .sort((a, b) => a.r.create - b.r.create || a.r.cpr.localeCompare(b.r.cpr));
 }
-const ruleKind = { "Diproses KA": "muted", "Vendor sama": "info", "PIC unit": "good", "Beban terendah": "warn", "Dialihkan": "serious", "Exception": "bad" };
+const ruleKind = { "Diproses KA": "muted", "Sudah di KA": "muted", "Vendor sama": "info", "PIC unit": "good", "Beban terendah": "warn", "Dialihkan": "serious", "Exception": "bad" };
 // rule names are stored in Indonesian (saved allocations use them); this is how they are shown
-const RULE_LABEL = { "Diproses KA": "Processed by KA (from data)", "Vendor sama": "Same vendor", "PIC unit": "Hospital PIC", "Beban terendah": "Lowest workload", "Dialihkan": "Reassigned", "Exception": "Exception" };
+const RULE_LABEL = { "Diproses KA": "Processed by KA (from data)", "Sudah di KA": "Already at KA (hospital PIC presumed)", "Vendor sama": "Same vendor", "PIC unit": "Hospital PIC", "Beban terendah": "Lowest workload", "Dialihkan": "Reassigned", "Exception": "Exception" };
 const ruleLabel = (r) => RULE_LABEL[r] || r;
 const byLabel = (b) => (b === "Otomatis" ? "Automatic" : b === "SPV" ? "Supervisor" : b);
 // short progress status of a CPR (details and follow-up notes stay in Supervisor Control)
