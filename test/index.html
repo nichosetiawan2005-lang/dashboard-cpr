@@ -2881,15 +2881,42 @@ function simulate() {
   // days the KA holds the CPR: Sequence 3, Sequence 8 and every rework (returned by Purchasing Head HO / Director)
   // a step ends on its ACTUAL approval date when the data has it: a completed CPR leaves the KA's workload the day after;
   // a step not yet approved is assumed to take the usual duration (median Sequence 3 / Sequence 8 days)
+  const DD = dataDate();   // latest date in the uploaded data = "today" of the data
+  // CPRs the KA is holding now leave the queue in order (oldest first) at the KA's usual pace:
+  // approvals per working day over the last 30 days. A KA with a long queue stays busy for more days.
+  const holdEnd = new Map(), kaPace = {};
+  if (DD !== null) {
+    const cnt = {}; const addA = (u, d) => { const k = u && userKa(u); if (k && d !== null && d !== undefined && d > DD - 30 && d <= DD) cnt[k] = (cnt[k] || 0) + 1; };
+    for (const r of RECS) { addA(r.ka3User, r.kaOut); addA(r.ka8User, r.backOutFirst ?? r.backOut); }
+    for (const k of Object.keys(cnt)) kaPace[k] = Math.max(1, cnt[k] / 22);
+    const queues = new Map();
+    for (const r of test) {
+      if (r.done || isInactive(r) || IGNORED[r.cpr]) continue;
+      const back = r.backFirst ?? r.back, out8 = r.backOutFirst ?? r.backOut;
+      const since = inRework(r) ? r.stageSince : r.kaIn !== null && r.kaOut === null ? r.kaIn : back !== null && back !== undefined && (out8 === null || out8 === undefined) ? back : null;
+      const ka = since !== null && since !== undefined ? dataKa(r) : null; if (!ka) continue;
+      if (!queues.has(ka)) queues.set(ka, []); queues.get(ka).push([since, r.cpr]);
+    }
+    for (const [ka, q] of queues) { q.sort((a, b) => a[0] - b[0]); const pace = kaPace[ka] || 1; q.forEach(([, cpr], i) => holdEnd.set(cpr, DD + Math.floor(i / pace))); }
+  }
+  const heldUntil = (r) => holdEnd.get(r.cpr) ?? DD;
+  const reworkEnd = (r, e) => (e.end ?? (DD !== null && inRework(r) ? Math.max(e.start, heldUntil(r)) : e.start));
   const setEnds = (c) => {
     const r = c.r; if (!r) { c.e1 = c.s1 + c.w1 - 1; c.e2 = c.s2 + c.w2 - 1; return; }
     const out8 = r.backOutFirst ?? r.backOut;
     c.e1 = r.kaOut !== null && r.kaOut >= c.s1 ? r.kaOut : c.s1 + c.w1 - 1;
     c.e2 = out8 !== null && out8 !== undefined && out8 >= c.s2 ? out8 : c.s2 + c.w2 - 1;
+    // the KA is holding it right now (received, not approved yet): it stays in the KA's workload until the KA approves.
+    // Once approved, the CPR moves on to the other approvers and leaves the KA's workload until it comes back for Sequence 8.
+    if (DD !== null && !r.done) {
+      if (r.kaIn !== null && r.kaOut === null) c.e1 = Math.max(c.e1, heldUntil(r));
+      const back = r.backFirst ?? r.back;
+      if (back !== null && back !== undefined && (out8 === null || out8 === undefined)) c.e2 = Math.max(c.e2, heldUntil(r));
+    }
     // finished CPR (PR/PO created, fully approved, Sequence 8 approved): nothing counts after its last activity
     if (r.done && !inRework(r)) { const fin = Math.max(...[r.kaOut, r.backOut, out8, r.lastAct].filter((x) => x !== null && x !== undefined), c.s1); c.e1 = Math.min(c.e1, fin); c.e2 = Math.min(c.e2, fin); }
   };
-  const activeDays = (c) => { const out = new Set(); if (c.e1 === undefined) setEnds(c); for (let d = c.s1; d <= c.e1; d++) out.add(off(d)); for (let d = c.s2; d <= c.e2; d++) out.add(off(d)); for (const e of c.rw || []) for (let d = e.start; d <= (e.end ?? e.start); d++) out.add(off(d)); return [...out].filter((x) => x >= 0 && x < nDays); };
+  const activeDays = (c) => { const out = new Set(); if (c.e1 === undefined) setEnds(c); for (let d = c.s1; d <= c.e1; d++) out.add(off(d)); for (let d = c.s2; d <= c.e2; d++) out.add(off(d)); for (const e of c.rw || []) for (let d = e.start; d <= reworkEnd(c.r, e); d++) out.add(off(d)); return [...out].filter((x) => x >= 0 && x < nDays); };
   const add = (L, c, sign) => { if (c.r && (IGNORED[c.r.cpr] || isInactive(c.r))) return; // dismissed by SPV or inactive: no load for the KA
     const a = L[kaIdx.get(c.ka)]; for (const d of activeDays(c)) a[d] += sign * c.weight; };
   const lastDay = (c) => (c.e2 !== undefined ? Math.max(c.e2, c.s2) : c.s2 + c.w2 - 1);
