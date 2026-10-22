@@ -1157,7 +1157,7 @@ function renderOverview() {
     { key: "subject", label: "Description", sortable: false, render: (x) => el("div", { class: "cellwrap" }, x.subject || "–") },
     { key: "create", label: "Created", sortable: false, render: (x) => fmtDay(x.create) },
     { key: "status", label: "Status", sortable: false, render: (x) => pill(x.status || "–", kind(x.status)) },
-    { key: "stage", label: "Current position", sortable: false, render: (x) => el("div", { class: "cellwrap" }, /^approved$/i.test(x.status || "") ? "Fully approved" : x.pos || x.stage || (x.waiting ? "Waiting for " + x.waiting.split(",").join(", ") : "–")) },
+    { key: "stage", label: "Current position", sortable: false, render: (x) => el("div", { class: "cellwrap" }, /^approved$/i.test(x.status || "") ? (x.erp ? "Done · " + (/^po/i.test(x.erp) ? "PO" : "PR") + " created" : "Done · Fully approved") : x.pos || x.stage || (x.waiting ? "Waiting for " + x.waiting.split(",").join(", ") : "–")) },
     { key: "lastAct", label: "Last activity", sortable: false, render: (x) => fmtDay(x.lastAct) },
     { key: "ka", label: "Key Account", sortable: false, render: (x) => (x.ka ? kaLabel(x.ka) : "–") },
     { key: "erp", label: "ERP ID (PR / PO)", sortable: false, render: (x) => x.erp || "–" }
@@ -3082,13 +3082,16 @@ function progressStatus(c) {
   const r = c.r, p = r.prog;
   if (IGNORED[r.cpr]) return ["Dismissed", "muted"];
   if (p && isRejected(p)) return ["Rejected", "muted"];
+  // finished CPRs: "Done" so it is clear they are no longer the KA's workload
+  if (!inRework(r)) {
+    if ((r.erp && /^po/i.test(r.erp)) || (p && p.po !== null)) return ["Done · PO created", "good"];
+    if (r.erp) return ["Done · PR created", "good"];
+    if (/^approved$/i.test(r.hstatus || "")) return ["Done · Fully approved", "good"];
+    if (r.backOut !== null) return ["Done · Sequence 8 approved", "good"];
+  }
   if (isInactive(r)) return ["Inactive (no progress > 30 days)", "muted"];
   const pos = posLabel(r);   // "Sequence N : Role" read from CPRHistory / CPRSummary
   if (inRework(r)) return [pos || "At KA – Rework", "warn"];
-  if (r.erp && /^po/i.test(r.erp)) return ["Completed (PO)", "good"];
-  if (r.erp) return ["PR created", "good"];
-  if (p && p.po !== null) return ["Completed (PO)", "good"];
-  if (r.backOut !== null) return ["Sequence 8 completed", "good"];
   if (!p) return ["No update yet", "muted"];
   if (r.kaIn === null) return [pos || "Before KA", "warn"];
   if (r.kaOut === null) return [pos || "At KA – Sequence 3", "info"];
