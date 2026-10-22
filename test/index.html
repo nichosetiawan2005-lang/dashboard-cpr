@@ -378,6 +378,10 @@ body.locked #loginForm .btn { width: 100%; }
     <p class="note" id="kaNote"></p>
     <div class="section-title"><h2>Average KA processing time per CPR</h2><p>Sequence 3 = from receipt by the KA until approval. Sequence 8 = from the CPR's return to the KA until approval. Time spent waiting for other approvers is excluded.</p></div>
     <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Sequence 3</span><span><i style="background:var(--s2)"></i>Sequence 8</span></div><div class="chart" id="chKa"></div></div>
+    <div class="section-title"><h2>Rework per KA</h2><p>Rework = Purchasing Head HO or Purchasing Director sends the CPR back to the KA for correction after Sequence 8. Rework rate = CPRs sent back ÷ CPRs the KA approved at Sequence 8 in the period. Lower is better.</p></div>
+    <div class="tiles" id="rwTiles"></div>
+    <div class="card" style="margin-top:12px"><h3>Rework rate per KA (%)</h3><div class="sub">In brackets: CPRs sent back / CPRs approved at Sequence 8.</div><div class="chart" id="chRw"></div></div>
+    <div class="tbl-wrap" style="margin-top:12px"><table id="tblRw"></table></div>
     <div class="section-title"><h2>By KA</h2><p>Workload = number of CPRs under review on a given working day.</p></div>
     <div class="tbl-wrap"><table id="tblKa"></table></div>
     <details class="more">
@@ -2210,14 +2214,15 @@ function renderKaFromHistory(view) {
   if (!$("poFrom").value || !$("poTo").value) { const D = dataDate(); if (D !== null) { $("poTo").value = dayToIso(D); $("poFrom").value = dayToIso(D - 90); } }
   const from = isoToDay($("poFrom").value), to = isoToDay($("poTo").value);
   const inP = (d) => d !== null && d !== undefined && (from === null || d >= from) && (to === null || d <= to);
-  const g = new Map(); const get = (ka) => { if (!g.has(ka)) g.set(ka, { s3: [], s8: [], ev: [], rework: 0 }); return g.get(ka); };
+  const g = new Map(); const get = (ka) => { if (!g.has(ka)) g.set(ka, { s3: [], s8: [], ev: [], rework: 0, rwCpr: new Set(), byH: 0, byD: 0, fix: [], open: 0 }); return g.get(ka); };
   let n3 = 0, n8 = 0, unknown = 0;
   for (const r of RECS) {
     if (!r.hstatus) continue;
     if (inP(r.kaOut) && r.kaIn !== null) { const ka = userKa(r.ka3User); if (ka) { const x = get(ka); x.s3.push({ d: r.kaOut - r.kaIn, h: hoursBetween(r.kaInAt, r.kaOutAt) }); x.ev.push(r.kaOut); n3++; } else unknown++; }
     const b8 = r.backOutFirst ?? null, a8 = r.backFirst ?? r.back;
     if (inP(b8) && a8 !== null && a8 !== undefined) { const ka = userKa(r.ka8User); if (ka) { const x = get(ka); x.s8.push({ d: b8 - a8, h: hoursBetween(r.backFirstAt ?? r.backAt, r.backOutFirstAt ?? r.backOutAt) }); x.ev.push(b8); n8++; } else unknown++; }
-    for (const e of reworkList(r)) if (inP(e.start)) { const ka = userKa(r.ka8User || r.kaUser); if (ka) get(ka).rework++; }
+    for (const e of reworkList(r)) if (inP(e.start)) { const ka = userKa(r.ka8User || r.kaUser); if (!ka) continue; const x = get(ka);
+      x.rework++; x.rwCpr.add(r.cpr); if (e.who === "Purchasing Director") x.byD++; else x.byH++; if (e.end !== null) x.fix.push(e.end - e.start); else x.open++; }
   }
   if (view) for (const ka of SIM.kaList) get(ka);
   $("poInfo").textContent = `${fmtInt(n3)} Sequence 3 approvals and ${fmtInt(n8)} Sequence 8 approvals between ${$("poFrom").value ? fmtDay(from) : "–"} and ${$("poTo").value ? fmtDay(to) : "–"}.` + (unknown ? ` ${fmtInt(unknown)} steps without a recognised KA user are excluded.` : "");
@@ -2228,7 +2233,7 @@ function renderKaFromHistory(view) {
     const pd = [...perDay.values()], lv = view && view.perKa[ka];
     return { ka, name: kaLabel(ka), n: x.s3.length, n8: x.s8.length, r1avg: r1, r2avg: r2, totAvg: r1 !== null && r2 !== null ? r1 + r2 : null,
       r1h: median(x.s3.map((y) => y.h)), r2h: median(x.s8.map((y) => y.h)), perDay: mean(pd), perDayP90: quantile(pd, 0.9),
-      rework: x.rework, reworkRate: x.s8.length ? (x.rework / x.s8.length) * 100 : null, loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null };
+      rework: x.rework, rwCprs: x.rwCpr.size, byH: x.byH, byD: x.byD, fixAvg: mean(x.fix), fixList: x.fix, rwOpen: x.open, reworkRate: x.s8.length ? (x.rwCpr.size / x.s8.length) * 100 : null, loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null };
   }).sort((a, b) => (b.totAvg ?? 0) - (a.totAvg ?? 0));
   const withWork = rows.filter((r) => r.n + r.n8 > 0);
   barChartH($("chKa"), withWork.map((r) => `${r.name} (${r.n}/${r.n8})`), [
@@ -2245,12 +2250,37 @@ function renderKaFromHistory(view) {
     { key: "r2h", label: "Sequence 8 (hours, median)", num: true, render: (r) => fmtNum(r.r2h) },
     { key: "totAvg", label: "Total Seq. 3 + Seq. 8 (days)", num: true, render: (r) => fmtNum(r.totAvg) },
     { key: "rework", label: "Rework (returned by PH HO / Director)", num: true, render: (r) => fmtInt(r.rework) },
-    { key: "reworkRate", label: "Rework per Seq. 8 approved (%)", num: true, render: (r) => (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 0)) },
+    { key: "reworkRate", label: "Rework rate (% of Seq. 8 approved)", num: true, render: (r) => (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 0)) },
     { key: "perDay", label: "Approvals/day (avg)", num: true, render: (r) => fmtNum(r.perDay) },
     { key: "perDayP90", label: "Busiest day (P90)", num: true, render: (r) => fmtNum(r.perDayP90, 0) },
     { key: "loadAvg", label: "Avg workload/day", num: true, render: (r) => fmtNum(r.loadAvg) }
   ], rows, kaSort);
+  renderRework(rows);
   renderLoadTable(view);
+}
+// how often each KA's CPRs are sent back by Purchasing Head HO / Purchasing Director
+function renderRework(rows) {
+  const list = rows.filter((r) => r.n8 > 0 || r.rework > 0).sort((a, b) => (b.reworkRate ?? -1) - (a.reworkRate ?? -1));
+  const tot8 = list.reduce((a, r) => a + r.n8, 0), totRw = list.reduce((a, r) => a + r.rwCprs, 0), totEv = list.reduce((a, r) => a + r.rework, 0);
+  const allFix = list.flatMap((r) => r.fixList);
+  $("rwTiles").replaceChildren(
+    tile("Rework rate (all KAs)", tot8 ? fmtNum((totRw / tot8) * 100, 1) : "–", "%", `${fmtInt(totRw)} of ${fmtInt(tot8)} CPRs approved at Sequence 8 were sent back`),
+    tile("Rework events", fmtInt(totEv), "", `by Purchasing Head HO ${fmtInt(list.reduce((a, r) => a + r.byH, 0))} · by Purchasing Director ${fmtInt(list.reduce((a, r) => a + r.byD, 0))}`),
+    tile("Still in rework", fmtInt(list.reduce((a, r) => a + r.rwOpen, 0)), "CPRs", "sent back and not yet approved again by the KA"),
+    tile("Average time to fix", allFix.length ? fmtNum(mean(allFix)) : "–", "days", "from the return to the KA until the KA approves again")
+  );
+  barChartH($("chRw"), list.map((r) => `${r.name} (${r.rwCprs}/${r.n8})`), [{ name: "Rework rate (%)", color: "var(--s2)", values: list.map((r) => r.reworkRate ?? 0) }], { dec: 1, label: "Rework rate per KA (%)" });
+  renderTable($("tblRw"), [
+    { key: "name", label: "Key Account" },
+    { key: "n8", label: "Sequence 8 approved", num: true, render: (r) => fmtInt(r.n8) },
+    { key: "rwCprs", label: "CPRs sent back", num: true, render: (r) => fmtInt(r.rwCprs) },
+    { key: "reworkRate", label: "Rework rate (%)", num: true, render: (r) => (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 1)) },
+    { key: "rework", label: "Rework events", num: true, render: (r) => fmtInt(r.rework) },
+    { key: "byH", label: "By Purchasing Head HO", num: true, render: (r) => fmtInt(r.byH) },
+    { key: "byD", label: "By Purchasing Director", num: true, render: (r) => fmtInt(r.byD) },
+    { key: "fixAvg", label: "Avg time to fix (days)", num: true, render: (r) => fmtNum(r.fixAvg) },
+    { key: "rwOpen", label: "Still in rework", num: true, render: (r) => fmtInt(r.rwOpen) }
+  ], list);
 }
 function renderKaFromPo(view) {
   const from = isoToDay($("poFrom").value), to = isoToDay($("poTo").value);
