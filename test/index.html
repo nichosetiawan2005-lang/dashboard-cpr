@@ -216,7 +216,7 @@ details.more[open] > summary::before { content: "▾ "; }
 body.checking .top, body.checking .wrap { visibility: hidden; }
 /* no data yet: show only the upload checklist (no sample names) */
 body.no-data .tabs, body.no-data .panel, body.no-data #globalFilters, body.no-data #modeBanner, body.no-data #sampleBanner,
-body.no-data #lblCpr, body.no-data #lblProg, body.no-data #lblPic, body.no-data #picKeepWrap { display: none !important; }   /* uploads are in the checklist instead */
+body.no-data #lblCpr, body.no-data #lblPic, body.no-data #picKeepWrap { display: none !important; }   /* uploads are in the checklist instead */
 #emptyCard { margin-top: 16px; padding: 24px; }
 #emptySteps { list-style: none; padding: 0; margin: 12px 0 0; }
 #emptySteps li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--line); font-size: 14px; }
@@ -249,11 +249,6 @@ body.locked #loginForm .btn { width: 100%; }
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
           Upload CPR Queue (CPRHistory)
           <input type="file" id="fileCpr" accept=".xlsx,.xls,.csv" multiple>
-        </label>
-        <label class="file-btn" for="fileProg" id="lblProg" title="Optional: adds the PO creation date and Completed (PO) status. CPR progress itself is read from CPRHistory.">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
-          PO Data (optional)
-          <input type="file" id="fileProg" accept=".xlsx,.xls,.csv" multiple>
         </label>
         <label class="file-btn" for="filePic" id="lblPic">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
@@ -322,7 +317,7 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="tiles" id="simTiles"></div>
     <p class="note" id="simCompare"></p>
     <div id="simResults"><div class="card" style="margin-top:12px"><h3>Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
-    <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. Status is read from CPRHistory (every approval step); PO Data only adds the PO date; details and follow-up actions are available in Supervisor Control.</p></div>
+    <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. Status is read from CPRHistory (every approval step); details and follow-up actions are available in Supervisor Control.</p></div>
     <div class="filters" id="incFilters" style="margin:0 0 10px">
       <div class="field"><label for="incStatus">Status</label><select id="incStatus"></select></div>
       <div class="field"><label for="incKa">Key Account</label><select id="incKa"></select></div>
@@ -378,7 +373,7 @@ body.locked #loginForm .btn { width: 100%; }
       <button class="btn ghost" id="actIgnoreAll" type="button" hidden>Dismiss all shown</button>
     </div>
     <div class="tbl-wrap" style="max-height:460px;overflow:auto"><table id="tblAct"></table></div>
-    <p class="note">"Inactive" = a CPR that has not reached Sequence 3 and shows no activity (no approval step in CPRHistory, no stage change in PO Data) for more than 30 days, typically still in Draft, returned to the requester, or abandoned. It is marked automatically, is not counted as KA workload, and its data is kept; it becomes active again as soon as a new upload shows activity. Inactive CPRs are excluded from "All active items". Select "Dismiss" to remove any CPR from this list and from the KA workload by hand; it can be restored at any time.</p>
+    <p class="note">"Inactive" = a CPR that has not reached Sequence 3 and shows no activity (no approval step in CPRHistory) for more than 30 days, typically still in Draft, returned to the requester, or abandoned. It is marked automatically, is not counted as KA workload, and its data is kept; it becomes active again as soon as a new upload shows activity. Inactive CPRs are excluded from "All active items". Select "Dismiss" to remove any CPR from this list and from the KA workload by hand; it can be restored at any time.</p>
     <p class="note">Rule: a CPR can be reassigned at any stage. The reassignment form shows the CPR's current stage: after Sequence 3 is completed, the new KA handles Sequence 8. Automatic reassignments (absence, workload limit) still apply only to CPRs on which work has not started.</p>
 
     <div class="card" id="trCard" hidden style="margin-top:12px;border-color:var(--accent)">
@@ -1270,7 +1265,7 @@ function renderAuth() {
   $("authUser").textContent = ACCESS === "admin" ? "Access: administrator" : ACCESS === "view" ? "Access: view only" : "";
   $("btnLogin").textContent = ACCESS !== "none" ? "Sign out" : "Enter access code";
   // only admins upload
-  $("lblCpr").hidden = !IS_ADMIN; $("lblPic").hidden = !IS_ADMIN; $("lblProg").hidden = !IS_ADMIN; renderPicControl();
+  $("lblCpr").hidden = !IS_ADMIN; $("lblPic").hidden = !IS_ADMIN; renderPicControl();
   // view-only code: only CPR Allocation and KA Performance are shown
   const viewOnly = ACCESS === "view";
   for (const t of VIEW_HIDDEN_TABS) $("tab-" + t).hidden = viewOnly;
@@ -1527,7 +1522,7 @@ $("btnResetAlloc").addEventListener("click", async () => {
   try { setStatus("Clearing previous allocation …"); await logEvent({ type: "Reallocate all", cpr: LOCKED.size, note: `${fmtInt(LOCKED.size)} saved assignments cleared and reallocated (confirmed with administrator code)` }); await clearAlloc(); await runSimulation(); } catch (err) { setStatus("Failed: " + (err.message || err.code)); }
 });
 $("btnClearSaved").addEventListener("click", async () => {
-  if (!DB || !(await confirmWithCode("Delete all stored data?", "The CPR queue, PO Data, Hospital PIC List, allocations, absences and dismissed CPRs will be deleted. The activity log and reassignment log are kept. This cannot be undone.", "Delete all data"))) return;
+  if (!DB || !(await confirmWithCode("Delete all stored data?", "The CPR queue, forecast history, Hospital PIC List, allocations, absences and dismissed CPRs will be deleted. The activity log and reassignment log are kept. This cannot be undone.", "Delete all data"))) return;
   try {
     setStatus("Deleting stored data …");
     // the activity log and the reassignment log are history: they are kept, and the deletion itself is recorded
@@ -1811,19 +1806,7 @@ async function updateProgress(file, rows, opts = {}) {
   if (SIM) await runSimulation({ save: false });
   return `Progress as of ${progressDate() !== null ? fmtDay(progressDate()) : "–"}: ${fmtInt(inWorklot.length)} queued CPRs found, ${fmtInt(changed)} changed stage, ${fmtInt(finished)} completed. ${fmtInt(noUpdate)} queued CPRs are not yet in PO Data.${saved}`;
 }
-$("fileProg").addEventListener("change", async (e) => {
-  const file = pickFiles(e.target.files); if (!file) return;
-  setStatus(`Reading ${file.name} …`);
-  try {
-    const { rows, columns } = await readWorkbook(file);
-    const need = [COL.cpr, COL.kaIn, COL.kaOut].filter((c) => !columns.includes(c));
-    if (need.length) { setStatus(`The progress file cannot be used: column(s) ${need.map((c) => `"${c}"`).join(", ")} not found. Please use a PO Data export.`); e.target.value = ""; return; }
-    if (columns.includes(PO_COL.po)) await loadKinerjaFile(file, rows, columns); // also feeds Kinerja KA
-    else setStatus(await updateProgress(file, rows));
-    renderAll();
-  } catch (err) { setStatus(`The file could not be read: ${err.message}.`); }
-  e.target.value = "";
-});
+// (PO Data upload removed: CPR progress comes from CPRHistory)
 for (const id of ["poFrom", "poTo"]) $(id).addEventListener("change", () => renderKa());
 
 function realKa(r) {
@@ -2349,7 +2332,7 @@ async function loadModelChoice() { if (!DB) return; try { const d = await DB.doc
 // Forecast settings card (Evaluation tab)
 function renderFcSettings() {
   $("fcHistInfo").textContent = TRAIN.size
-    ? `Forecast history in use: ${TRAIN_META && TRAIN_META.fileName ? TRAIN_META.fileName : "stored history"} · ${fmtInt(TRAIN.size)} CPRs${TRAIN_META && TRAIN_META.savedAt ? " · uploaded " + fmtStamp(TRAIN_META.savedAt) : ""}. It changes only when a new file is uploaded with "Upload forecast history" below (the new file replaces it); "PO Data (optional)" does not change the forecast.`
+    ? `Forecast history in use: ${TRAIN_META && TRAIN_META.fileName ? TRAIN_META.fileName : "stored history"} · ${fmtInt(TRAIN.size)} CPRs${TRAIN_META && TRAIN_META.savedAt ? " · uploaded " + fmtStamp(TRAIN_META.savedAt) : ""}. It changes only when a new file is uploaded with "Upload forecast history" below (the new file replaces it).`
     : "No forecast history yet: upload CPR_Cleaned with \"Upload forecast history\".";
   if (!$("fcModel").options.length) { $("fcModel").append(el("option", { value: "auto" }, "Automatic (lowest validation MAE)")); for (const c of CANDIDATES) $("fcModel").append(el("option", { value: `${c.family}|${c.setting}` }, `${c.family} (${c.setting})`)); }
   $("fcFrom").value = FC_SET.from || ""; $("fcOnlyNew").checked = !!FC_SET.onlyNew; $("fcMonths").value = String(FC_SET.months || 3);
@@ -2669,7 +2652,7 @@ function renderSim() {
     list.append(
       step(!!PIC_LIST || META.hasKa, PIC_LIST ? `Hospital PIC List: ${fmtInt(Object.keys(PIC_LIST).length)} hospitals` : META.hasKa ? "Hospital PIC List (optional for this data)" : "Upload the Hospital PIC List (list of KAs)"),
       step(!IS_SAMPLE, IS_SAMPLE ? "Upload the CPR Queue (CPRHistory)" : `CPR Queue: ${fmtInt(RECS.length)} CPRs from ${META.fileName || "file"}`),
-      step(PO_RECS.length > 0, PO_RECS.length ? `PO Data (progress, performance and forecast history): ${fmtInt(PO_RECS.length)} CPRs` : "Upload PO Data (progress, KA performance and forecast history)"),
+      step(TRAIN.size > 0, TRAIN.size ? `Forecast history (CPR_Cleaned): ${fmtInt(TRAIN.size)} CPRs` : "Upload the forecast history (CPR_Cleaned) in Evaluation → Forecast settings"),
       step(false, "Set the period and workload limit above, then select Run allocation")
     );
     const card = el("div", { class: "card", style: "grid-column:1/-1" });
@@ -2694,7 +2677,7 @@ function renderSim() {
   const warn = $("histWarn");
   warn.hidden = !!(s.models && s.models.f1);
   warn.replaceChildren(el("div"));
-  warn.firstChild.innerHTML = `<b>The forecast model is not active yet.</b> The models learn from the PO Data / CPR_Cleaned history stored for forecasting, and fewer than 100 usable CPRs are stored (data uploaded before this version is not included). Estimates now use the median per hospital, which can be much longer than the model. Please upload <b>CPR_Cleaned</b> (2023–2026 history, the same file as the analysis notebook) and the latest <b>PO Data</b> again, then select Run allocation.`;
+  warn.firstChild.innerHTML = `<b>The forecast model is not active yet.</b> The models learn from the CPR_Cleaned history stored for forecasting, and fewer than 100 usable CPRs are stored (data uploaded before this version is not included). Estimates now use the median per hospital, which can be much longer than the model. Please upload <b>CPR_Cleaned</b> (2023–2026 history, the same file as the analysis notebook) and the latest <b>PO Data</b> again, then select Run allocation.`;
   const lg = (items) => items.map(([name, c]) => `<span><i style="background:${c}"></i>${name}</span>`).join("");
   const kas = s.kaList.slice().sort((a, b) => (s.dssCount[b] || 0) - (s.dssCount[a] || 0));
   $("subKaCount").textContent = s.actual ? "DSS allocation compared with the actual allocation" : "DSS allocation";
