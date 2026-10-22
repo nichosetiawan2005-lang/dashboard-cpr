@@ -154,6 +154,10 @@ td.cellwrap { white-space: normal; min-width: 130px; max-width: 180px; }
 .steps .notes div + div { margin-top: 2px; } .steps .notes b { font-weight: 600; }
 @media (max-width: 560px) { .steps::before { left: 6px; } .steps li { grid-template-columns: 0 18px 1fr; } .steps .t { display: none; } .steps .card2 { grid-template-columns: 40px 1fr; } .steps .right { grid-row: auto; grid-column: 2; flex-direction: row; align-items: center; justify-content: flex-start; } .steps .when-m { display: block; } }
 .steps .when-m { display: none; font-size: 11.5px; color: var(--muted); }
+.steps .est { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; margin-top: 4px; padding: 6px 8px; border-radius: 6px; background: var(--info-bg); }
+.steps .est span b { font-weight: 600; } .steps .est .late { color: var(--bad); font-weight: 600; } .steps .est .early { color: var(--good); font-weight: 600; }
+.steps li.future .card2 { border-style: dashed; background: transparent; } .steps li.future .dot { background: var(--panel); box-shadow: 0 0 0 2px var(--line-strong); }
+.steps .badge.future { background: transparent; color: var(--muted); } .steps .badge.now { background: var(--info-bg); color: var(--accent-ink); }
 .tr-head { padding: 18px 20px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; }
 .tr-head h3 { font-family: var(--font-data); font-size: 15px; }
 .tr-sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
@@ -482,9 +486,9 @@ body.locked #loginForm .btn { width: 100%; }
 <dialog id="track" aria-labelledby="trTitle">
   <div class="tr-head"><div><h3 id="trTitle"></h3><div class="tr-sub" id="trSub"></div><div class="tr-meta" id="trMeta"></div></div>
     <button class="btn ghost" type="button" id="trClose" style="align-self:flex-start;padding:4px 10px">Close</button></div>
-  <div class="tr-body"><ol class="tl" id="trLine"></ol>
-    <div class="section-title" style="margin:6px 0 4px"><h2 style="font-size:14px">Assignment history</h2></div><ul class="tr-hist" id="trHist"></ul>
-    <div class="section-title" style="margin:14px 0 4px"><h2 style="font-size:14px">Approval steps (CPRHistory)</h2></div><ol class="steps" id="trSteps"></ol></div>
+  <div class="tr-body"><ol class="tl" id="trLine" hidden></ol>
+    <div class="section-title" style="margin:2px 0 4px"><h2 style="font-size:14px">Approval steps (CPRHistory)</h2></div><ol class="steps" id="trSteps"></ol>
+    <div class="section-title" style="margin:14px 0 4px"><h2 style="font-size:14px">Assignment history</h2></div><ul class="tr-hist" id="trHist"></ul></div>
 </dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -1059,8 +1063,11 @@ function pivotHistory(rows) {
     const approvedRows = list.filter((x) => toStamp(x[HCOL.approve])).sort((x, y) => (toStamp(x[HCOL.approve]) < toStamp(y[HCOL.approve]) ? -1 : 1));
     const lastApproved = approvedRows[approvedRows.length - 1] || null;
     const inReview = !/approved|draft/i.test(status);
+    // only when that approval is the very last thing that happened (no resubmission / revision after it)
+    const latestEvent = list.flatMap((x) => [toStamp(x[HCOL.submit]), toStamp(x[HCOL.approve])]).filter(Boolean).sort().slice(-1)[0] || null;
+    const lastIsApproval = !!(lastApproved && toStamp(lastApproved[HCOL.approve]) >= latestEvent);
     let atKa = null;
-    if (inReview && lastApproved && !kaRows.length && PRE_SEQ3_ROLES.has(normRole(lastApproved[HCOL.role]))) { kaInAt = toStamp(lastApproved[HCOL.approve]); atKa = 3; }
+    if (inReview && lastIsApproval && !kaRows.length && PRE_SEQ3_ROLES.has(normRole(lastApproved[HCOL.role]))) { kaInAt = toStamp(lastApproved[HCOL.approve]); atKa = 3; }
     // REWORK = Purchasing Head HO or Purchasing Director sends the CPR back (Revise To). When it goes back to
     // Purchasing HO / Key Account, the KA works on it again: start = that return, end = the KA's next approval.
     const LATE = { "purchasing head ho": "H", "purchasing director": "D" };
@@ -1078,7 +1085,7 @@ function pivotHistory(rows) {
     let backAt = null;
     if (phoDone) backAt = list.filter((x) => !isPurchHo(x)).map((x) => toStamp(x[HCOL.approve])).filter((t) => t && t < phoDone).sort().slice(-1)[0] || maxOf(phoRows, HCOL.submit);
     else if (phoRows.length) backAt = maxOf(phoRows, HCOL.submit);
-    else if (inReview && kaOutAt && lastApproved && PRE_SEQ8_ROLES.has(normRole(lastApproved[HCOL.role]))) { backAt = toStamp(lastApproved[HCOL.approve]); atKa = 8; }
+    else if (inReview && kaOutAt && lastIsApproval && PRE_SEQ8_ROLES.has(normRole(lastApproved[HCOL.role]))) { backAt = toStamp(lastApproved[HCOL.approve]); atKa = 8; }
     // where is the CPR now?
     let stage = null, stageAt = null;
     const pending = list.filter((x, i) => !toStamp(x[HCOL.approve]) && toStamp(x[HCOL.submit]) && !(i === 0 && normRole(x[HCOL.role]) === "requester"));
@@ -2704,11 +2711,27 @@ async function renderSteps(cpr) {
   const rows = await loadSteps(cpr);
   if ($("trTitle").textContent !== cpr) return;   // another CPR was opened meanwhile
   if (!rows || !rows.length) { box.replaceChildren(el("li", { class: "note", style: "display:block" }, "No approval steps stored for this CPR yet. Upload its CPRHistory to see every step here.")); return; }
+  const c = findAssigned(cpr), r0 = c ? c.r : null, D = dataDate();
+  // estimated (forecast) vs actual for the two KA steps
+  const estArr = c ? c.predArrival : null, actArr = r0 ? actualArrival(r0) : null;
+  const estBack = c ? (r0.kaOut !== null ? r0.kaOut : (actArr ?? estArr) + c.w1) + c.f2 : null, actBack = r0 ? (r0.backFirst ?? r0.back) : null;
+  const diffTxt = (act, est) => { const d = act - est; return d === 0 ? el("span", { class: "early" }, "on the estimated day") : el("span", { class: d > 0 ? "late" : "early" }, `${Math.abs(d)} day${Math.abs(d) === 1 ? "" : "s"} ${d > 0 ? "later" : "earlier"} than estimated`); };
+  const estLine = (label, est, act, range) => {
+    const e = el("div", { class: "est" });
+    const a = el("span"); a.append(el("b", {}, `Estimated ${label}: `), document.createTextNode(est !== null && est !== undefined ? fmtDay(est) + (range ? ` (range ${range})` : "") : "–")); e.append(a);
+    const b = el("span"); b.append(el("b", {}, `Actual: `), document.createTextNode(act !== null && act !== undefined ? fmtDay(act) : "not yet")); e.append(b);
+    if (act !== null && act !== undefined && est !== null && est !== undefined) e.append(diffTxt(act, est));
+    else if (est !== null && est !== undefined && D !== null && est < D && !(r0 && r0.done)) e.append(el("span", { class: "late" }, "overdue"));
+    return e;
+  };
+  const range3 = c && c.f1Lo !== null && c.f1Lo !== undefined ? `${fmtDay(r0.create + c.f1Lo)} – ${fmtDay(r0.create + c.f1Hi)}` : null;
+  const lastKaIdx = rows.reduce((m, x, i) => (normRole(x[1]).replace(/[^a-z]/g, "").includes("keyaccount") ? i : m), -1);
+  const firstPhoIdx = rows.findIndex((x) => normRole(x[1]).replace(/[^a-z]/g, "") === "purchasingho");
   const time = (x) => x[4] || x[3] || "";
   const list = rows.map((x, i) => ({ x, i })).sort((a, b) => (time(a.x) < time(b.x) ? -1 : time(a.x) > time(b.x) ? 1 : (Number(a.x[0]) - Number(b.x[0])) || a.i - b.i));
   const pretty = (v) => String(v || "").replace(/\b\w/g, (ch) => ch.toUpperCase()).replace(/\bHo\b/g, "HO").replace(/\bHu\b/g, "HU").replace(/\bFc\b/g, "FC").replace(/\bCeo\b/g, "CEO");
   let first = true; const returnedAt = new Map();   // role -> time it was sent back to that role (revise / rework)
-  box.replaceChildren(...list.map(({ x }) => {
+  const items = list.map(({ x, i }) => {
     const [seq, role, user, submit, approve, revise, consult, nReq, nAppr, nCons] = x;
     const r = normRole(role), key = r.replace(/[^a-z]/g, "");
     const isSubmit = first && r === "requester" && !approve; first = false;
@@ -2739,9 +2762,27 @@ async function renderSteps(cpr) {
     const wm = el("div", { class: "when-m" }, `${fmtStampDay(stamp)} ${fmtStampTime(stamp)}`); card.append(wm);
     const notes = [["Req note", nReq], ["Approver note", nAppr], ["Consult note", nCons]].filter(([, v]) => v);
     if (notes.length) { const n = el("div", { class: "notes" }); for (const [k, v] of notes) { const d = el("div"); d.append(el("b", {}, k + ": "), document.createTextNode(v)); n.append(d); } card.append(n); }
+    if (c && i === lastKaIdx) card.append(estLine("arrival at KA", estArr, actArr, range3));
+    if (c && i === firstPhoIdx) card.append(estLine("return to KA", estBack, actBack, null));
     li.append(t, el("span", { class: "dot" }), card);
     return li;
-  }));
+  });
+  // KA steps not in the export yet: the CPR is at KA now (the export has no row for the current holder) or still to come
+  const future = (seq, title, label, est, act, range, now) => {
+    const li = el("li", { class: "future ka" });
+    const t = el("div", { class: "t" }, now ? fmtDay(act) : est !== null ? fmtDay(est) : ""); t.append(el("small", {}, now ? "since" : "estimated"));
+    const card = el("div", { class: "card2" });
+    const sq = el("div", { class: "seq" }); sq.append(el("small", {}, "SEQ"), document.createTextNode(seq));
+    const right = el("div", { class: "right" }); right.append(el("span", { class: "badge " + (now ? "now" : "future") }, now ? "At KA now" : "Estimated"));
+    const actor = el("div", { class: "actor" }, "Key Account: "); actor.append(el("b", {}, c ? kaLabel(c.ka) : "–"));
+    card.append(sq, el("div", { class: "role" }, title), right, actor, estLine(label, est, act, range));
+    li.append(t, el("span", { class: "dot" }), card); return li;
+  };
+  if (c && !(r0 && /^approved$/i.test(r0.hstatus || ""))) {
+    if (lastKaIdx < 0) items.push(future(3, "Key Account HO · KA Sequence 3", "arrival at KA", estArr, actArr, range3, actArr !== null));
+    if (firstPhoIdx < 0) items.push(future(8, "Purchasing HO · KA Sequence 8", "return to KA", estBack, actBack, null, actBack !== null));
+  }
+  box.replaceChildren(...items);
 }
 /* ---------- CPR tracking panel: click a CPR number to see its journey ---------- */
 const cprLink = (cpr) => Object.assign(el("button", { class: "linkbtn", type: "button", title: "Track this CPR" }, cpr), { onclick: () => openTrack(cpr) });
