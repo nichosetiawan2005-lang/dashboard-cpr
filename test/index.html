@@ -13,20 +13,8 @@
   --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --radius: 10px;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #0e1013; --panel: #171a1f; --fg: #eef0f3; --muted: #b3bac5; --faint: #7f8794;
-  --line: #2a2f37; --line-strong: #3a414b; --accent: #3987e5; --accent-ink: #86b6ef;
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-  --good: #3cc23c; --warn: #f2b53a; --serious: #ec835a; --bad: #e66767;
-  --good-bg: #16301a; --warn-bg: #33290f; --serious-bg: #35201a; --bad-bg: #371b1b; --info-bg: #15263d;
-  color-scheme: dark } }
-:root[data-theme="dark"] {
-  --bg: #0e1013; --panel: #171a1f; --fg: #eef0f3; --muted: #b3bac5; --faint: #7f8794;
-  --line: #2a2f37; --line-strong: #3a414b; --accent: #3987e5; --accent-ink: #86b6ef;
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-  --good: #3cc23c; --warn: #f2b53a; --serious: #ec835a; --bad: #e66767;
-  --good-bg: #16301a; --warn-bg: #33290f; --serious-bg: #35201a; --bad-bg: #371b1b; --info-bg: #15263d;
-  color-scheme: dark }
+/* light theme only (requested): no dark mode */
+:root { color-scheme: light; }
 
 body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px; line-height: 1.45; }
 .wrap { max-width: 1280px; margin: 0 auto; padding-inline: 16px; padding-block: 0 40px; }
