@@ -3582,8 +3582,16 @@ function renderSpv() {
     { key: "reason", label: "Reason", sortable: false },
     { key: "note", label: "Notes", sortable: false, render: (t) => t.note || "" },
     { key: "by", label: "By", sortable: false, render: (t) => pill(byLabel(t.by), t.by === "SPV" ? "info" : "muted") },
-    { key: "arch", label: "", sortable: false, render: (t) => (isArchived(t) ? pill("Before data deletion", "muted") : "") }
+    { key: "res", label: "Result", sortable: false, render: (t) => trResult(t) }
   ], TRANSFERS.slice().reverse());
+}
+// what happened to a reassigned CPR: "Done : By <KA who finished it>" or its current step
+function trResult(t) {
+  const r = RECS.find((x) => x.cpr === t.cpr);
+  if (!r) return pill("Not in the current data", "muted");
+  const c = SIM ? SIM.assigned.find((x) => x.r.cpr === t.cpr) : null;
+  if (r.done) { const who = dataKa(r) || (c && c.ka) || t.to; return pill(`Done : By ${kaLabel(who)}`, "good"); }
+  const [txt, kind] = progressStatus(c || { r }); return pill(txt, kind);
 }
 function openTransfer(cpr) {
   $("trCard").hidden = false; $("trMsg").textContent = ""; $("trNote").value = "";
