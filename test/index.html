@@ -3273,7 +3273,7 @@ async function renderSteps(cpr) {
     const t = el("div", { class: "t" }, fmtStampDay(stamp)); t.append(el("small", {}, fmtStampTime(stamp)));
     const card = el("div", { class: "card2" });
     const sq = el("div", { class: "seq" }); sq.append(el("small", {}, "SEQ"), document.createTextNode(seq ?? "–"));
-    const roleLbl = el("div", { class: "role" }, pretty(role) + (key.includes("keyaccount") ? " · KA Sequence 3" : key === "purchasingho" ? " · KA Sequence 8" : ""));
+    const roleLbl = el("div", { class: "role" }, pretty(role));
     const actor = el("div", { class: "actor" }, "Actor: "); actor.append(el("b", {}, user || "System"));
     const right = el("div", { class: "right" }); right.append(el("span", { class: "badge " + kind }, badge));
     // time spent at this step: from its Submit Date, or - when the step was sent back to this role for revision/rework -
@@ -3304,8 +3304,8 @@ async function renderSteps(cpr) {
     li.append(t, el("span", { class: "dot" }), card); return li;
   };
   if (c && !(r0 && /^approved$/i.test(r0.hstatus || ""))) {
-    if (lastKaIdx < 0) items.push(future(3, "Key Account HO · KA Sequence 3", "arrival at KA", estArr, actArr, range3, actArr !== null));
-    if (firstPhoIdx < 0) items.push(future(8, "Purchasing HO · KA Sequence 8", "return to KA", estBack, actBack, null, actBack !== null));
+    if (lastKaIdx < 0) items.push(future(3, "Key Account HO", "arrival at KA", estArr, actArr, range3, actArr !== null));
+    if (firstPhoIdx < 0) items.push(future(8, "Purchasing HO", "return to KA", estBack, actBack, null, actBack !== null));
   }
   box.replaceChildren(...items);
 }
