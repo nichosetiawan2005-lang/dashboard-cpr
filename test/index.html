@@ -3201,7 +3201,8 @@ function renderSim() {
     tile("CPRs allocated", fmtInt(s.n), "", `created ${fmtDay(s.start)} – ${fmtDay(s.end)}`),
     tile("Key Accounts", fmtInt(currentKas(s.kaList).length), "people", `average of ${fmtNum(s.n / (currentKas(s.kaList).length || 1), 0)} CPRs per KA`),
     useLocks() ? tile("New CPRs allocated", fmtInt(fresh), "", "in the latest run; other CPRs keep their KA") : tile("Peak workload", fmtNum(s.dss.highest), "CPRs", `one KA in one day · limit ${fmtNum(s.maxPerDay)}`),
-    tile("Supervisor decision required", fmtInt(s.rules.Exception), "CPRs", s.rules.Exception ? "No KA has sufficient capacity" : "All CPRs fit within the workload limit")
+    (() => { const nEx = s.assigned.filter((c) => c.rule === "Exception" && (!c.locked || c.isNewAssign) && !c.r.done && !isInactive(c.r)).length;   // only CPRs allocated in this run and still open
+      return tile("Supervisor decision required", fmtInt(nEx), "CPRs", nEx ? "No KA had enough capacity in this run: please check them in the CPR list (Rule: Exception)" : "All new CPRs fit within the workload limit"); })()
   );
   $("simCompare").textContent = s.actual
     ? `Compared with the actual allocation, the workload gap between the busiest and least busy KA decreased from ${fmtNum(s.actual.gap)} to ${fmtNum(s.dss.gap)} CPRs per day (${fmtNum(((s.actual.gap - s.dss.gap) / s.actual.gap) * 100, 0)}% more balanced).`
