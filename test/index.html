@@ -436,8 +436,8 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="card">
       <div class="filters" style="border:0;padding:0;margin:0" id="absForm">
         <div class="field"><label for="absKa">KA</label><select id="absKa"></select></div>
-        <div class="field"><label for="absFrom">From</label><input type="date" id="absFrom"></div>
-        <div class="field"><label for="absTo">To</label><input type="date" id="absTo"></div>
+        <div class="field"><label for="absFrom">From</label><input type="date" id="absFrom" title="Today or later"></div>
+        <div class="field"><label for="absTo">To</label><input type="date" id="absTo" title="Today or later"></div>
         <div class="field"><label for="absReason">Reason</label><select id="absReason"><option>Leave</option><option>Sick</option><option>Business travel</option><option>Other</option></select></div>
         <button class="btn" type="button" id="absAdd">Add</button>
       </div>
@@ -899,6 +899,9 @@ async function readWorkbook(file) {
   return { rows, columns: header.map((h) => String(h).trim()) };
 }
 
+// warn before leaving the page while an upload is still being saved
+let SAVING = false;
+window.addEventListener("beforeunload", (e) => { if (SAVING) { e.preventDefault(); e.returnValue = ""; } });
 $("fileCpr").addEventListener("change", async (e) => {
   const file = pickFiles(e.target.files); if (!file) return;
   const fromSetup = !$("emptyCard").hidden;
@@ -951,7 +954,8 @@ $("fileCpr").addEventListener("change", async (e) => {
     renderAll();
     let saved = "";
     if (DB) {
-      setStatus(`${fmtInt(RECS.length)} CPRs read. Saving …`);
+      setStatus(`${fmtInt(RECS.length)} CPRs read. Saving … please keep this page open until "Saved" appears.`);
+      SAVING = true;
       try {
         await saveData(); await saveCatalog();
         $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPRs · saved ${fmtStamp(SAVED_AT)}`;
@@ -960,11 +964,15 @@ $("fileCpr").addEventListener("change", async (e) => {
         const now = new Set(RECS.map((r) => r.cpr)), gone = [...before].filter((c) => !now.has(c)).length;
         await logEvent({ type: "Data CPR", file: file.name, rows: rows.length, cpr: inFile, baru: fresh, lama: inFile - fresh, hilang: gone, total: RECS.length });
         renderAll();
-      } catch (err) { saved = ` Data could not be saved: ${saveErrorText(err)}.`; }
+      } catch (err) { saved = ` Data could not be saved: ${saveErrorText(err)}.`; } finally { SAVING = false; }
     }
+    // warnings: what this upload could not tell
+    const warns = [];
+    if (META.format === "history" && !sumRows.length) warns.push("No CPRSummary in this upload: the KA now holding each CPR and the ERP ID (PR / PO, \"Completed\") are not updated. Upload the CPRSummary too.");
+    if (PIC_LIST) { const noPic = [...new Set(RECS.filter((r) => !before.has(r.cpr) && r.unit).map((r) => r.unit))].filter((u) => !picNameFor(u)); if (noPic.length) warns.push(`Hospital(s) not in the Hospital PIC List: ${noPic.slice(0, 8).join(", ")}${noPic.length > 8 ? " …" : ""}. Their CPRs are allocated by workload only; add them to the PIC List.`); }
     const nNew = RECS.filter((r) => !before.has(r.cpr)).length;
     const addNote = hadData ? ` Added to existing data: ${fmtInt(nNew)} new CPRs and ${fmtInt(inFile - nNew)} existing CPRs (updated, KA unchanged). Total: ${fmtInt(RECS.length)} CPRs; the allocation period has been extended to ${$("sFrom").value} – ${$("sTo").value}.` : "";
-    setStatus(`${fmtInt(inFile)} CPRs read from ${file.name}.${saved}${fmtNote}${addNote} Select "Run allocation" to assign CPRs that do not yet have a KA.`);
+    setStatus(`${warns.length ? "⚠ " + warns.join(" ⚠ ") + " " : ""}${fmtInt(inFile)} CPRs read from ${file.name}.${saved}${fmtNote}${addNote} Select "Run allocation" to assign CPRs that do not yet have a KA.`);
   } catch (err) { setStatus(`The file could not be read: ${err.message}. Please re-save it as .xlsx and upload it again.`); }
   e.target.value = "";
 });
@@ -1713,8 +1721,12 @@ async function saveAbsences() { await DB.doc("spv/absences").set({ items: ABSENC
 function lastDeleteAt() { let at = ""; for (const x of UPLOAD_LOG) if (x.type === "Data deleted" && x.at > at) at = x.at; return at; }
 const isArchived = (t) => { const cut = lastDeleteAt(); return !!cut && t.at <= cut; };
 const activeTransfers = () => TRANSFERS.filter((t) => !isArchived(t));
-function lastTransfers() { const m = new Map(); for (const t of activeTransfers()) m.set(t.cpr, t); return m; }
-function isAbsent(ka, day) { return ABSENCES.some((a) => a.ka === ka && day >= a.from && day <= a.to); }
+function lastTransfers() { const m = new Map(); for (const t of activeTransfers()) if (!staleAuto(t)) m.set(t.cpr, t); return m; }
+// an absence only changes CPRs from the day it was entered (no sudden changes to work that already happened)
+const enteredDay = (a) => (a.at ? toDay(new Date(a.at)) : -Infinity);
+function isAbsent(ka, day) { return ABSENCES.some((a) => a.ka === ka && day >= a.from && day <= a.to && day >= enteredDay(a)); }
+// an automatic "absent" reassignment made after that absence had already ended is not applied
+const staleAuto = (t) => t.by !== "SPV" && /absent/i.test(t.reason || "") && !ABSENCES.some((a) => a.ka === t.from && a.to >= toDay(new Date(t.at)));
 function absenceFor(ka, d1, d2) { return ABSENCES.find((a) => a.ka === ka && a.from <= d2 && a.to >= d1) || null; }
 
 // ---------- upload history: one document "log/uploads" with the latest 500 events ----------
@@ -2947,11 +2959,14 @@ function simulate() {
   let autoMax;
   if (META.hasKa) {
     actualTbl = table(actualL, workDaysUntil(Math.max(end, ...test.map((r) => r.back))));
-    autoMax = Math.round((quantile(actualTbl.flat(), 0.9) || 5) * 10) / 10;
+    autoMax = Math.ceil(quantile(actualTbl.flat(), 0.9) || 5);
   } else {
     // no real load to learn from: twice the average load per KA per working day
+    // days a KA holds one CPR = Sequence 3 (received -> approved) + Sequence 8 (returned -> approved), from the history
     const nWork = workDaysUntil(end).length || 1;
-    autoMax = Math.max(2, Math.round(((test.length * (w1 + w2)) / (nWork * kaList.length)) * 2 * 10) / 10);
+    const holds = (hist.length ? hist : test).map((r) => (r.kaIn !== null && r.kaOut !== null ? r.kaOut - r.kaIn + 1 : w1) + ((r.backFirst ?? r.back) != null && (r.backOutFirst ?? r.backOut) != null ? (r.backOutFirst ?? r.backOut) - (r.backFirst ?? r.back) + 1 : w2)).filter((x) => x > 0 && x < 60);
+    const holdDays = mean(holds) ?? (w1 + w2);
+    autoMax = Math.max(2, Math.ceil(((test.length * holdDays) / (nWork * kaList.length)) * 2));
   }
   const maxPerDay = userMax > 0 ? userMax : autoMax;
   // DSS: assign once at creation using forecast dates, then move to real dates as they happen
@@ -3522,6 +3537,7 @@ function renderSpv() {
   const kas = SIM ? SIM.kaList : META.kaList || [];
   const fill = (sel, withAll) => { const cur = sel.value; sel.replaceChildren(...(withAll ? [el("option", { value: "" }, "All KAs")] : []), ...kas.map((k) => el("option", { value: k }, kaLabel(k)))); if ([...sel.options].some((o) => o.value === cur)) sel.value = cur; };
   fill($("actKa"), true); fill($("absKa"), false);
+  { const t = dayToIso(toDay(new Date())); $("absFrom").min = t; $("absTo").min = t; }
   const today = toDay(new Date()), D = dataDate();
   $("spvNote").textContent = SIM ? "" : "Please run the allocation in the CPR Allocation tab first so that the action list can be calculated.";
   $("asOfNote").textContent = progressDate() !== null
@@ -3579,14 +3595,14 @@ function renderSpv() {
     { key: "unit", label: "Hospital", sortable: false, render: (t) => t.unit || "–" },
     { key: "from", label: "From", sortable: false, render: (t) => kaLabel(t.from) },
     { key: "to", label: "To", sortable: false, render: (t) => kaLabel(t.to) },
-    { key: "reason", label: "Reason", sortable: false },
-    { key: "note", label: "Notes", sortable: false, render: (t) => t.note || "" },
+    { key: "reason", label: "Reason", wrap: true, sortable: false, render: (t) => el("div", { class: "cellwrap", style: "max-width:320px" }, t.reason + (t.note ? ` · ${t.note}` : "")) },
     { key: "by", label: "By", sortable: false, render: (t) => pill(byLabel(t.by), t.by === "SPV" ? "info" : "muted") },
     { key: "res", label: "Result", sortable: false, render: (t) => trResult(t) }
   ], TRANSFERS.slice().reverse());
 }
 // what happened to a reassigned CPR: "Done : By <KA who finished it>" or its current step
 function trResult(t) {
+  if (staleAuto(t)) return pill("Not applied: absence had already ended", "muted");
   const r = RECS.find((x) => x.cpr === t.cpr);
   if (!r) return pill("Not in the current data", "muted");
   const c = SIM ? SIM.assigned.find((x) => x.r.cpr === t.cpr) : null;
@@ -3635,6 +3651,9 @@ $("trSave").addEventListener("click", async () => {
 $("absAdd").addEventListener("click", async () => {
   const ka = $("absKa").value, from = isoToDay($("absFrom").value), to = isoToDay($("absTo").value) ?? from;
   if (!ka || from === null) { setStatus("Please enter the KA and the absence dates."); return; }
+  // only today or later: an absence in the past would suddenly move CPRs that were already handled
+  const todayD = toDay(new Date());
+  if (from < todayD || to < todayD) { setStatus(`An absence can only start today (${fmtDay(todayD)}) or later. Past absences cannot be entered, so CPRs that were already handled do not change.`); return; }
   const a = { ka, from: Math.min(from, to), to: Math.max(from, to), reason: $("absReason").value, at: new Date().toISOString() };
   try {
     ABSENCES.push(a); await saveAbsences();
