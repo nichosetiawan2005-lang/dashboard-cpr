@@ -229,7 +229,20 @@ body.no-data #lblCpr, body.no-data #lblPic, body.no-data #picKeepWrap { display:
 .alertbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--warn); border-left-width: 4px; border-radius: 8px; background: var(--card, transparent); font-size: 13.5px; }
 .alertbar b { font-weight: 600; } .alertbar .grow { flex: 1 1 auto; } .alertbar a { cursor: pointer; text-decoration: underline; color: inherit; }
 .tab .cnt { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 6px; border-radius: 9px; background: var(--warn); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
-.capbox { margin-top: 10px; } .capbox summary { cursor: pointer; font-weight: 600; font-size: 13.5px; } .capbox .sub { margin: 6px 0; }
+.capbox { margin-top: 10px; }
+.updlg { border: 1px solid var(--line-strong); border-radius: 12px; padding: 22px; width: min(760px, calc(100vw - 32px)); background: var(--panel); color: var(--fg); }
+.updlg::backdrop { background: rgba(10, 14, 20, .45); }
+.upgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.upbox { border: 1.5px dashed var(--line-strong); border-radius: 10px; padding: 12px; min-height: 150px; display: flex; flex-direction: column; gap: 8px; }
+.upbox.drag { border-color: var(--accent); background: var(--info-bg); }
+.uphead { display: flex; flex-direction: column; gap: 2px; }
+.upadd { align-self: flex-start; cursor: pointer; }
+.uplist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.uplist li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.uplist li .fn { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uplist li .warn { color: var(--warn); font-size: 12px; }
+.uplist li button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
+.uplist li button:hover { background: var(--bad-bg); color: var(--bad); } .capbox summary { cursor: pointer; font-weight: 600; font-size: 13.5px; } .capbox .sub { margin: 6px 0; }
 .capgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 14px; }
 .capgrid label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
 .capgrid input { width: 72px; }
@@ -257,11 +270,11 @@ body.locked #loginForm .btn { width: 100%; }
       </div>
       <div class="uploads">
         <span id="authBox" hidden><span class="note" id="authUser" style="margin:0 6px 0 0"></span><button class="file-btn" type="button" id="btnLogin">Login</button></span>
-        <label class="file-btn primary" for="fileCpr" id="lblCpr">
+        <button class="file-btn primary" type="button" id="lblCpr">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
           Upload CPRHistory + CPRSummary
-          <input type="file" id="fileCpr" accept=".xlsx,.xls,.csv" multiple>
-        </label>
+        </button>
+        <input type="file" id="fileCpr" accept=".xlsx,.xls,.csv" multiple hidden>
         <label class="file-btn" for="filePic" id="lblPic">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
           Hospital PIC List
@@ -528,6 +541,20 @@ body.locked #loginForm .btn { width: 100%; }
       <button class="btn danger" type="submit" id="gdOk" style="background:var(--bad);border-color:var(--bad);color:#fff">Confirm</button>
     </div>
   </form>
+</dialog>
+<dialog id="upDlg" aria-labelledby="upTitle" class="updlg">
+  <h3 id="upTitle" style="margin:0 0 4px">Upload CPR data</h3>
+  <p class="note" style="margin:0 0 14px">Add the files to the right box. Nothing is processed until you select <b>Process files</b>; remove a wrong file with ✕.</p>
+  <div class="upgrid">
+    <div class="upbox" id="upBoxH" data-kind="h"><div class="uphead"><b>1. CPRHistory</b><span class="note" style="margin:0">every approval step · one or more files</span></div>
+      <label class="btn ghost upadd">+ Add CPRHistory file(s)<input type="file" id="upFileH" accept=".xlsx,.xls,.csv" multiple hidden></label>
+      <ul class="uplist" id="upListH"></ul></div>
+    <div class="upbox" id="upBoxS" data-kind="s"><div class="uphead"><b>2. CPRSummary</b><span class="note" style="margin:0">current holder and ERP ID (PR / PO) · recommended</span></div>
+      <label class="btn ghost upadd">+ Add CPRSummary file(s)<input type="file" id="upFileS" accept=".xlsx,.xls,.csv" multiple hidden></label>
+      <ul class="uplist" id="upListS"></ul></div>
+  </div>
+  <p class="note" id="upMsg" style="margin:12px 0 0"></p>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn ghost" type="button" id="upCancel">Cancel</button><button class="btn" type="button" id="upGo" disabled>Process files</button></div>
 </dialog>
 <dialog id="track" aria-labelledby="trTitle">
   <div class="tr-head"><div><h3 id="trTitle"></h3><div class="tr-sub" id="trSub"></div><div class="tr-meta" id="trMeta"></div></div>
@@ -899,6 +926,44 @@ async function readWorkbook(file) {
   return { rows, columns: header.map((h) => String(h).trim()) };
 }
 
+// ---------- upload dialog: CPRHistory and CPRSummary in separate boxes, checked before processing ----------
+const UP = { h: [], s: [] };
+const kb = (n) => (n >= 1048576 ? fmtNum(n / 1048576, 1) + " MB" : fmtNum(n / 1024, 0) + " KB");
+function renderUpload() {
+  for (const k of ["h", "s"]) {
+    const list = $(k === "h" ? "upListH" : "upListS");
+    list.replaceChildren(...UP[k].map((f, i) => {
+      const li = el("li"); li.append(el("span", { class: "fn", title: f.name }, f.name), el("span", { class: "note", style: "margin:0" }, kb(f.size)));
+      // a file whose name says the other type is probably in the wrong box
+      const other = k === "h" ? /summary/i : /history/i; if (other.test(f.name)) li.append(el("span", { class: "warn" }, k === "h" ? "looks like a CPRSummary" : "looks like a CPRHistory"));
+      const x = el("button", { type: "button", title: "Remove this file", "aria-label": "Remove " + f.name }, "✕"); x.onclick = () => { UP[k].splice(i, 1); renderUpload(); };
+      li.append(x); return li;
+    }));
+    if (!UP[k].length) list.append(el("li", { style: "border-style:dashed;color:var(--faint)" }, "No file yet · drop a file here"));
+  }
+  $("upGo").disabled = !UP.h.length && !UP.s.length;
+  $("upMsg").textContent = !UP.h.length && UP.s.length ? "Only a CPRSummary: the current holder and ERP ID are updated, but approval steps are not. Add the CPRHistory too if you have it."
+    : UP.h.length && !UP.s.length ? "No CPRSummary: the KA now holding each CPR and the ERP ID (Completed) will not be updated. Adding it is recommended." : "";
+}
+function openUploadDialog() { UP.h = []; UP.s = []; renderUpload(); $("upDlg").showModal(); }
+function addUp(k, files) { for (const f of files) if (!UP[k].some((x) => x.name === f.name && x.size === f.size)) UP[k].push(f); renderUpload(); }
+$("lblCpr").addEventListener("click", openUploadDialog);
+$("upFileH").addEventListener("change", (e) => { addUp("h", e.target.files); e.target.value = ""; });
+$("upFileS").addEventListener("change", (e) => { addUp("s", e.target.files); e.target.value = ""; });
+for (const [id, k] of [["upBoxH", "h"], ["upBoxS", "s"]]) {
+  const box = $(id);
+  box.addEventListener("dragover", (e) => { e.preventDefault(); box.classList.add("drag"); });
+  box.addEventListener("dragleave", () => box.classList.remove("drag"));
+  box.addEventListener("drop", (e) => { e.preventDefault(); box.classList.remove("drag"); addUp(k, e.dataTransfer.files); });
+}
+$("upCancel").addEventListener("click", () => $("upDlg").close());
+$("upGo").addEventListener("click", () => {
+  const files = [...UP.h, ...UP.s]; if (!files.length) return;
+  $("upDlg").close();
+  // hand the checked files to the normal upload process (history first, summary last)
+  const dt = new DataTransfer(); for (const f of files) dt.items.add(f);
+  $("fileCpr").files = dt.files; $("fileCpr").dispatchEvent(new Event("change"));
+});
 // warn before leaving the page while an upload is still being saved
 let SAVING = false;
 window.addEventListener("beforeunload", (e) => { if (SAVING) { e.preventDefault(); e.returnValue = ""; } });
@@ -3845,7 +3910,7 @@ function renderEmptyState() {
   const step = (n, done, title, detail, inputId, label) => {
     const li = el("li", { class: done ? "done" : "" }); li.append(el("span", { class: "num" }, done ? "✓" : String(n)));
     const txt = el("div", { class: "txt" }, title); txt.append(el("small", {}, detail)); li.append(txt);
-    if (inputId) li.append(Object.assign(el("button", { class: done ? "btn ghost" : "btn", type: "button" }, done ? "Upload again" : label), { onclick: () => $(inputId).click() }));
+    if (inputId) li.append(Object.assign(el("button", { class: done ? "btn ghost" : "btn", type: "button" }, done ? "Upload again" : label), { onclick: () => (inputId === "fileCpr" ? openUploadDialog() : $(inputId).click()) }));
     return li;
   };
   const nPic = PIC_LIST ? Object.keys(PIC_LIST).length : 0, nHist = Math.max(TRAIN.size, PO_RECS.length);
