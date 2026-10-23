@@ -2162,7 +2162,7 @@ function renderKa() {
   for (const r of data) { const ka = realKa(r); if (!groups.has(ka)) groups.set(ka, []); groups.get(ka).push(r); }
   // KAs with a DSS load but no recorded work still get a row (with empty review columns)
   if (view) for (const ka of currentKas(SIM.kaList)) if (!groups.has(ka)) groups.set(ka, []);
-  const rows = [...groups.entries()].map(([ka, list]) => {
+  const rows = [...groups.entries()].filter(([ka]) => isCurrentKa(ka)).map(([ka, list]) => {
     const r1 = list.map((r) => r.rev1), r2 = list.map((r) => r.rev2);
     const tot = list.map((r) => (r.rev1 !== null && r.rev2 !== null ? r.rev1 + r.rev2 : null));
     const lv = view && view.perKa[ka];
@@ -2251,7 +2251,7 @@ function renderKaFromHistory(view) {
   if (view) for (const ka of currentKas(SIM.kaList)) get(ka);
   $("poInfo").textContent = `${fmtInt(n3)} Sequence 3 approvals and ${fmtInt(n8)} Sequence 8 approvals between ${$("poFrom").value ? fmtDay(from) : "–"} and ${$("poTo").value ? fmtDay(to) : "–"}.` + (unknown ? ` ${fmtInt(unknown)} steps without a recognised KA user are excluded.` : "");
   $("kaNote").textContent = "";
-  const rows = [...g.entries()].map(([ka, x]) => {
+  const rows = [...g.entries()].filter(([ka]) => isCurrentKa(ka)).map(([ka, x]) => {
     const r1 = mean(x.s3.map((y) => y.d)), r2 = mean(x.s8.map((y) => y.d));
     const perDay = new Map(); for (const d of x.ev) if (weekday(d) < 5) perDay.set(d, (perDay.get(d) || 0) + 1);
     const pd = [...perDay.values()], lv = view && view.perKa[ka];
@@ -2328,7 +2328,7 @@ function renderKaFromPo(view) {
     for (const e of reworkList(r)) if ((from === null || e.start >= from) && (to === null || e.start <= to)) rwBy.set(ka, (rwBy.get(ka) || 0) + 1);
   }
   for (const ka of rwBy.keys()) if (!groups.has(ka)) groups.set(ka, []);
-  const rows = [...groups.entries()].map(([ka, list]) => {
+  const rows = [...groups.entries()].filter(([ka]) => isCurrentKa(ka)).map(([ka, list]) => {
     const tot = list.map((r) => (r.rev1 !== null && r.rev2 !== null ? r.rev1 + r.rev2 : null));
     const lv = view && view.perKa[ka];
     return {
@@ -3155,12 +3155,12 @@ function renderSim() {
   // active = not completed yet (and not inactive / dismissed): only these are still the KA's workload
   const activeCount = {}, doneCount = {};
   for (const c of s.assigned) { const r = c.r; if (r.done) doneCount[c.ka] = (doneCount[c.ka] || 0) + 1; else if (!IGNORED[r.cpr] && !isInactive(r)) activeCount[c.ka] = (activeCount[c.ka] || 0) + 1; }
-  const kas = (s.actual ? s.kaList.slice() : s.kaList.filter((k) => isCurrentKa(k) || activeCount[k])).sort((a, b) => (s.actual ? (s.dssCount[b] || 0) - (s.dssCount[a] || 0) : (activeCount[b] || 0) - (activeCount[a] || 0)));
+  const kas = (s.actual ? s.kaList.slice() : s.kaList.filter((k) => isCurrentKa(k))).sort((a, b) => (s.actual ? (s.dssCount[b] || 0) - (s.dssCount[a] || 0) : (activeCount[b] || 0) - (activeCount[a] || 0)));
   $("hKaCount").textContent = s.actual ? "Number of CPRs per KA" : "Active CPRs per KA (workload)";
   $("subKaCount").textContent = s.actual ? "DSS allocation compared with the actual allocation" : "CPRs not completed yet, so still the KA's workload. A CPR leaves this chart (and the daily workload) as soon as the data shows it completed, rejected or inactive for more than 30 days.";
   $("lgKaCount").innerHTML = s.actual ? lg([["DSS", "var(--s1)"], ["Actual", "var(--s2)"]]) : "";
   $("cardKaDone").hidden = !!s.actual;
-  if (!s.actual) { const kd = s.kaList.filter((k) => doneCount[k]).sort((a, b) => (doneCount[b] || 0) - (doneCount[a] || 0)); barChartH($("chKaDone"), kd.map(kaLabel), [{ name: "Completed", color: "var(--s2)", values: kd.map((k) => doneCount[k] || 0) }], { dec: 0, label: "Completed CPRs per KA" }); }
+  if (!s.actual) { const kd = s.kaList.filter((k) => doneCount[k] && isCurrentKa(k)).sort((a, b) => (doneCount[b] || 0) - (doneCount[a] || 0)); barChartH($("chKaDone"), kd.map(kaLabel), [{ name: "Completed", color: "var(--s2)", values: kd.map((k) => doneCount[k] || 0) }], { dec: 0, label: "Completed CPRs per KA" }); }
   barChartH($("chKaCount"), kas.map(kaLabel), s.actual ? [
     { name: "DSS", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) },
     { name: "Actual", color: "var(--s2)", values: kas.map((k) => s.actualCount[k] || 0) }
@@ -3882,7 +3882,7 @@ function renderTaskLoad() {
     const mult = task === "mat" && Number(r.amount) > 1e9 ? TASK_W.big : 1; if (mult > 1) x.big++;
     x[task]++; x["w" + task[0].toUpperCase() + task.slice(1)] += TASK_W[task] * mult;
   }
-  const kas = Object.keys(per).map((ka) => ({ ka, name: kaLabel(ka), ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw, n: per[ka].rec + per[ka].mat + per[ka].rw })).sort((a, b) => b.total - a.total);
+  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw, n: per[ka].rec + per[ka].mat + per[ka].rw })).sort((a, b) => b.total - a.total);
   $("subTask").textContent = `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Received ×${fmtNum(TASK_W.rec, 1)}, Matching ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Matching of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed below the table.`;
   $("lgTask").innerHTML = [["Received (Seq 3)", "var(--s1)"], ["Matching (Seq 8)", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
   barChartH($("chTask"), kas.map((k) => `${k.name} (${k.n} CPRs)`), [
