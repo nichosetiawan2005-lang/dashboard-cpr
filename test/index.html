@@ -381,9 +381,9 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="section-title"><h2>Current task load</h2><p>CPRs each KA is holding right now (Received = Sequence 3, Matching = Sequence 8, Rework), weighted by how heavy each task is.</p></div>    <div class="card" id="cardTask" hidden><h3>Current task load per KA (weighted)</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div>
       <details class="capbox" id="twBox"><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Matching about 2.4–3× Received, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
         <div class="capgrid"><label>Received (Seq 3)<input type="number" id="twRec" min="0" step="0.1"></label><label>Matching (Seq 8)<input type="number" id="twMat" min="0" step="0.1"></label><label>Rework<input type="number" id="twRw" min="0" step="0.1"></label><label>× CPR &gt; Rp1 M<input type="number" id="twBig" min="1" step="0.1"></label></div></details></div>
-    <div class="section-title"><h2>Rework per KA</h2><p>Rework = Purchasing Head HO or Purchasing Director sends the CPR back to the KA for correction after Sequence 8. Rework rate = CPRs sent back ÷ CPRs the KA approved at Sequence 8 in the period. Lower is better.</p></div>
+    <div class="section-title"><h2>Rework per KA</h2><p>Rework = a CPR sent back to the KA for correction (by Purchasing Head HO or Purchasing Director). Lower is better.</p></div>
     <div class="tiles" id="rwTiles"></div>
-    <div class="card" style="margin-top:12px"><h3>Rework rate per KA (%)</h3><div class="sub">In brackets: CPRs sent back / CPRs approved at Sequence 8.</div><div class="chart" id="chRw"></div></div>
+    <div class="card" style="margin-top:12px"><h3>Rework rate per KA (%)</h3><div class="sub">In brackets: reworked CPRs / CPRs completed by the KA.</div><div class="chart" id="chRw"></div></div>
     <div class="tbl-wrap" style="margin-top:12px"><table id="tblRw"></table></div>
     <div class="section-title"><h2>By KA</h2><p>Workload = number of CPRs under review on a given working day.</p></div>
     <div class="tbl-wrap"><table id="tblKa"></table></div>
@@ -2273,8 +2273,7 @@ function renderKaFromHistory(view) {
     { key: "r2avg", label: "Sequence 8 (days)", num: true, render: (r) => fmtNum(r.r2avg) },
     { key: "r2h", label: "Sequence 8 (hours, median)", num: true, render: (r) => fmtNum(r.r2h) },
     { key: "totAvg", label: "Total Seq. 3 + Seq. 8 (days)", num: true, render: (r) => fmtNum(r.totAvg) },
-    { key: "rework", label: "Rework (returned by PH HO / Director)", num: true, render: (r) => fmtInt(r.rework) },
-    { key: "reworkRate", label: "Rework rate (% of Seq. 8 approved)", num: true, render: (r) => (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 0)) },
+    { key: "rwCprs", label: "Reworked CPRs", num: true, render: (r) => fmtInt(r.rwCprs) },
     { key: "perDay", label: "Approvals/day (avg)", num: true, render: (r) => fmtNum(r.perDay) },
     { key: "perDayP90", label: "Busiest day (P90)", num: true, render: (r) => fmtNum(r.perDayP90, 0) },
     { key: "loadAvg", label: "Avg workload/day", num: true, render: (r) => fmtNum(r.loadAvg) }
@@ -2288,21 +2287,17 @@ function renderRework(rows) {
   const tot8 = list.reduce((a, r) => a + r.n8, 0), totRw = list.reduce((a, r) => a + r.rwCprs, 0), totEv = list.reduce((a, r) => a + r.rework, 0);
   const allFix = list.flatMap((r) => r.fixList);
   $("rwTiles").replaceChildren(
-    tile("Rework rate (all KAs)", tot8 ? fmtNum((totRw / tot8) * 100, 1) : "–", "%", `${fmtInt(totRw)} of ${fmtInt(tot8)} CPRs approved at Sequence 8 were sent back`),
-    tile("Rework events", fmtInt(totEv), "", `by Purchasing Head HO ${fmtInt(list.reduce((a, r) => a + r.byH, 0))} · by Purchasing Director ${fmtInt(list.reduce((a, r) => a + r.byD, 0))}`),
+    tile("Reworked CPRs", fmtInt(totRw), `of ${fmtInt(tot8)}`, `${tot8 ? fmtNum((totRw / tot8) * 100, 1) : "–"}% of the CPRs completed by the KAs were sent back`),
+    tile("Sent back by", "", "", `Purchasing Head HO ${fmtInt(list.reduce((a, r) => a + r.byH, 0))}× · Purchasing Director ${fmtInt(list.reduce((a, r) => a + r.byD, 0))}×`),
     tile("Still in rework", fmtInt(list.reduce((a, r) => a + r.rwOpen, 0)), "CPRs", "sent back and not yet approved again by the KA"),
-    tile("Average time to fix", allFix.length ? fmtNum(mean(allFix)) : "–", "days", "from the return to the KA until the KA approves again")
+    tile("Days to fix (avg)", allFix.length ? fmtNum(mean(allFix)) : "–", "days", "until the KA approves it again")
   );
   barChartH($("chRw"), list.map((r) => `${r.name} (${r.rwCprs}/${r.n8})`), [{ name: "Rework rate (%)", color: "var(--s2)", values: list.map((r) => r.reworkRate ?? 0) }], { dec: 1, label: "Rework rate per KA (%)" });
   renderTable($("tblRw"), [
     { key: "name", label: "Key Account" },
-    { key: "n8", label: "Sequence 8 approved", num: true, render: (r) => fmtInt(r.n8) },
-    { key: "rwCprs", label: "CPRs sent back", num: true, render: (r) => fmtInt(r.rwCprs) },
-    { key: "reworkRate", label: "Rework rate (%)", num: true, render: (r) => (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 1)) },
-    { key: "rework", label: "Rework events", num: true, render: (r) => fmtInt(r.rework) },
-    { key: "byH", label: "By Purchasing Head HO", num: true, render: (r) => fmtInt(r.byH) },
-    { key: "byD", label: "By Purchasing Director", num: true, render: (r) => fmtInt(r.byD) },
-    { key: "fixAvg", label: "Avg time to fix (days)", num: true, render: (r) => fmtNum(r.fixAvg) },
+    { key: "rwCprs", label: "Reworked CPRs", num: true, render: (r) => `${fmtInt(r.rwCprs)} of ${fmtInt(r.n8)}` },
+    { key: "reworkRate", label: "Rework rate", num: true, render: (r) => (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 1) + "%") },
+    { key: "fixAvg", label: "Days to fix (avg)", num: true, render: (r) => fmtNum(r.fixAvg) },
     { key: "rwOpen", label: "Still in rework", num: true, render: (r) => fmtInt(r.rwOpen) }
   ], list);
 }
