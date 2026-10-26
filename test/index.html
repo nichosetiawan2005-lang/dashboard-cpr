@@ -1190,10 +1190,11 @@ function applySummary(sum) {
 // the KA who has actually taken the CPR according to the data (CPRHistory step or CPRSummary "Waiting To Approve"):
 // such a CPR is already being processed, so its KA cannot be changed by the allocation or by a reassignment
 function dataKaUser(r) {
-  for (const u of [r.ka8User, r.ka3User]) if (u && userKa(u)) return u;
+  // the KA who approved Sequence 3 is the final KA of the CPR (also for Sequence 8 and rework)
+  for (const u of [r.ka3User, r.ka8User]) if (u && userKa(u)) return u;
   if (r.waiting) { const users = kaUsers(); const u = String(r.waiting).split(",").find((x) => users.has(x)); if (u) return u; }
   // the KA step was approved by someone outside the KA team (e.g. a Purchasing Head HO): that already happened, so it stays with them
-  for (const u of [r.ka8User, r.ka3User]) if (u) return u;
+  for (const u of [r.ka3User, r.ka8User]) if (u) return u;
   return null;
 }
 const dataKa = (r) => { const u = dataKaUser(r); if (!u) return null; const ch = kaChange(u); if (ch && !r.done) return ch.to; return poKa({ ka: u, kaName: null }).ka; };
@@ -1402,7 +1403,8 @@ function pivotHistory(rows) {
     const firstPhoDone = phoRows.map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort()[0] || null;
     // first return to KA for Sequence 8 (before any rework) - used for the daily workload
     const backFirstAt = firstPhoDone ? list.filter((x) => !isPurchHo(x)).map((x) => toStamp(x[HCOL.approve])).filter((t) => t && t < firstPhoDone).sort().slice(-1)[0] || null : null;
-    const kaUser = (phoRows.concat(kaRows).map((x) => x[HCOL.user]).filter(Boolean).slice(-1)[0]) || null;
+    // Sequence 3 decides the KA of the CPR; Sequence 8 only when no Sequence 3 approver is known
+    const kaUser = (kaRows.map((x) => x[HCOL.user]).filter(Boolean).slice(-1)[0]) || (phoRows.map((x) => x[HCOL.user]).filter(Boolean).slice(-1)[0]) || null;
     let backAt = null;
     if (phoDone) backAt = list.filter((x) => !isPurchHo(x)).map((x) => toStamp(x[HCOL.approve])).filter((t) => t && t < phoDone).sort().slice(-1)[0] || maxOf(phoRows, HCOL.submit);
     else if (phoRows.length) backAt = maxOf(phoRows, HCOL.submit);
