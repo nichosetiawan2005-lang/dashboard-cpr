@@ -2750,7 +2750,7 @@ async function ensureModels(_start, onStatus) {
       const forced = FC_SET.model && FC_SET.model !== "auto" ? CANDIDATES.find((c) => `${c.family}|${c.setting}` === FC_SET.model) : null;
       if (forced) sel = { chosen: { family: forced.family, setting: forced.setting, valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true, forced: true };
       // too little older history to compare models fairly: use the model the notebook chose
-      else if (tuneTrain.length < (fcIsDefault(FC_SET) ? 1000 : 200) || tuneVal.length < (fcIsDefault(FC_SET) ? 50 : 30)) sel = { chosen: label === "arrival" ? { family: "Linear Regression", setting: "alpha=0", valMae: null } : { family: "XGBoost", setting: "max_depth=2, learning_rate=0.1", valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true };
+      else if (tuneTrain.length < (fcIsDefault(FC_SET) ? 500 : 200) || tuneVal.length < (fcIsDefault(FC_SET) ? 50 : 30)) sel = { chosen: label === "arrival" ? { family: "Linear Regression", setting: "alpha=0", valMae: null } : { family: "XGBoost", setting: "max_depth=2, learning_rate=0.1", valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true };
       else { onStatus && onStatus(`Selecting the best ${label} model (Linear Regression vs XGBoost) …`); await new Promise((r) => setTimeout(r, 10)); sel = chooseModel(tuneTrain, tuneVal, stats, feats); }
       // test: learn on everything before the test months, forecast the test months (2026 process only)
       const testRows = hist.filter((r) => dateOf(r) >= testStart && r.isNew === 1);
