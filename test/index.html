@@ -74,6 +74,11 @@ button, input, select { font: inherit; color: inherit; }
 .delta.good { color: var(--good); } .delta.bad { color: var(--bad); }
 
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 12px; }
+.fcflow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; margin: 0 0 12px; }
+.fcflow .st { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); }
+.fcflow .st b { display: block; color: var(--fg); font-size: 13px; }
+.fcflow .fc { align-self: center; font-size: 11px; color: var(--accent-ink); background: var(--info-bg); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.fcflow .fc.ka { color: var(--warn); background: var(--warn-bg); }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; min-width: 0; }
 .card h3 { font-size: 14px; font-weight: 600; }
 .card .sub { font-size: 12px; color: var(--muted); margin: 2px 0 8px; }
@@ -348,13 +353,21 @@ body.locked #loginForm .btn { width: 100%; }
     <div id="simResults"><div class="card" style="margin-top:12px"><h3 id="hKaCount">Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
     <div class="card" style="margin-top:12px" id="cardKaDone" hidden><h3>Completed CPRs per KA</h3><div class="sub">History only: CPRs the KA has finished (PR / PO created, fully approved or Sequence 8 approved). Not counted as workload.</div><div class="chart" id="chKaDone"></div></div>
     <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. Status is read from CPRHistory (every approval step); details and follow-up actions are available in Supervisor Control.</p></div>
+    <div class="fcflow" aria-label="The four forecasts of a CPR">
+      <div class="st"><b>CPR created</b>by the hospital</div><span class="fc">Forecast 1 →</span>
+      <div class="st"><b>① Arrives at KA</b>Sequence 3</div><span class="fc ka">Forecast 3 →</span>
+      <div class="st"><b>② KA approves Seq 3</b>goes to other approvers</div><span class="fc">Forecast 2 →</span>
+      <div class="st"><b>③ Returns to KA</b>Sequence 8</div><span class="fc ka">Forecast 4 →</span>
+      <div class="st"><b>④ KA approves Seq 8</b>CPR leaves the KA</div>
+    </div>
+    <p class="note" style="margin:-4px 0 10px">Blue = time with other approvers (not the KA's workload). Orange = time the KA holds the CPR (the KA's workload, used to balance the allocation). Each date shows the actual date once it happened, otherwise the estimate and its likely range; "late" means the data date is already past that range.</p>
     <div class="filters" id="incFilters" style="margin:0 0 10px">
       <div class="field"><label for="incStatus">Status</label><select id="incStatus"></select></div>
       <div class="field"><label for="incKa">Key Account</label><select id="incKa"></select></div>
       <div class="field"><label for="incUnit">Hospital</label><select id="incUnit"></select></div>
       <div class="field"><label for="incRule">Rule</label><select id="incRule"></select></div>
       <div class="field"><label for="incAssign">Assignment</label><select id="incAssign"></select></div>
-      <div class="field"><label for="incDateBy">Date</label><select id="incDateBy"><option value="create">Created</option><option value="estArr">Estimated arrival at KA</option><option value="actArr">Actual arrival at KA</option><option value="estRet">Estimated return to KA</option></select></div>
+      <div class="field"><label for="incDateBy">Date</label><select id="incDateBy"><option value="create">Created</option><option value="estArr">Estimated arrival at KA</option><option value="actArr">Actual arrival at KA</option><option value="estS3">Estimated Sequence 3 approval</option><option value="estRet">Estimated return to KA</option><option value="estS8">Estimated Sequence 8 approval</option></select></div>
       <div class="field"><label for="incMonth">Month</label><select id="incMonth"></select></div>
       <div class="field"><label for="incFrom">From</label><input type="date" id="incFrom"></div>
       <div class="field"><label for="incTo">To</label><input type="date" id="incTo"></div>
@@ -464,7 +477,7 @@ body.locked #loginForm .btn { width: 100%; }
   <section class="panel" id="panel-bukti" role="tabpanel" aria-labelledby="tab-bukti">
     <p class="note" id="bkNote"></p>
     <div class="section-title"><h2>1. Is the forecast accurate?</h2><p>Same test as the analysis notebook: the model learns only from history before the last 3 months, then forecasts the CPRs of those 3 months (2026 process). These CPRs were never used to choose or train the tested model, so this is an out-of-sample test.</p></div>
-    <div class="tiles" id="bkFcTiles"></div>
+    <div id="bkFcTiles"></div><p class="note" id="bkFcNote"></p>
     <div class="card" id="fcSetCard" style="margin-top:12px"><h3>Forecast settings</h3><div class="sub">Choose which history the forecast learns from. Default = the analysis notebook. "Apply and retrain" tests the new setting on the latest months and shows its test MAE next to the default, so the effect is visible before it is relied on. Only CPRs allocated after the change use the new forecast; saved Key Account assignments do not change.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
         <div class="field"><label for="fcFrom">Learn from CPRs created from</label><input type="date" id="fcFrom"></div>
@@ -480,7 +493,8 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblFcCompare"></table></div>
       <p class="note" id="fcSetNote"></p>
     </div>
-    <div class="card" style="margin-top:12px"><h3>Model selection</h3><div class="sub">Same procedure as the analysis notebook: each candidate learns from older history and is checked on a 3-month validation window (2026-process CPRs); the lowest validation MAE is chosen, tested on the latest 3 months, then retrained on all history to forecast the queue.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
+    <div class="card" style="margin-top:12px"><h3>Model selection in the dashboard (automatic)</h3><div class="sub">Same procedure as the analysis notebook: each candidate learns from older history and is checked on a 3-month validation window (2026-process CPRs); the lowest validation MAE is chosen, tested on the latest 3 months, then retrained on all history to forecast the queue.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
+    <div class="card" style="margin-top:12px"><h3>Comparison of the four models (analysis notebook)</h3><div class="sub">Study in the Python notebook on CPR_Cleaned 2023–2026: each forecast is learned by Linear Regression, Random Forest, XGBoost and a Neural Network (MLP), plus an Ensemble of the best two. The model with the lowest validation MAE (Apr–Jun 2026) is chosen and then tested once on Jul–Sep 2026; "p" is the Wilcoxon test against the simple guess; the test MAE of the chosen model uses whole-day forecasts, as shown in the dashboard. The dashboard itself keeps choosing automatically between Linear Regression and XGBoost (the table above), retrained on the uploaded CPRHistory + CPRSummary.</div><div class="tbl-wrap"><table id="tblStudy"></table></div></div>
     <div class="card" style="margin-top:12px"><h3>Forecast 1: mean absolute error per week (test months)</h3><div class="sub">Lower values indicate higher accuracy. Compared against a simple baseline (median per hospital, 2026 process).</div><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
     <div class="section-title"><h2>2. Is the KA workload more evenly distributed?</h2><p id="bkLoadDesc"></p></div>
     <div class="tbl-wrap"><table id="tblBkLoad"></table></div>
@@ -2676,6 +2690,50 @@ function recentSpeed(all) {
   };
 }
 
+// ---- Forecast 3 and 4: how long the KA holds the CPR (same features as the notebook) ----
+//   Forecast 3 = days from arrival at KA (Sequence 3) to the KA approval of Sequence 3
+//   Forecast 4 = days from the return to KA (Sequence 8) to the KA approval of Sequence 8
+// "How busy is the KA on that day" uses only CPRs that arrived or finished BEFORE that day, so it is known when the forecast is made.
+// CPRs the KA is still holding (not approved yet) also count in the queue.
+const F3_KA_DAYS = 30, F3_ALL_DAYS = 14, F3_WORK_DAYS = 22;
+const kaKeyOf = (u) => (u ? poKa({ ka: u, kaName: null }).ka : null);
+function kaQueue(items) {   // items: [{ ka, start, end (null = still holding), y (null = still holding) }]
+  const byKa = new Map(); for (const it of items) { if (!byKa.has(it.ka)) byKa.set(it.ka, []); byKa.get(it.ka).push(it); }
+  const done = items.filter((it) => it.end !== null);
+  const overall = median(done.map((it) => it.y));
+  const recentMedian = (list, day, days) => { const v = []; for (const it of list) if (it.end !== null && it.end < day && it.end >= day - days) v.push(it.y); return v; };
+  // state of one KA on one day: [ka_queue, ka_approvals_30d, queue_days, ka_recent_median, all_recent_median]
+  return (ka, day) => {
+    const own = byKa.get(ka) || [];
+    let queue = 0; for (const it of own) if (it.start <= day && (it.end === null || it.end > day)) queue++;
+    const kaDone = recentMedian(own, day, F3_KA_DAYS), allDone = recentMedian(done, day, F3_ALL_DAYS);
+    const allRecent = allDone.length ? median(allDone) : overall, kaRecent = kaDone.length ? median(kaDone) : allRecent;
+    return [queue, kaDone.length, queue / Math.max(1, kaDone.length / F3_WORK_DAYS), kaRecent, allRecent];
+  };
+}
+function kaHoldRows(kind) {   // history rows for Forecast 3 ("s3") or Forecast 4 ("s8")
+  const items = [];
+  for (const r of RECS) {
+    if (!r.hstatus) continue;
+    const start = kind === "s3" ? r.kaIn : r.back, end = kind === "s3" ? r.kaOut : r.backOut;
+    const ka = kaKeyOf(kind === "s3" ? r.ka3User : r.ka8User) || kaKeyOf(dataKaUser(r));
+    if (start === null || start === undefined || !ka) continue;
+    const y = end !== null && end !== undefined && end >= start ? end - start : null;
+    if (end !== null && end !== undefined && y === null) continue;   // wrong dates (approved before received)
+    items.push({ cpr: r.cpr, unit: r.unit, ka, start, end: y === null ? null : end, y });
+  }
+  const state = kaQueue(items);
+  const rows = items.filter((it) => it.y !== null).map((it) => ({ ...it, isNew: 1, q: state(it.ka, it.start) }));
+  return { rows, state };
+}
+function f34Stats(L) {
+  const allMed = median(L.map((r) => r.y));
+  return { allMed, unitMed: groupStat(L, (r) => r.unit, (r) => r.y, median), kaMed: groupStat(L, (r) => r.ka, (r) => r.y, median) };
+}
+function f34Features(r, st) {   // unit_median, ka_median, start_day_of_week, start_month, ka_queue, ka_approvals_30d, queue_days, ka_recent_median, all_recent_median
+  return [st.unitMed.get(r.unit) ?? st.allMed, st.kaMed.get(r.ka) ?? st.allMed, weekday(r.start), monthOf(r.start), ...r.q];
+}
+
 // ---- model selection (lowest validation MAE), as in the notebook ----
 const CANDIDATES = [
   ...[0, 0.1, 1, 10, 100].map((a) => ({ family: "Linear Regression", setting: `alpha=${a}`, fit: (X, y) => fitRidge(X, y, a) })),
@@ -2739,7 +2797,7 @@ async function ensureModels(_start, onStatus) {
   const { testStart, valStart } = testWindow(all, Number(FC_SET.months) || 3);
   // very long CPRs can be left out of what the model LEARNS from; the test still counts every CPR, so the MAE stays honest
   const learnable = (list) => (maxDays > 0 ? list.filter((r) => r.y <= maxDays) : list);
-  const saved = MODEL_CHOICE && MODEL_CHOICE.key === choiceKey() ? MODEL_CHOICE : null;
+  const saved = MODEL_CHOICE && MODEL_CHOICE.key === choiceKey() && "f3" in MODEL_CHOICE ? MODEL_CHOICE : null;
   const fitOn = (sel, list0, stats, feats) => { const list = learnable(list0); const st = stats(list), X = list.map((r) => feats(r, st)), y = list.map((r) => Math.log1p(r.y)); const f = findCandidate(sel.chosen).fit(X, y); return { st, X, y, f }; };
   const pick = async (label, hist, dateOf, stats, feats, savedSel) => {
     if (hist.length < 100) return null;
@@ -2750,7 +2808,7 @@ async function ensureModels(_start, onStatus) {
       const forced = FC_SET.model && FC_SET.model !== "auto" ? CANDIDATES.find((c) => `${c.family}|${c.setting}` === FC_SET.model) : null;
       if (forced) sel = { chosen: { family: forced.family, setting: forced.setting, valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true, forced: true };
       // too little older history to compare models fairly: use the model the notebook chose
-      else if (tuneTrain.length < (fcIsDefault(FC_SET) ? 500 : 200) || tuneVal.length < (fcIsDefault(FC_SET) ? 50 : 30)) sel = { chosen: label === "arrival" ? { family: "Linear Regression", setting: "alpha=0", valMae: null } : { family: "XGBoost", setting: "max_depth=2, learning_rate=0.1", valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true };
+      else if (tuneTrain.length < (fcIsDefault(FC_SET) ? 500 : 200) || tuneVal.length < (fcIsDefault(FC_SET) ? 50 : 30)) sel = { chosen: label === "arrival" ? { family: "Linear Regression", setting: "alpha=0", valMae: null } : { family: "XGBoost", setting: label === "Sequence 3" ? "max_depth=2, learning_rate=0.03" : "max_depth=2, learning_rate=0.1", valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true };
       else { onStatus && onStatus(`Selecting the best ${label} model (Linear Regression vs XGBoost) …`); await new Promise((r) => setTimeout(r, 10)); sel = chooseModel(tuneTrain, tuneVal, stats, feats); }
       // test: learn on everything before the test months, forecast the test months (2026 process only)
       const testRows = hist.filter((r) => dateOf(r) >= testStart && r.isNew === 1);
@@ -2773,11 +2831,17 @@ async function ensureModels(_start, onStatus) {
   };
   const f1 = await pick("arrival", f1All, (r) => r.create, f1Stats, f1Features, saved && saved.f1);
   const f2 = await pick("return", f2All, (r) => r.approve, f2Stats, f2Features, saved && saved.f2);
-  MODELS = { key, f1, f2, simByCpr, recent, valStart, testStart };
+  // Forecast 3 / 4: time the KA holds the CPR at Sequence 3 / Sequence 8 (history = CPRHistory, 2026 process)
+  onStatus && onStatus("Preparing KA queue features …"); await new Promise((r) => setTimeout(r, 10));
+  const h3 = kaHoldRows("s3"), h8 = kaHoldRows("s8");
+  const f3 = await pick("Sequence 3", h3.rows, (r) => r.start, f34Stats, f34Features, saved && saved.f3);
+  const f4 = await pick("Sequence 8", h8.rows, (r) => r.start, f34Stats, f34Features, saved && saved.f4);
+  if (f3) f3.state = h3.state; if (f4) f4.state = h8.state;
+  MODELS = { key, f1, f2, f3, f4, simByCpr, recent, valStart, testStart };
   const strip = (m) => (m ? { chosen: m.chosen, bestPerFamily: m.bestPerFamily, nTune: m.nTune, nVal: m.nVal, fixed: !!m.fixed, test: m.test || null } : null);
   const testMae = (m) => (m && m.test ? mean(m.test.rows.map((x) => Math.abs(x[1]))) : null);
-  FC_RESULTS[fcKey(FC_SET)] = { f1: testMae(f1), f2: testMae(f2), n1: f1 && f1.test ? f1.test.rows.length : 0, n2: f2 && f2.test ? f2.test.rows.length : 0, f1Model: f1 ? `${f1.chosen.family} (${f1.chosen.setting})` : "–", f2Model: f2 ? `${f2.chosen.family} (${f2.chosen.setting})` : "–", train: TRAIN.size };
-  MODEL_CHOICE = { key: choiceKey(), f1: strip(f1), f2: strip(f2), settings: FC_SET, results: FC_RESULTS };
+  FC_RESULTS[fcKey(FC_SET)] = { f1: testMae(f1), f2: testMae(f2), f3: testMae(f3), f4: testMae(f4), n1: f1 && f1.test ? f1.test.rows.length : 0, n2: f2 && f2.test ? f2.test.rows.length : 0, f1Model: f1 ? `${f1.chosen.family} (${f1.chosen.setting})` : "–", f2Model: f2 ? `${f2.chosen.family} (${f2.chosen.setting})` : "–", train: TRAIN.size };
+  MODEL_CHOICE = { key: choiceKey(), f1: strip(f1), f2: strip(f2), f3: strip(f3), f4: strip(f4), settings: FC_SET, results: FC_RESULTS };
   if (!saved && DB && canSave()) { try { await DB.doc("settings/models").set(MODEL_CHOICE); } catch {} }
 }
 let MODEL_CHOICE = null;
@@ -2798,7 +2862,7 @@ function renderFcSettings() {
     .sort((a, b) => (b.def - a.def) || (b.cur - a.cur));
   // ★ only among settings tested on the same months as the default (same CPRs = a fair comparison)
   const fair = (r) => JSON.parse(Object.keys(FC_RESULTS).find((k) => FC_RESULTS[k] === r.src) || "[0,0,3]")[2] === 3;
-  const best = (k) => Math.min(...rows.filter((r) => r[k] !== null && fair(r)).map((r) => r[k]));
+  const best = (k) => Math.min(...rows.filter((r) => r[k] !== null && r[k] !== undefined && fair(r)).map((r) => r[k]));
   renderTable($("tblFcCompare"), [
     { key: "name", label: "Setting", sortable: false, render: (r) => r.name },
     { key: "f1", label: "Forecast 1 test MAE (days)", num: true, sortable: false, render: (r) => (r.f1 === null ? "–" : fmtNum(r.f1, 2) + (fair(r) && r.f1 === best("f1") && rows.length > 1 ? " ★" : "")) },
@@ -2806,6 +2870,8 @@ function renderFcSettings() {
     { key: "f1Model", label: "Forecast 1 model", sortable: false },
     { key: "f2", label: "Forecast 2 test MAE (days)", num: true, sortable: false, render: (r) => (r.f2 === null ? "–" : fmtNum(r.f2, 2) + (fair(r) && r.f2 === best("f2") && rows.length > 1 ? " ★" : "")) },
     { key: "f2Model", label: "Forecast 2 model", sortable: false },
+    { key: "f3", label: "Forecast 3 test MAE (days)", num: true, sortable: false, render: (r) => (r.f3 === null || r.f3 === undefined ? "–" : fmtNum(r.f3, 2) + (fair(r) && r.f3 === best("f3") && rows.length > 1 ? " ★" : "")) },
+    { key: "f4", label: "Forecast 4 test MAE (days)", num: true, sortable: false, render: (r) => (r.f4 === null || r.f4 === undefined ? "–" : fmtNum(r.f4, 2) + (fair(r) && r.f4 === best("f4") && rows.length > 1 ? " ★" : "")) },
     { key: "cur", label: "", sortable: false, render: (r) => (r.cur ? pill("In use", "good") : "") }
   ], rows);
   $("fcSetNote").textContent = "Lower MAE = more accurate. ★ = best among settings tested on the same CPRs as the default; settings with a different test window are tested on other months and cannot be compared directly. "
@@ -2818,7 +2884,7 @@ async function applyFcSettings(set) {
   catch (err) { setStatus("Retraining failed: " + (err.message || err)); }
   btn.disabled = false; btn.textContent = "Apply and retrain";
   if (SIM) SIM = simulate();
-  renderAll(); setStatus(`Forecast retrained (${fcIsDefault(FC_SET) ? "notebook default" : "custom setting"}). Forecast 1 test MAE ${fmtNum(FC_RESULTS[fcKey(FC_SET)].f1, 2)} days, Forecast 2 ${fmtNum(FC_RESULTS[fcKey(FC_SET)].f2, 2)} days.`);
+  renderAll(); setStatus(`Forecast retrained (${fcIsDefault(FC_SET) ? "notebook default" : "custom setting"}). Test MAE: Forecast 1 ${fmtNum(FC_RESULTS[fcKey(FC_SET)].f1, 2)}, Forecast 3 ${fmtNum(FC_RESULTS[fcKey(FC_SET)].f3, 2)}, Forecast 2 ${fmtNum(FC_RESULTS[fcKey(FC_SET)].f2, 2)}, Forecast 4 ${fmtNum(FC_RESULTS[fcKey(FC_SET)].f4, 2)} days.`);
 }
 $("fcApply").addEventListener("click", () => applyFcSettings({ from: $("fcFrom").value, onlyNew: $("fcOnlyNew").checked, months: Number($("fcMonths").value), maxDays: Number($("fcMax").value) || 0, model: $("fcModel").value }));
 $("fcReset").addEventListener("click", () => applyFcSettings({ ...FC_DEFAULT }));
@@ -2836,6 +2902,18 @@ function predictF2(r, approveDay) {
   const row = { unit: r.unit, isNew: 1, approve: approveDay, recentAll: a, recentUnit: u };
   return roundHalfEven(Math.max(0, Math.expm1(m.f(f2Features(row, m.st)))));
 }
+// Forecast 3 / 4 for one CPR held by KA "ka" from day "start": { days, lo, hi } (P20-P80 range), or null without a model.
+// The KA queue is read on the start day; for a day after the data date the latest known queue is used.
+function predictHold(m, r, ka, start) {
+  if (!m || !m.state || ka === null || ka === undefined || start === null || start === undefined || !Number.isFinite(start)) return null;
+  const D = dataDate(), day = D !== null ? Math.min(start, D + 1) : start;
+  const lg = m.f(f34Features({ unit: r.unit, ka, start, q: m.state(ka, day) }, m.st));
+  const g = (x) => roundHalfEven(Math.max(0, Math.expm1(x)));
+  const days = g(lg), lo = Math.min(days, g(lg + m.q20)), hi = Math.max(days, g(lg + m.q80));
+  return { days, lo, hi };
+}
+const predictF3 = (r, ka, start) => predictHold(MODELS && MODELS.f3, r, ka, start);
+const predictF4 = (r, ka, start) => predictHold(MODELS && MODELS.f4, r, ka, start);
 // likely range of Forecast 2 (P20-P80 of the model errors), in days after the KA approval
 function predictF2Range(r, approveDay) {
   const m = MODELS && MODELS.f2; if (!m || m.q20 === undefined) return [null, null];
@@ -3089,6 +3167,22 @@ function simulate() {
     c.s1 = c.predArrival; c.s2 = c.s1 + w1 + c.f2; setEnds(c);
     push(byCreate, r.create, c); if (r.kaIn !== null) push(byArrive, r.kaIn, c); if (r.kaOut !== null) push(byKaOut, r.kaOut, c); const backW = r.backFirst ?? r.back; if (backW !== null && backW !== undefined) push(byBack, backW, c);
   }
+  // Forecast 3 / 4 once the KA is known: how many days this KA will hold the CPR at Sequence 3 and Sequence 8
+  // (without a model: the usual duration w1 / w2). Forecast 2 is then counted from the estimated Sequence 3 approval.
+  const planHold = (c) => {
+    const r = c.r, arrive = r.kaIn ?? c.predArrival;
+    c.f3 = useModels ? predictF3(r, c.ka, arrive) : null;
+    c.w1 = c.f3 ? Math.max(1, c.f3.days) : w1;
+    if (r.kaOut === null) {
+      const ap = arrive + c.w1; c.f2 = f2Pred(r, ap); [c.f2Lo, c.f2Hi] = f2Range(r, ap);
+      if (c.f2Lo !== null) { c.f2Lo = Math.min(c.f2Lo, c.f2); c.f2Hi = Math.max(c.f2Hi, c.f2); }
+    }
+    const backDay = r.back ?? (r.kaOut ?? arrive + c.w1) + c.f2;
+    c.f4 = useModels ? predictF4(r, c.ka, backDay) : null;
+    c.w2 = c.f4 ? Math.max(1, c.f4.days) : w2;
+    c.s2 = r.back ?? (r.kaOut !== null && r.kaOut >= c.s1 ? r.kaOut + c.f2 : c.s1 + c.w1 + c.f2);
+    setEnds(c);
+  };
   const vendorHolder = (vendor, day) => { if (!hasVendor(vendor)) return null; for (const x of byVendor.get(vendor) || []) if (holding(x, day)) return x.ka; return null; };
   const rules = { "Diproses KA": 0, "Sudah di KA": 0, "Vendor sama": 0, "PIC unit": 0, "Beban terendah": 0, "Dialihkan": 0, "Exception": 0 };
   for (let day = minDay; day <= maxActual + 60; day++) {
@@ -3097,7 +3191,7 @@ function simulate() {
       let ka = null, weight = 1, rule;
       if (c.lock) {
         // already assigned in an earlier upload: the KA never changes
-        c.ka = c.lock.ka; c.weight = c.lock.weight; c.rule = c.lock.rule; c.locked = true;
+        c.ka = c.lock.ka; c.weight = c.lock.weight; c.rule = c.lock.rule; c.locked = true; planHold(c);
         add(L, c, 1); assigned.push(c); cnt[c.ka] = (cnt[c.ka] || 0) + 1;
         if (!byVendor.has(c.vendor)) byVendor.set(c.vendor, []); byVendor.get(c.vendor).push(c);
         checkAbsence(c); rules[c.rule] = (rules[c.rule] || 0) + 1;
@@ -3115,7 +3209,7 @@ function simulate() {
         if (!best) { for (const k of allocKas) { if (capOf(k) <= 0) continue; const pk = peak(L, k, days, 1) / capOf(k); if (pk < bestPeak) { bestPeak = pk; best = k; } } } // everyone absent
         ka = best; rule = bestPeak <= maxPerDay ? "Beban terendah" : "Exception";
       }
-      c.ka = ka; c.weight = weight; c.rule = rule; rules[rule]++;
+      c.ka = ka; c.weight = weight; c.rule = rule; rules[rule]++; planHold(c);
       add(L, c, 1); assigned.push(c); cnt[ka] = (cnt[ka] || 0) + 1;
       if (!byVendor.has(c.vendor)) byVendor.set(c.vendor, []); byVendor.get(c.vendor).push(c);
     }
@@ -3217,7 +3311,7 @@ function renderSim() {
     { name: "Actual", color: "var(--s2)", values: kas.map((k) => s.actualCount[k] || 0) }
   ] : [{ name: "Active", color: "var(--s1)", values: kas.map((k) => activeCount[k] || 0) }], { dec: 0, label: "Active CPRs per KA" });
   const mtxt = (m, what) => (m ? `${m.chosen.family} (${m.chosen.setting})${m.chosen.valMae !== null && m.chosen.valMae !== undefined ? `, chosen by the lowest validation MAE (${fmtNum(m.chosen.valMae, 2)} days)` : ""}, trained on ${fmtInt(m.n)} CPRs from CPRHistory + CPRSummary` : `median per hospital, because fewer than 100 CPRs with ${what} are available in CPRHistory`);
-  $("simNote").textContent = `Arrival at KA (Forecast 1): ${mtxt(s.models && s.models.f1, "an arrival date")}. Return to KA (Forecast 2): ${mtxt(s.models && s.models.f2, "a return date")}. Review duration is assumed to be ${s.w1} day${s.w1 === 1 ? "" : "s"} (Sequence 3) and ${s.w2} day${s.w2 === 1 ? "" : "s"} (Sequence 8). Workload limit: ${fmtNum(s.maxPerDay)} CPRs per KA per day${s.userMax ? " (set manually)" : " (automatic)"}.`;
+  $("simNote").textContent = `Arrival at KA (Forecast 1): ${mtxt(s.models && s.models.f1, "an arrival date")}. KA approves Sequence 3 (Forecast 3): ${mtxt(s.models && s.models.f3, "a Sequence 3 approval")}. Return to KA (Forecast 2): ${mtxt(s.models && s.models.f2, "a return date")}. KA approves Sequence 8 (Forecast 4): ${mtxt(s.models && s.models.f4, "a Sequence 8 approval")}.${s.models && s.models.f3 ? "" : ` Without Forecast 3 / 4 the usual review duration is used: ${s.w1} day${s.w1 === 1 ? "" : "s"} (Sequence 3) and ${s.w2} day${s.w2 === 1 ? "" : "s"} (Sequence 8).`} Workload limit: ${fmtNum(s.maxPerDay)} CPRs per KA per day${s.userMax ? " (set manually)" : " (automatic)"}.`;
   incState.page = 0; renderIncoming();
 }
 const assignLabel = (c) => (c.isNewAssign ? "New" : c.locked ? "Fixed" : "Not saved");
@@ -3238,7 +3332,7 @@ function fillIncFilters() {
   }
 }
 // date used by the month / date-range filter
-const INC_DATE = { create: (c) => c.r.create, estArr: (c) => c.predArrival, actArr: (c) => actualArrival(c.r), estRet: (c) => estReturn(c) };
+const INC_DATE = { create: (c) => c.r.create, estArr: (c) => c.predArrival, actArr: (c) => actualArrival(c.r), estS3: (c) => estS3(c), estRet: (c) => estReturn(c), estS8: (c) => estS8(c) };
 const incDate = (c) => { const d = (INC_DATE[$("incDateBy").value] || INC_DATE.create)(c); return d === null || d === undefined || !Number.isFinite(d) ? null : d; };
 const monthText = (k) => `${MONTHS[Number(k.slice(5, 7)) - 1]} ${k.slice(0, 4)}`;
 function fillIncMonths() {
@@ -3324,6 +3418,11 @@ async function renderSteps(cpr) {
     return e;
   };
   const range3 = c && c.f1Lo !== null && c.f1Lo !== undefined ? `${fmtDay((c.base1 ?? r0.create) + c.f1Lo)} – ${fmtDay((c.base1 ?? r0.create) + c.f1Hi)}` : null;
+  // Forecast 3 / 4 ranges: from the (actual or estimated) start of the KA step
+  const holdRange = (f, start) => (f && f.hi > f.lo ? `${fmtDay(start + f.lo)} – ${fmtDay(start + f.hi)}` : null);
+  const out8 = r0 ? r0.backOutFirst ?? r0.backOut : null;
+  const range3b = c && r0.kaOut === null ? holdRange(c.f3, estS3(c) - c.w1) : null;
+  const range8 = c && (out8 === null || out8 === undefined) ? holdRange(c.f4, estS8(c) - c.w2) : null;
   const lastKaIdx = rows.reduce((m, x, i) => (normRole(x[1]).replace(/[^a-z]/g, "").includes("keyaccount") ? i : m), -1);
   const firstPhoIdx = rows.findIndex((x) => normRole(x[1]).replace(/[^a-z]/g, "") === "purchasingho");
   const time = (x) => x[4] || x[3] || "";
@@ -3365,25 +3464,25 @@ async function renderSteps(cpr) {
     const wm = el("div", { class: "when-m" }, `${fmtStampDay(stamp)} ${fmtStampTime(stamp)}`); card.append(wm);
     const notes = [["Req note", nReq], ["Approver note", nAppr], ["Consult note", nCons]].filter(([, v]) => v);
     if (notes.length) { const n = el("div", { class: "notes" }); for (const [k, v] of notes) { const d = el("div"); d.append(el("b", {}, k + ": "), document.createTextNode(v)); n.append(d); } card.append(n); }
-    if (c && i === lastKaIdx) card.append(estLine("arrival at KA", estArr, actArr, range3));
-    if (c && i === firstPhoIdx) card.append(estLine("return to KA", estBack, actBack, null));
+    if (c && i === lastKaIdx) card.append(estLine("arrival at KA (Forecast 1)", estArr, actArr, range3), estLine("Sequence 3 approval (Forecast 3)", estS3(c), r0.kaOut, range3b));
+    if (c && i === firstPhoIdx) card.append(estLine("return to KA (Forecast 2)", estBack, actBack, null), estLine("Sequence 8 approval (Forecast 4)", estS8(c), out8, range8));
     li.append(t, el("span", { class: "dot" }), card);
     return li;
   });
   // KA steps not in the export yet: the CPR is at KA now (the export has no row for the current holder) or still to come
-  const future = (seq, title, label, est, act, range, now) => {
+  const future = (seq, title, label, est, act, range, now, extra) => {
     const li = el("li", { class: "future ka" });
     const t = el("div", { class: "t" }, now ? fmtDay(act) : est !== null ? fmtDay(est) : ""); t.append(el("small", {}, now ? "since" : "estimated"));
     const card = el("div", { class: "card2" });
     const sq = el("div", { class: "seq" }); sq.append(el("small", {}, "SEQ"), document.createTextNode(seq));
     const right = el("div", { class: "right" }); right.append(el("span", { class: "badge " + (now ? "now" : "future") }, now ? "At KA now" : "Estimated"));
     const actor = el("div", { class: "actor" }, "Key Account: "); actor.append(el("b", {}, c ? kaLabel(c.ka) : "–"));
-    card.append(sq, el("div", { class: "role" }, title), right, actor, estLine(label, est, act, range));
+    card.append(sq, el("div", { class: "role" }, title), right, actor, estLine(label, est, act, range)); if (extra) card.append(extra);
     li.append(t, el("span", { class: "dot" }), card); return li;
   };
   if (c && !(r0 && /^approved$/i.test(r0.hstatus || ""))) {
-    if (lastKaIdx < 0) items.push(future(3, "Key Account HO", "arrival at KA", estArr, actArr, range3, actArr !== null));
-    if (firstPhoIdx < 0) items.push(future(8, "Purchasing HO", "return to KA", estBack, actBack, null, actBack !== null));
+    if (lastKaIdx < 0) items.push(future(3, "Key Account HO", "arrival at KA (Forecast 1)", estArr, actArr, range3, actArr !== null, estLine("Sequence 3 approval (Forecast 3)", estS3(c), r0.kaOut, range3b)));
+    if (firstPhoIdx < 0) items.push(future(8, "Purchasing HO", "return to KA (Forecast 2)", estBack, actBack, null, actBack !== null, estLine("Sequence 8 approval (Forecast 4)", estS8(c), out8, range8)));
   }
   box.replaceChildren(...items);
 }
@@ -3400,7 +3499,7 @@ function openTrack(cpr) {
     $("trLine").replaceChildren(); $("trHist").replaceChildren(el("li", {}, "Not allocated by the dashboard."));
     $("track").showModal(); renderSteps(cpr); return;
   }
-  const r = c.r, p = r.prog, D = dataDate(), w1 = SIM.w1, w2 = SIM.w2;
+  const r = c.r, p = r.prog, D = dataDate(), w1 = c.w1 ?? SIM.w1, w2 = c.w2 ?? SIM.w2;
   const [statusText, statusKind] = progressStatus(c);
   $("trTitle").textContent = r.cpr;
   $("trSub").textContent = [r.vendorName, c.unit].filter(Boolean).join(" · ");
@@ -3417,11 +3516,11 @@ function openTrack(cpr) {
   const backEst = estReturn(c);
   const steps = [
     ["CPR created", r.submitAt && r.submitAt !== r.createAt ? "submitted " + fmtStampShort(r.submitAt) : "", r.create, null, r.createAt],
-    ["Arrived at Key Account", c.f1Lo !== null && c.f1Lo !== undefined ? `forecast range ${fmtDay((c.base1 ?? r.create) + c.f1Lo)} – ${fmtDay((c.base1 ?? r.create) + c.f1Hi)}` : "", arrive, arriveEst],
-    ["Sequence 3 approved by KA", "", r.kaOut, kaOutEst],
+    ["Arrived at Key Account", "Forecast 1" + (c.f1Lo !== null && c.f1Lo !== undefined ? ` · likely ${fmtDay((c.base1 ?? r.create) + c.f1Lo)} – ${fmtDay((c.base1 ?? r.create) + c.f1Hi)}` : ""), arrive, arriveEst],
+    ["Sequence 3 approved by KA", "Forecast 3" + (c.f3 ? ` · KA holds it about ${c.f3.days} day${c.f3.days === 1 ? "" : "s"} (likely ${c.f3.lo}–${c.f3.hi})` : ` · usual ${w1} day${w1 === 1 ? "" : "s"}`), r.kaOut, kaOutEst],
     ["With other approvers", r.stage && r.back === null && r.kaOut !== null ? `currently: ${r.stage}` : r.back !== null ? "until the CPR returned to KA" : "", r.back !== null ? (r.backFirst ?? r.back) : null, null, null, r.kaOut !== null && r.back === null],
-    ["Returned to KA (Sequence 8)", returnRange(c) ? `forecast range ${fmtDay(returnRange(c)[0])} – ${fmtDay(returnRange(c)[1])}` : "", r.backFirst ?? r.back, backEst],
-    ["Sequence 8 approved", "", r.backOutFirst ?? r.backOut, (r.back ?? backEst) + w2],
+    ["Returned to KA (Sequence 8)", "Forecast 2" + (returnRange(c) ? ` · likely ${fmtDay(returnRange(c)[0])} – ${fmtDay(returnRange(c)[1])}` : ""), r.backFirst ?? r.back, backEst],
+    ["Sequence 8 approved by KA", "Forecast 4" + (c.f4 ? ` · KA holds it about ${c.f4.days} day${c.f4.days === 1 ? "" : "s"} (likely ${c.f4.lo}–${c.f4.hi})` : ` · usual ${w2} day${w2 === 1 ? "" : "s"}`), r.backOutFirst ?? r.backOut, (r.back ?? backEst) + w2],
     ...reworkList(r).flatMap((e, n) => [
       [`Rework ${n + 1}: returned by ${e.who}`, "back to the KA for correction", e.start, null],
       [`Rework ${n + 1}: approved again by KA`, "", e.end, null]
@@ -3487,6 +3586,19 @@ function returnText(c) {
   if (late) box.append(smallNote(`late ${D - limit} days`, "var(--warn)"));
   return box;
 }
+// Forecast 3 / 4 columns: the actual KA approval when it happened, else the estimate (arrival + Forecast 3, return + Forecast 4)
+const estS3 = (c) => (c.r.kaOut !== null ? c.r.kaOut : (actualArrival(c.r) ?? c.r.kaIn ?? c.predArrival) + c.w1);
+const estS8 = (c) => { const out = c.r.backOutFirst ?? c.r.backOut; return out !== null && out !== undefined ? out : estReturn(c) + c.w2; };
+function holdText(c, est, actual, f, startKnown) {
+  const box = el("div"); box.append(el("div", {}, fmtDay(est)));
+  if (actual) { box.append(smallNote("actual")); return box; }
+  if (f) box.append(smallNote(`${f.days === 0 ? "same day" : `${f.days} day${f.days === 1 ? "" : "s"}`} at KA${f.hi > f.lo ? ` · likely ${f.lo}–${f.hi} days` : ""}`));
+  const D = dataDate(), limit = est + (f ? f.hi - f.days : 0);
+  if (startKnown && !c.r.done && !isInactive(c.r) && D !== null && D > limit) box.append(smallNote(`late ${D - limit} days`, "var(--warn)"));
+  return box;
+}
+const s3Text = (c) => holdText(c, estS3(c), c.r.kaOut !== null, c.f3, c.r.kaIn !== null);
+const s8Text = (c) => { const out = c.r.backOutFirst ?? c.r.backOut; return holdText(c, estS8(c), out !== null && out !== undefined, c.f4, c.r.back !== null); };
 const actualArrival = (r) => (r.prog && r.prog.kaIn !== null && r.prog.kaIn !== undefined ? r.prog.kaIn : null);
 function renderIncoming() {
   if (!SIM) return;
@@ -3499,9 +3611,11 @@ function renderIncoming() {
     { key: "unit", label: "Hospital", sortable: false },
     { key: "desc", label: "Description", wrap: true, sortable: false, render: (c) => c.r.vendorName ? String(c.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 60) : "–" },
     { key: "create", label: "Created", sortable: false, render: (c) => (c.r.createAt ? fmtStampShort(c.r.createAt) : fmtDay(c.r.create)) },
-    { key: "est", label: "Estimated Arrival at Key Account", sortable: false, render: (c) => arrivalText(c) },
-    { key: "act", label: "Actual Arrival at Key Account", sortable: false, render: (c) => (actualArrival(c.r) !== null ? fmtDay(actualArrival(c.r)) : "–") },
-    { key: "ret", label: "Estimated Return to Key Account", sortable: false, render: (c) => returnText(c) },
+    { key: "est", label: "① Arrival at KA (estimate)", sortable: false, render: (c) => arrivalText(c) },
+    { key: "act", label: "① Arrival at KA (actual)", sortable: false, render: (c) => (actualArrival(c.r) !== null ? fmtDay(actualArrival(c.r)) : "–") },
+    { key: "s3", label: "② KA approves Sequence 3", sortable: false, render: (c) => s3Text(c) },
+    { key: "ret", label: "③ Return to KA", sortable: false, render: (c) => returnText(c) },
+    { key: "s8", label: "④ KA approves Sequence 8", sortable: false, render: (c) => s8Text(c) },
     { key: "ka", label: "Key Account", sortable: false, render: (c) => kaLabel(c.ka) },
     { key: "status", label: "Status", sortable: false, render: (c) => { const [t, k] = progressStatus(c); return pill(t, k); } },
     { key: "rule", label: "Rule", sortable: false, render: (c) => pill(ruleLabel(c.rule), ruleKind[c.rule]) },
@@ -3517,8 +3631,8 @@ $("incPrev").addEventListener("click", () => { incState.page = Math.max(0, incSt
 $("incNext").addEventListener("click", () => { incState.page++; renderIncoming(); });
 $("incCopy").addEventListener("click", async () => {
   if (!SIM) return;
-  const lines = [["CPR Number", "Hospital", "Description", "Created", "Estimated Arrival at Key Account", "Likely arrival range", "Actual Arrival at Key Account", "Estimated Return to Key Account", "Likely return range", "Key Account", "Status", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
-  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), arrivalRange(c) ? arrivalRange(c).map(dayToIso).join(" – ") : "", actualArrival(c.r) !== null ? dayToIso(actualArrival(c.r)) : "", dayToIso(estReturn(c)), returnRange(c) ? returnRange(c).map(dayToIso).join(" – ") : "", kaLabel(c.ka), progressStatus(c)[0], ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
+  const lines = [["CPR Number", "Hospital", "Description", "Created", "Estimated Arrival at Key Account", "Likely arrival range", "Actual Arrival at Key Account", "Estimated Sequence 3 approval by KA (Forecast 3)", "Estimated Return to Key Account", "Likely return range", "Estimated Sequence 8 approval by KA (Forecast 4)", "Key Account", "Status", "Rule", ...(META.hasKa ? ["Actual KA"] : [])].join("\t")];
+  for (const c of incRows()) lines.push([c.r.cpr, c.unit, c.r.vendorName || "", c.r.createAt || dayToIso(c.r.create), dayToIso(c.predArrival), arrivalRange(c) ? arrivalRange(c).map(dayToIso).join(" – ") : "", actualArrival(c.r) !== null ? dayToIso(actualArrival(c.r)) : "", dayToIso(estS3(c)), dayToIso(estReturn(c)), returnRange(c) ? returnRange(c).map(dayToIso).join(" – ") : "", dayToIso(estS8(c)), kaLabel(c.ka), progressStatus(c)[0], ruleLabel(c.rule), ...(META.hasKa ? [kaLabel(c.r.ka)] : [])].join("\t"));
   const text = lines.join("\n");
   try { await navigator.clipboard.writeText(text); setStatus(`${fmtInt(lines.length - 1)} rows copied. Paste into Excel with Ctrl+V.`); }
   catch { const ta = el("textarea", { style: "position:fixed;left:-9999px" }); ta.value = text; document.body.append(ta); ta.select(); const ok = document.execCommand && document.execCommand("copy"); ta.remove(); setStatus(ok ? `${fmtInt(lines.length - 1)} rows copied.` : "The browser blocked automatic copying. Please select the table and copy it manually."); }
@@ -3772,12 +3886,33 @@ function actualFromPo() {
   return { gap: mean(tbl.map((row) => Math.max(...row) - Math.min(...row))), std: mean(tbl.map(stdev)), over: tbl.filter((row) => Math.max(...row) > SIM.maxPerDay).length,
     highest: Math.max(...tbl.flat()), counts, n: list.length, from, to, sameCprs, avg: mean(tbl.flat()) };
 }
+// the four forecasts in the order of the CPR journey
+const FC_LIST = [["Forecast 1 · created → arrives at KA", "f1"], ["Forecast 3 · KA holds it at Sequence 3", "f3"], ["Forecast 2 · Seq 3 approval → returns to KA", "f2"], ["Forecast 4 · KA holds it at Sequence 8", "f4"]];
+// Offline study in the Python notebook (forecast_1_2_3_4.ipynb): CPR_Cleaned 2023-2026, validation Apr-Jun 2026, test Jul-Sep 2026.
+// Aggregate results only (no CPR data). [model, best setting, validation MAE, test MAE]
+const STUDY = [
+  { fc: "Forecast 1 · created → arrives at KA", n: 467, chosen: "Linear Regression", p: "< 0.001", rows: [["Linear Regression", "alpha=0", 5.12, 3.31], ["Random Forest", "min_samples_leaf=10, max_features=0.5", 5.31, 3.55], ["XGBoost", "max_depth=2, learning_rate=0.1", 5.17, 3.39], ["Neural Network (MLP)", "hidden=(64, 32), alpha=0.01", 5.19, 3.42], ["Ensemble", "Linear Regression + XGBoost", 5.12, 3.33], ["Simple guess", "3 days for every CPR", 5.32, 3.53]] },
+  { fc: "Forecast 3 · KA holds it at Sequence 3", n: 541, chosen: "Random Forest", p: "< 0.001", rows: [["Linear Regression", "alpha=100", 2.73, 1.02], ["Random Forest", "min_samples_leaf=20, max_features=1.0", 2.28, 0.85], ["XGBoost", "max_depth=2, learning_rate=0.03", 2.37, 0.88], ["Neural Network (MLP)", "hidden=(64, 32), alpha=0.01", 3.56, 0.96], ["Ensemble", "Random Forest + XGBoost", 2.29, 0.87], ["Simple guess", "1 day for every CPR", 2.75, 1.05]] },
+  { fc: "Forecast 2 · Seq 3 approval → returns to KA", n: 551, chosen: "XGBoost", p: "0.004", rows: [["Linear Regression", "alpha=100", 4.32, 3.96], ["Random Forest", "min_samples_leaf=10, max_features=0.5", 4.24, 3.96], ["XGBoost", "max_depth=2, learning_rate=0.1", 4.18, 3.90], ["Neural Network (MLP)", "hidden=(32,), alpha=0.01", 4.24, 4.04], ["Ensemble", "XGBoost + Random Forest", 4.19, 3.92], ["Simple guess", "4 days for every CPR", 4.28, 4.02]] },
+  { fc: "Forecast 4 · KA holds it at Sequence 8", n: 609, chosen: "XGBoost", p: "< 0.001", rows: [["Linear Regression", "alpha=100", 3.85, 3.36], ["Random Forest", "min_samples_leaf=50, max_features=0.5", 3.43, 3.08], ["XGBoost", "max_depth=2, learning_rate=0.1", 3.39, 3.01], ["Neural Network (MLP)", "hidden=(32,), alpha=0.01", 3.58, 3.37], ["Ensemble", "XGBoost + Random Forest", 3.40, 3.05], ["Simple guess", "2 days for every CPR", 3.83, 3.39]] }
+];
+function renderStudy() {
+  const rows = STUDY.flatMap((f) => f.rows.map(([model, setting, val, test]) => ({ fc: f.fc, model, setting, val, test, chosen: model === f.chosen, ref: model === "Simple guess", n: f.n, p: f.p })));
+  renderTable($("tblStudy"), [
+    { key: "fc", label: "Forecast", sortable: false, render: (r) => (r.model === "Linear Regression" ? r.fc : "") },
+    { key: "model", label: "Model", sortable: false, render: (r) => (r.ref ? el("span", { style: "color:var(--muted)" }, r.model + " (reference)") : r.model) },
+    { key: "setting", label: "Best setting", sortable: false },
+    { key: "val", label: "Validation MAE (days)", num: true, sortable: false, render: (r) => fmtNum(r.val, 2) },
+    { key: "test", label: "Test MAE (days)", num: true, sortable: false, render: (r) => fmtNum(r.test, 2) },
+    { key: "chosen", label: "", sortable: false, render: (r) => (r.chosen ? pill(`Chosen · p ${r.p} vs simple guess`, "good") : "") }
+  ], rows);
+}
 function renderBukti() {
-  renderFcSettings();
+  renderFcSettings(); renderStudy();
   const clear = () => { for (const id of ["tblModels", "bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
   if (!SIM) { clear(); $("bkNote").textContent = "Please run the allocation in the CPR Allocation tab first."; return; }
   const mRows = [];
-  for (const [label, m] of [["Forecast 1 · arrival at KA", SIM.models && SIM.models.f1], ["Forecast 2 · return to KA", SIM.models && SIM.models.f2]]) {
+  for (const [label, m] of FC_LIST.map(([name, k]) => [name, SIM.models && SIM.models[k]])) {
     if (!m) { mRows.push({ fc: label, model: "Median per hospital", setting: "–", mae: null, test: null, chosen: true }); continue; }
     const testMae = m.test ? mean(m.test.rows.map((x) => Math.abs(x[1]))) : null;
     if (!m.bestPerFamily.length) mRows.push({ fc: label, model: m.chosen.family, setting: m.chosen.setting + " (notebook choice)", mae: null, test: testMae, chosen: true });
@@ -3793,18 +3928,30 @@ function renderBukti() {
   ], mRows);
   $("bkNote").textContent = `Period: CPRs created ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)} (${fmtInt(SIM.n)} CPRs).`;
   // 1) forecast accuracy: notebook-style test on the latest 3 months of history
-  const tiles = [];
-  for (const [name, m] of [["Forecast 1 · arrival at KA", SIM.models && SIM.models.f1], ["Forecast 2 · return to KA", SIM.models && SIM.models.f2]]) {
-    const t = m && m.test;
-    if (!t) { tiles.push(tile(name, "–", "", "Not enough history to test (at least 3 recent months of CPRHistory are needed)")); continue; }
-    const e = t.rows.map((x) => Math.abs(x[1])), eb = t.rows.map((x) => Math.abs(x[2]));
-    const mae = mean(e), maeB = mean(eb);
-    tiles.push(tile(`${name} · MAE`, fmtNum(mae, 2), "days", `${fmtInt(t.rows.length)} CPRs, ${fmtDay(t.from)} – ${fmtDay(t.to)} · baseline ${fmtNum(maeB, 2)} days (${mae < maeB ? "model is more accurate" : "model is not yet more accurate"})`));
-    const cov = t.rows.filter((x) => x[3] !== undefined);
-    if (cov.length) tiles.push(tile(`${name} · inside the likely range`, fmtNum((cov.filter((x) => x[3] === 1).length / cov.length) * 100, 0), "%", "share of test CPRs whose actual date fell inside the range shown in the dashboard (P20–P80 of the model errors)"));
-    tiles.push(tile(`${name} · within ±2 days`, fmtNum((e.filter((x) => x <= 2).length / e.length) * 100, 0), "%", `exact: ${fmtNum((e.filter((x) => x === 0).length / e.length) * 100, 0)}% · more than 5 days off: ${fmtNum((e.filter((x) => x > 5).length / e.length) * 100, 0)}%`));
-  }
-  $("bkFcTiles").replaceChildren(...tiles);
+  // one row per forecast, in the order of the CPR journey: easier to read than separate tiles
+  const what = { f1: "days from CPR created to arrival at KA", f3: "days the KA holds the CPR at Sequence 3", f2: "days from the Sequence 3 approval to the return to KA", f4: "days the KA holds the CPR at Sequence 8" };
+  const accRows = FC_LIST.map(([name, k]) => {
+    const m = SIM.models && SIM.models[k], t = m && m.test;
+    if (!t) return { name, what: what[k], model: m ? m.chosen.family : "Median per hospital", n: null };
+    const e = t.rows.map((x) => Math.abs(x[1])), eb = t.rows.map((x) => Math.abs(x[2])), cov = t.rows.filter((x) => x[3] !== undefined);
+    return { name, what: what[k], model: `${m.chosen.family} (${m.chosen.setting})`, n: e.length, from: t.from, to: t.to, mae: mean(e), base: mean(eb),
+      within2: e.filter((x) => x <= 2).length / e.length, inRange: cov.length ? cov.filter((x) => x[3] === 1).length / cov.length : null };
+  });
+  const accTbl = el("table");
+  $("bkFcTiles").replaceChildren(Object.assign(el("div", { class: "tbl-wrap" }), {}));
+  $("bkFcTiles").firstChild.append(accTbl);
+  renderTable(accTbl, [
+    { key: "name", label: "Forecast", sortable: false, render: (r) => { const d = el("div"); d.append(el("b", {}, r.name)); d.append(smallNote(r.what)); return d; } },
+    { key: "model", label: "Model in use", sortable: false },
+    { key: "n", label: "CPRs tested", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtInt(r.n)) },
+    { key: "mae", label: "Average error (MAE, days)", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.mae, 2)) },
+    { key: "base", label: "Simple guess error (days)", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.base, 2)) },
+    { key: "within2", label: "Within ±2 days", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.within2 * 100, 0) + "%") },
+    { key: "inRange", label: "Inside the likely range", num: true, sortable: false, render: (r) => (r.inRange === null || r.inRange === undefined ? "–" : fmtNum(r.inRange * 100, 0) + "%") },
+    { key: "v", label: "", sortable: false, render: (r) => (r.n === null ? pill("Not enough history", "muted") : r.mae < r.base ? pill("More accurate than the simple guess", "good") : pill("Not yet better than the simple guess", "warn")) }
+  ], accRows);
+  const t0 = accRows.find((r) => r.n !== null);
+  $("bkFcNote").textContent = t0 ? `Test months: ${fmtDay(t0.from)} – ${fmtDay(t0.to)}. Simple guess = the median per hospital of the 2026 process. "Inside the likely range" = share of test CPRs whose actual date fell inside the range shown in the dashboard (P20–P80 of the model errors).` : "";
   const t1 = SIM.models && SIM.models.f1 && SIM.models.f1.test;
   const byWeek = new Map();
   for (const x of t1 ? t1.rows : []) { const wk = x[0] - weekday(x[0]); if (!byWeek.has(wk)) byWeek.set(wk, [[], []]); byWeek.get(wk)[0].push(Math.abs(x[1])); byWeek.get(wk)[1].push(Math.abs(x[2])); }
