@@ -2553,7 +2553,7 @@ function similarityBefore(docs) {   // docs: [{day, text}] -> Float64Array of si
       const touched = [];
       for (const [w, x] of vecs[i]) for (const [j, y] of post.get(w) || []) { if (score[j] === 0) touched.push(j); score[j] += x * y; }
       let best = 0; for (const j of touched) { if (score[j] > best) best = score[j]; score[j] = 0; }
-      sim[i] = best;
+      sim[i] = Math.floor(best * 1e9 + 0.5) / 1e9;   // rounded so the Python notebook gives exactly the same value
     }
     for (let q = s; q < e; q++) { const i = order[q]; for (const [w, x] of vecs[i]) { if (!post.has(w)) post.set(w, []); post.get(w).push([i, x]); } added++; }
     s = e;
