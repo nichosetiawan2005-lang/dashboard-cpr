@@ -399,8 +399,9 @@ body.locked #loginForm .btn { width: 100%; }
         <div class="capgrid"><label>Sequence 3<input type="number" id="twRec" min="0" step="0.1"></label><label>Sequence 8<input type="number" id="twMat" min="0" step="0.1"></label><label>Rework<input type="number" id="twRw" min="0" step="0.1"></label><label>× CPR &gt; Rp1 M<input type="number" id="twBig" min="1" step="0.1"></label></div></details></div>
     <div class="section-title"><h2>Rework per KA</h2><p>Rework = a CPR sent back to the KA for correction (by Purchasing Head HO or Purchasing Director). Lower is better.</p></div>
     <div class="tiles" id="rwTiles"></div>
-    <div class="card" style="margin-top:12px"><h3>Rework rate per KA (%)</h3><div class="sub">In brackets: reworked CPRs / CPRs completed by the KA.</div><div class="chart" id="chRw"></div></div>
+    <div class="card" style="margin-top:12px"><h3>Rework rate per KA (%)</h3><div class="sub">Only reworks caused by a KA error count. In brackets: CPRs with a KA-error rework / CPRs completed by the KA.</div><div class="chart" id="chRw"></div></div>
     <div class="tbl-wrap" style="margin-top:12px"><table id="tblRw"></table></div>
+    <p class="note" id="rwCauseNote"></p>
     <p class="note">Hover over a bar to see the reworked CPR numbers; click a bar or a Key Account name to list them all.</p>
     <div class="card" id="rwDetail" style="margin-top:12px" hidden><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="rwDetTitle"></h3><div class="sub" id="rwDetSub"></div></div><button class="btn ghost" type="button" id="rwDetClose">Close</button></div>
       <div class="tbl-wrap" style="max-height:480px;overflow:auto"><table id="tblRwDet"></table></div></div>
@@ -1329,7 +1330,26 @@ async function loadCatalog() {
   } catch {}
 }
 // rework episodes stored as "start:end:who;..." (who: D = Purchasing Director, H = Purchasing Head HO; end empty = still open)
-const reworkList = (r) => (r.rwk ? String(r.rwk).split(";").map((x) => { const [a, b, w] = x.split(":"); return { start: Number(a), end: b === "" ? null : Number(b), who: w === "D" ? "Purchasing Director" : "Purchasing Head HO" }; }) : []);
+// cause of a rework, read from the approver's note when the CPR is sent back (supervisor's rules):
+//   K = KA error, counted in KA performance: difference in the TRF (also "revisi TRF" without a reason), PPN missing / double,
+//       wrong or missing attachment, price in the portal different from the TRF
+//   E = exception, not counted: renegotiation ("renego" / "nego" in the note)
+//   P = not decided yet (additional discount, new / final / latest price): not counted for now
+//   U = unclear (vendor change, spec, hold, TOP, other or no note): not counted for now
+const RW_CAUSE = { K: "KA error", E: "Exception · renego", P: "Discount / new price (not decided)", U: "Unclear" };
+const RW_CAUSE_KIND = { K: "bad", E: "muted", P: "info", U: "warn" };
+function reworkCause(note) {
+  const t = String(note || "").toLowerCase();
+  if (/reneg|re-neg|\bnego/.test(t)) return { code: "E", why: "renegotiation" };
+  if (/ppn|pajak/.test(t)) return { code: "K", why: "PPN" };
+  if (/selisih|salah|tidak sesuai|tdk sesuai|tidak sama|tdk sama|berbeda|\bbeda\b|keliru|portal|lampir|attach|lengkapi/.test(t)) return { code: "K", why: "difference / attachment" };
+  if (/disk|disc|harga (baru|final|terakhir|terbaru)|hrg (baru|final|terakhir)|penawaran (final|terakhir|terbaru)|harga finalnya/.test(t)) return { code: "P", why: "discount / new price" };
+  if (/\btr[fv]\b/.test(t)) return { code: "K", why: "TRF revision" };
+  return { code: "U", why: t.trim() ? "other" : "no note" };
+}
+const reworkList = (r) => (r.rwk ? String(r.rwk).split(";").map((x) => { const [a, b, w, c] = x.split(":"); return { start: Number(a), end: b === "" ? null : Number(b), who: w === "D" ? "Purchasing Director" : "Purchasing Head HO", cause: c || "?" }; }) : []);
+// reworks that count against the KA (KA error only); the others stay visible but do not lower the KA's performance
+const kaReworks = (r) => reworkList(r).filter((e) => e.cause === "K");
 const inRework = (r) => !!(r.stage && String(r.stage).startsWith("At Key Account – Rework"));
 // the approver right before KA (Sequence 3) and right before Purchasing HO (Sequence 8), learned from CPRHistory
 const PRE_SEQ3_ROLES = new Set(["purchasing head hu", "accounting ho"]);
@@ -1442,7 +1462,7 @@ function pivotHistory(rows) {
     const reworks = reworkRows.map((x) => {
       const st = toStamp(x[HCOL.approve]), t = reviseTo(x), toKa = t === "purchasing ho" || t.replace(/[^a-z]/g, "").includes("keyaccount");
       const end = toKa ? list.filter((y) => (isPurchHo(y) || isKaRole(y)) && toStamp(y[HCOL.approve]) > st).map((y) => toStamp(y[HCOL.approve])).sort()[0] || null : null;
-      return { st, end, toKa, who: LATE[normRole(x[HCOL.role])], row: x };
+      return { st, end, toKa, who: LATE[normRole(x[HCOL.role])], row: x, cause: reworkCause(x[HCOL.noteAppr]).code };
     });
     const firstPhoDone = phoRows.map((x) => toStamp(x[HCOL.approve])).filter(Boolean).sort()[0] || null;
     // first return to KA for Sequence 8 (before any rework) - used for the daily workload
@@ -1494,7 +1514,7 @@ function pivotHistory(rows) {
       backFirstAt, backOutFirstAt: firstPhoDone,
       ka3User: kaRows.map((x) => x[HCOL.user]).filter(Boolean).slice(-1)[0] || null,
       ka8User: (phoRows.find((x) => toStamp(x[HCOL.approve]) === firstPhoDone) || phoRows[0] || {})[HCOL.user] || null,
-      rwk: reworks.filter((e) => e.toKa).map((e) => `${dayOf(e.st)}:${e.end ? dayOf(e.end) : ""}:${e.who}`).join(";") || null
+      rwk: reworks.filter((e) => e.toKa).map((e) => `${dayOf(e.st)}:${e.end ? dayOf(e.end) : ""}:${e.who}:${e.cause}`).join(";") || null
     }));
   }
   return { recs, dropped, skipped, removed, removedLast, olderVersions, steps, catalog, kaUsers: kaUsersFound, userSteps, roleSeqs, cprs: byCpr.size };
@@ -2337,7 +2357,7 @@ function renderKaFromHistory(view) {
   if (!$("poFrom").value || !$("poTo").value) { const D = dataDate(); if (D !== null) { $("poTo").value = dayToIso(D); $("poFrom").value = dayToIso(D - 90); } }
   const from = isoToDay($("poFrom").value), to = isoToDay($("poTo").value);
   const inP = (d) => d !== null && d !== undefined && (from === null || d >= from) && (to === null || d <= to);
-  const g = new Map(); const get = (ka) => { if (!g.has(ka)) g.set(ka, { s3: [], s8: [], ev: [], rework: 0, rwCpr: new Set(), byH: 0, byD: 0, fix: [], open: 0 }); return g.get(ka); };
+  const g = new Map(); const get = (ka) => { if (!g.has(ka)) g.set(ka, { s3: [], s8: [], ev: [], rework: 0, rwCpr: new Set(), byH: 0, byD: 0, fix: [], open: 0, nc: { E: 0, P: 0, U: 0 } }); return g.get(ka); };
   let n3 = 0, n8 = 0, unknown = 0;
   for (const r of RECS) {
     if (!r.hstatus) continue;
@@ -2345,8 +2365,10 @@ function renderKaFromHistory(view) {
     const b8 = r.backOutFirst ?? null, a8 = r.backFirst ?? r.back;
     if (inP(b8) && a8 !== null && a8 !== undefined) { const ka = userKa(r.ka8User); if (ka) { const x = get(ka); x.s8.push({ d: b8 - a8, h: hoursBetween(r.backFirstAt ?? r.backAt, r.backOutFirstAt ?? r.backOutAt) }); x.ev.push(b8); n8++; } else unknown++; }
     for (const e of reworkList(r)) if (inP(e.start)) { const ka = userKa(r.ka8User || r.kaUser); if (!ka) continue; const x = get(ka);
-      x.rework++; x.rwCpr.add(r.cpr); if (e.who === "Purchasing Director") x.byD++; else x.byH++; if (e.end !== null) x.fix.push(e.end - e.start); else x.open++;
-      (x.rwEvents || (x.rwEvents = [])).push({ r, ...e }); }
+      (x.rwEvents || (x.rwEvents = [])).push({ r, ...e });
+      // only a KA error counts in the KA's rework performance ("?" = uploaded before the causes were read: still counted)
+      if (e.cause !== "K" && e.cause !== "?") { x.nc[e.cause] = (x.nc[e.cause] || 0) + 1; continue; }
+      x.rework++; x.rwCpr.add(r.cpr); if (e.who === "Purchasing Director") x.byD++; else x.byH++; if (e.end !== null) x.fix.push(e.end - e.start); else x.open++; }
   }
   if (view) for (const ka of currentKas(SIM.kaList)) get(ka);
   $("poInfo").textContent = `${fmtInt(n3)} Sequence 3 approvals and ${fmtInt(n8)} Sequence 8 approvals between ${$("poFrom").value ? fmtDay(from) : "–"} and ${$("poTo").value ? fmtDay(to) : "–"}.` + (unknown ? ` ${fmtInt(unknown)} steps without a recognised KA user are excluded.` : "");
@@ -2357,7 +2379,7 @@ function renderKaFromHistory(view) {
     const pd = [...perDay.values()], lv = view && view.perKa[ka];
     return { ka, name: kaLabel(ka), n: x.s3.length, n8: x.s8.length, r1avg: r1, r2avg: r2, totAvg: r1 !== null && r2 !== null ? r1 + r2 : null,
       r1h: median(x.s3.map((y) => y.h)), r2h: median(x.s8.map((y) => y.h)), perDay: mean(pd), perDayP90: quantile(pd, 0.9),
-      rework: x.rework, rwCprs: x.rwCpr.size, byH: x.byH, byD: x.byD, fixAvg: mean(x.fix), fixList: x.fix, rwOpen: x.open, rwEvents: x.rwEvents || [], reworkRate: x.s8.length ? (x.rwCpr.size / x.s8.length) * 100 : null, loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null };
+      rework: x.rework, rwCprs: x.rwCpr.size, byH: x.byH, byD: x.byD, fixAvg: mean(x.fix), fixList: x.fix, rwOpen: x.open, rwEvents: x.rwEvents || [], nc: x.nc, reworkRate: x.s8.length ? (x.rwCpr.size / x.s8.length) * 100 : null, loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null };
   }).sort((a, b) => (b.totAvg ?? 0) - (a.totAvg ?? 0));
   const withWork = rows.filter((r) => r.n + r.n8 > 0);
   barChartH($("chKa"), withWork.map((r) => `${r.name} (${r.n}/${r.n8})`), [
@@ -2390,9 +2412,13 @@ function renderRework(rows) {
     tile("Reworked CPRs", fmtInt(totRw), `of ${fmtInt(tot8)}`, `${tot8 ? fmtNum((totRw / tot8) * 100, 1) : "–"}% of the CPRs completed by the KAs were sent back`),
     tile("Sent back by", "", "", `Purchasing Head HO ${fmtInt(list.reduce((a, r) => a + r.byH, 0))}× · Purchasing Director ${fmtInt(list.reduce((a, r) => a + r.byD, 0))}×`),
     tile("Still in rework", fmtInt(list.reduce((a, r) => a + r.rwOpen, 0)), "CPRs", "sent back and not yet approved again by the KA"),
-    tile("Days to fix (avg)", allFix.length ? fmtNum(mean(allFix)) : "–", "days", "until the KA approves it again")
+    tile("Days to fix (avg)", allFix.length ? fmtNum(mean(allFix)) : "–", "days", "until the KA approves it again"),
+    tile("Not counted against the KA", fmtInt(list.reduce((a, r) => a + r.nc.E + r.nc.P + r.nc.U, 0)), "times", `renego ${fmtInt(list.reduce((a, r) => a + r.nc.E, 0))} · discount / new price (not decided) ${fmtInt(list.reduce((a, r) => a + r.nc.P, 0))} · unclear ${fmtInt(list.reduce((a, r) => a + r.nc.U, 0))}`)
   );
-  const cprsOf = (r) => [...new Set(r.rwEvents.map((e) => e.r.cpr))];
+  const unread = list.reduce((a, r) => a + r.rwEvents.filter((e) => e.cause === "?").length, 0);
+  $("rwCauseNote").textContent = (unread ? `${fmtInt(unread)} reworks were uploaded before the causes were read and are still counted; upload CPRHistory again to classify them. ` : "")
+    + "Counted as KA rework (KA error): a difference in the TRF (also \"revisi TRF\" without a reason), PPN missing or double, a wrong or missing attachment, or a price in the portal different from the TRF. Not counted: renegotiation (exception); additional discount or new / final price (not decided yet); other or unclear notes. Read from the approver's note when the CPR is sent back.";
+  const cprsOf = (r) => [...new Set(r.rwEvents.filter((e) => e.cause === "K" || e.cause === "?").map((e) => e.r.cpr))];
   barChartH($("chRw"), list.map((r) => `${r.name} (${r.rwCprs}/${r.n8})`), [{ name: "Rework rate (%)", color: "var(--s2)", values: list.map((r) => r.reworkRate ?? 0) }], { dec: 1, label: "Rework rate per KA (%)",
     tipRows: (i) => { const c = cprsOf(list[i]); return [...c.slice(0, 8).map((cpr) => ({ value: cpr, label: "" })), ...(c.length ? [{ value: "", label: c.length > 8 ? `+${c.length - 8} more · click to see all` : "click to see the details" }] : [])]; },
     onClick: (i) => showReworkList(list[i]) });
@@ -2401,7 +2427,10 @@ function renderRework(rows) {
     { key: "rwCprs", label: "Reworked CPRs", num: true, render: (r) => `${fmtInt(r.rwCprs)} of ${fmtInt(r.n8)}` },
     { key: "reworkRate", label: "Rework rate", num: true, render: (r) => (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 1) + "%") },
     { key: "fixAvg", label: "Days to fix (avg)", num: true, render: (r) => fmtNum(r.fixAvg) },
-    { key: "rwOpen", label: "Still in rework", num: true, render: (r) => fmtInt(r.rwOpen) }
+    { key: "rwOpen", label: "Still in rework", num: true, render: (r) => fmtInt(r.rwOpen) },
+    { key: "ncE", label: "Renego (exception)", num: true, render: (r) => fmtInt(r.nc.E) },
+    { key: "ncP", label: "Discount / new price", num: true, render: (r) => fmtInt(r.nc.P) },
+    { key: "ncU", label: "Unclear", num: true, render: (r) => fmtInt(r.nc.U) }
   ], list);
   RW_ROWS = list;
   if (RW_OPEN) { const again = list.find((r) => r.ka === RW_OPEN); if (again) showReworkList(again, true); else $("rwDetail").hidden = true; }
@@ -2411,13 +2440,15 @@ let RW_ROWS = [], RW_OPEN = null;
 function showReworkList(row, keepScroll) {
   RW_OPEN = row.ka;
   const box = $("rwDetail"); box.hidden = false;
-  $("rwDetTitle").textContent = `Reworked CPRs of ${row.name}`;
-  const ev = row.rwEvents.slice().sort((a, b) => b.start - a.start);
-  $("rwDetSub").textContent = `${fmtInt(new Set(ev.map((e) => e.r.cpr)).size)} CPRs, ${fmtInt(ev.length)} times sent back in the selected period. Click a CPR number to see all its approval steps and notes.`;
+  $("rwDetTitle").textContent = `Reworks of ${row.name}`;
+  const counted = (e) => e.cause === "K" || e.cause === "?";
+  const ev = row.rwEvents.slice().sort((a, b) => counted(b) - counted(a) || b.start - a.start);
+  $("rwDetSub").textContent = `${fmtInt(ev.length)} times sent back in the selected period: ${fmtInt(ev.filter(counted).length)} counted as KA error, ${fmtInt(ev.length - ev.filter(counted).length)} not counted. Click a CPR number to see its approval steps and the approver's note.`;
   renderTable($("tblRwDet"), [
     { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (e) => cprLink(e.r.cpr) },
     { key: "unit", label: "Hospital", sortable: false, render: (e) => e.r.unit || "–" },
     { key: "desc", label: "Description", wrap: true, sortable: false, render: (e) => (e.r.vendorName ? String(e.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 70) : "–") },
+    { key: "cause", label: "Cause", sortable: false, render: (e) => { const d = el("div"); d.append(pill(e.cause === "?" ? "Not classified yet" : RW_CAUSE[e.cause], e.cause === "?" ? "bad" : RW_CAUSE_KIND[e.cause])); d.append(smallNote(counted(e) ? "counted in KA performance" : "not counted")); return d; } },
     { key: "who", label: "Sent back by", sortable: false, render: (e) => e.who },
     { key: "start", label: "Sent back on", sortable: false, render: (e) => fmtDay(e.start) },
     { key: "end", label: "Approved again by KA", sortable: false, render: (e) => (e.end !== null ? fmtDay(e.end) : pill("Still in rework", "warn")) },
@@ -3543,6 +3574,7 @@ async function renderSteps(cpr) {
     if (back && startAt === back) returnedAt.delete(r);
     const dur = isSubmit ? "" : fmtDuration(startAt, approve); if (dur) right.append(el("span", { class: "dur" }, "⏱ " + dur));
     if (revise && approve) returnedAt.set(normRole(revise), approve);
+    if (kind === "rework") { const rc = reworkCause(nAppr); right.append(pill(RW_CAUSE[rc.code] + (rc.code === "K" ? "" : " · not counted"), RW_CAUSE_KIND[rc.code])); }
     card.append(sq, roleLbl, right, actor);
     const wm = el("div", { class: "when-m" }, `${fmtStampDay(stamp)} ${fmtStampTime(stamp)}`); card.append(wm);
     const notes = [["Req note", nReq], ["Approver note", nAppr], ["Consult note", nCons]].filter(([, v]) => v);
