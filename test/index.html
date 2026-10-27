@@ -496,6 +496,16 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="tbl-wrap" style="margin-top:10px;max-height:520px;overflow:auto"><table id="tblChkCpr"></table></div>
       <p class="note" id="chkNote"></p>
     </div>
+    <div class="card" id="lcCard" style="margin-top:12px"><h3>KA workload per day: forecast vs actual (test months)</h3>
+      <div class="sub">For every CPR created in the test months, the four forecasts are chained when the CPR is created (arrival at KA → Sequence 3 approval → return → Sequence 8 approval), using models that learned only from older CPRs. Forecast workload = CPRs the KA would hold on that day according to these dates; actual workload = CPRs the KA really held (Sequence 3 + Sequence 8, first round; rework is not forecast and not counted). Same CPRs and the same KA on both sides, so only the timing is compared.</div>
+      <div class="filters" style="border:0;padding:0;margin:8px 0">
+        <div class="field"><label for="lcKa">Key Account</label><select id="lcKa"></select></div>
+        <button class="btn ghost" type="button" id="lcCopy">Copy daily table</button>
+      </div>
+      <div class="legend" id="lgLc"></div><div class="chart" id="chLc"></div>
+      <div class="tbl-wrap" style="margin-top:10px"><table id="tblLc"></table></div>
+      <p class="note" id="lcNote"></p>
+    </div>
     <div class="card" id="fcSetCard" style="margin-top:12px"><h3>Forecast settings</h3><div class="sub">Choose which history the forecast learns from. Default = the analysis notebook. "Apply and retrain" tests the new setting on the latest months and shows its test MAE next to the default, so the effect is visible before it is relied on. Only CPRs allocated after the change use the new forecast; saved Key Account assignments do not change.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
         <div class="field"><label for="fcFrom">Learn from CPRs created from</label><input type="date" id="fcFrom"></div>
@@ -2876,7 +2886,9 @@ async function ensureModels(_start, onStatus) {
     // retrain the chosen setting on all history -> forecasts for the queue
     const m = fitOn(sel, hist, stats, feats);
     const res = m.y.map((v, i) => v - m.f(m.X[i]));   // residuals in log days: P20-P80 range
-    return { ...sel, n: hist.length, st: m.st, f: m.f, q20: quantile(res, 0.2), q80: quantile(res, 0.8) };
+    // the chosen setting learned only from history before the test months (in memory, for the daily workload check)
+    let beforeModel = null; const fitBefore = () => beforeModel || (beforeModel = fitOn(sel, before, stats, feats));
+    return { ...sel, n: hist.length, st: m.st, f: m.f, q20: quantile(res, 0.2), q80: quantile(res, 0.8), fitBefore };
   };
   const f1 = await pick("arrival", f1All, (r) => r.create, f1Stats, f1Features, saved && saved.f1);
   const f2 = await pick("return", f2All, (r) => r.approve, f2Stats, f2Features, saved && saved.f2);
@@ -4071,8 +4083,75 @@ function renderRiskCheck() {
   ], rows);
   $("riskNote").textContent = `Test: ${fmtInt(t.n)} CPRs that reached Sequence 8 between ${fmtDay(t.from)} and ${fmtDay(t.to)} (${fmtInt(t.nRw)} sent back, ${fmtNum((t.nRw / t.n) * 100, 1)}%), model learned from ${fmtInt(t.trainN)} older CPRs. AUC ${fmtNum(t.auc, 2)}. The signal is still weak: use the level to decide which CPRs to double-check before Sequence 8, not as a prediction for one CPR.`;
 }
+// ---- KA workload per day: forecast (chained at creation) vs actual, test months ----
+let LC = null;
+function loadCheck() {
+  const M = SIM && SIM.models; if (!M || !M.f1 || !M.f2 || !M.f3 || !M.f4 || !M.f3.state || !M.f4.state) return null;
+  if (LC && LC.key === M.key) return LC;
+  const D = dataDate(), ts = M.testStart; if (D === null || ts === undefined) return null;
+  const b1 = M.f1.fitBefore(), b2 = M.f2.fitBefore(), b3 = M.f3.fitBefore(), b4 = M.f4.fitBefore();
+  const pr = (m, x) => roundHalfEven(Math.max(0, Math.expm1(m.f(x))));
+  const cprs = [];
+  for (const r of RECS) {
+    if (!r.hstatus || r.create === null || r.create === undefined || r.create < ts || r.create > D) continue;
+    const ka = dataKa(r); if (!ka || !isCurrentKa(ka)) continue;
+    const t = TRAIN.get(r.cpr), c0 = r.create;
+    // everything is forecast on the creation day: the KA queue and the recent speed are read on that day
+    const arr = c0 + pr(b1, f1Features({ unit: r.unit, create: c0, isNew: 1, capex: t ? t.capex : null, sim: M.simByCpr.get(r.cpr) ?? 0 }, b1.st));
+    const out3 = arr + pr(b3, f34Features({ unit: r.unit, ka, start: arr, q: M.f3.state(ka, c0) }, b3.st));
+    const [ra, ru] = M.recent(r.unit, c0);
+    const back = out3 + pr(b2, f2Features({ unit: r.unit, isNew: 1, approve: out3, recentAll: ra, recentUnit: ru }, b2.st));
+    const out8 = back + pr(b4, f34Features({ unit: r.unit, ka, start: back, q: M.f4.state(ka, c0) }, b4.st));
+    const b8 = r.backFirst ?? r.back, o8 = r.backOutFirst ?? r.backOut;
+    // a step not approved yet is still held until the data date, unless the CPR was finished, rejected or became inactive
+    const openEnd = r.done || isInactive(r) || IGNORED[r.cpr] ? Math.min(D, r.lastAct ?? D) : D;
+    const act = [];
+    if (r.kaIn !== null && r.kaIn !== undefined) act.push([r.kaIn, r.kaOut ?? openEnd]);
+    if (b8 !== null && b8 !== undefined) act.push([b8, o8 ?? openEnd]);
+    cprs.push({ cpr: r.cpr, ka, fc: [[arr, out3], [back, out8]], act });
+  }
+  const days = []; for (let d = ts; d <= D; d++) if (weekday(d) < 5) days.push(d);
+  const kas = [...new Set(cprs.map((x) => x.ka))].sort((a, b) => kaLabel(a).localeCompare(kaLabel(b)));
+  const idx = new Map(days.map((d, i) => [d, i]));
+  const grid = new Map(kas.map((k) => [k, { fc: new Array(days.length).fill(0), act: new Array(days.length).fill(0) }]));
+  const addSpan = (arr, a, b) => { for (let d = Math.max(a, ts); d <= Math.min(b, D); d++) { const i = idx.get(d); if (i !== undefined) arr[i]++; } };
+  for (const x of cprs) { const g = grid.get(x.ka); for (const [a, b] of x.fc) addSpan(g.fc, a, b); for (const [a, b] of x.act) addSpan(g.act, a, b); }
+  LC = { key: M.key, days, kas, grid, n: cprs.length, from: ts, to: D };
+  return LC;
+}
+function renderLoadCheck() {
+  const lc = loadCheck();
+  if (!lc || !lc.days.length) { for (const id of ["chLc", "tblLc", "lgLc"]) $(id).replaceChildren(); $("lcNote").textContent = "Not available yet: all four forecast models and at least 3 recent months of CPRHistory are needed."; return; }
+  const sel = $("lcKa"), cur = sel.value;
+  sel.replaceChildren(el("option", { value: "" }, "All Key Accounts (total)"), ...lc.kas.map((k) => el("option", { value: k }, kaLabel(k))));
+  sel.value = lc.kas.includes(cur) ? cur : "";
+  const series = (k) => (k ? lc.grid.get(k) : { fc: lc.days.map((_, i) => lc.kas.reduce((a, kk) => a + lc.grid.get(kk).fc[i], 0)), act: lc.days.map((_, i) => lc.kas.reduce((a, kk) => a + lc.grid.get(kk).act[i], 0)) });
+  const s0 = series(sel.value);
+  $("lgLc").innerHTML = '<span><i class="line" style="background:var(--s2)"></i>Actual</span><span><i class="line" style="background:var(--s1)"></i>Forecast</span>';
+  lineChart($("chLc"), lc.days, [{ name: "Actual", color: "var(--s2)", values: s0.act }, { name: "Forecast", color: "var(--s1)", values: s0.fc }],
+    { tickLabel: fmtShort, tipLabel: (d) => fmtDay(d) + " · CPRs held", label: "KA workload per day: forecast vs actual" });
+  const stat = (name, g, k) => { const dif = g.fc.map((v, i) => v - g.act[i]); return { k, name, act: mean(g.act), fc: mean(g.fc), mae: mean(dif.map(Math.abs)), bias: mean(dif), w2: dif.filter((x) => Math.abs(x) <= 2).length / dif.length, pkA: Math.max(...g.act), pkF: Math.max(...g.fc) }; };
+  const rows = [stat("All Key Accounts (total)", series(""), ""), ...lc.kas.map((k) => stat(kaLabel(k), lc.grid.get(k), k))];
+  renderTable($("tblLc"), [
+    { key: "name", label: "Key Account", sortable: false, render: (r) => (r.k === "" ? el("b", {}, r.name) : Object.assign(el("button", { class: "linkbtn", type: "button" }, r.name), { onclick: () => { $("lcKa").value = r.k; renderLoadCheck(); } })) },
+    { key: "act", label: "Actual CPRs held / day (avg)", num: true, sortable: false, render: (r) => fmtNum(r.act, 1) },
+    { key: "fc", label: "Forecast CPRs held / day (avg)", num: true, sortable: false, render: (r) => fmtNum(r.fc, 1) },
+    { key: "mae", label: "Avg daily difference (MAE)", num: true, sortable: false, render: (r) => fmtNum(r.mae, 1) },
+    { key: "bias", label: "Forecast − actual (avg)", num: true, sortable: false, render: (r) => (r.bias > 0 ? "+" : "") + fmtNum(r.bias, 1) },
+    { key: "w2", label: "Days within ±2 CPRs", num: true, sortable: false, render: (r) => fmtNum(r.w2 * 100, 0) + "%" },
+    { key: "pk", label: "Busiest day: actual / forecast", num: true, sortable: false, render: (r) => `${fmtInt(r.pkA)} / ${fmtInt(r.pkF)}` }
+  ], rows);
+  $("lcNote").textContent = `${fmtInt(lc.n)} CPRs created ${fmtDay(lc.from)} – ${fmtDay(lc.to)}, ${fmtInt(lc.days.length)} working days. Difference = forecast − actual: + means the forecast expected more CPRs at the KA that day than there really were. Early days in the window are low on both sides because only CPRs created in the window are counted.`;
+}
+$("lcKa").addEventListener("change", renderLoadCheck);
+$("lcCopy").addEventListener("click", async () => {
+  const lc = loadCheck(); if (!lc) return;
+  const lines = [["Date", "Key Account", "Actual CPRs held", "Forecast CPRs held", "Difference (forecast - actual)"].join("\t")];
+  for (const k of lc.kas) { const g = lc.grid.get(k); lc.days.forEach((d, i) => lines.push([dayToIso(d), kaLabel(k), g.act[i], g.fc[i], g.fc[i] - g.act[i]].join("\t"))); }
+  try { await navigator.clipboard.writeText(lines.join("\n")); setStatus(`${fmtInt(lines.length - 1)} rows copied (one per KA per working day). Paste into Excel with Ctrl+V.`); } catch { setStatus("The browser blocked copying."); }
+});
 function renderBukti() {
-  renderFcSettings(); renderStudy(); try { renderRiskCheck(); } catch (e) {}
+  renderFcSettings(); renderStudy(); try { renderLoadCheck(); } catch (e) { $("lcNote").textContent = "Daily workload check failed: " + (e.message || e); } try { renderRiskCheck(); } catch (e) {}
   const clear = () => { for (const id of ["tblModels", "bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
   if (!SIM) { clear(); $("bkNote").textContent = "Please run the allocation in the CPR Allocation tab first."; return; }
   const mRows = [];
