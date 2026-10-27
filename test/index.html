@@ -4130,10 +4130,15 @@ function renderLoadCheck() {
   $("lgLc").innerHTML = '<span><i class="line" style="background:var(--s2)"></i>Actual</span><span><i class="line" style="background:var(--s1)"></i>Forecast</span>';
   lineChart($("chLc"), lc.days, [{ name: "Actual", color: "var(--s2)", values: s0.act }, { name: "Forecast", color: "var(--s1)", values: s0.fc }],
     { tickLabel: fmtShort, tipLabel: (d) => fmtDay(d) + " · CPRs held", label: "KA workload per day: forecast vs actual" });
-  const stat = (name, g, k) => { const dif = g.fc.map((v, i) => v - g.act[i]); return { k, name, act: mean(g.act), fc: mean(g.fc), mae: mean(dif.map(Math.abs)), bias: mean(dif), w2: dif.filter((x) => Math.abs(x) <= 2).length / dif.length, pkA: Math.max(...g.act), pkF: Math.max(...g.fc) }; };
+  // Forecast accuracy = 1 − Σ|forecast − actual| / Σ actual (= 1 − WAPE, floored at 0); Forecast bias = Σ(forecast − actual) / Σ actual
+  const stat = (name, g, k) => { const dif = g.fc.map((v, i) => v - g.act[i]), sa = g.act.reduce((a, c) => a + c, 0);
+    return { k, name, act: mean(g.act), fc: mean(g.fc), mae: mean(dif.map(Math.abs)), bias: mean(dif), w2: dif.filter((x) => Math.abs(x) <= 2).length / dif.length, pkA: Math.max(...g.act), pkF: Math.max(...g.fc),
+      acc: sa ? Math.max(0, 1 - dif.reduce((a, c) => a + Math.abs(c), 0) / sa) : null, biasPct: sa ? dif.reduce((a, c) => a + c, 0) / sa : null }; };
   const rows = [stat("All Key Accounts (total)", series(""), ""), ...lc.kas.map((k) => stat(kaLabel(k), lc.grid.get(k), k))];
   renderTable($("tblLc"), [
     { key: "name", label: "Key Account", sortable: false, render: (r) => (r.k === "" ? el("b", {}, r.name) : Object.assign(el("button", { class: "linkbtn", type: "button" }, r.name), { onclick: () => { $("lcKa").value = r.k; renderLoadCheck(); } })) },
+    { key: "acc", label: "Forecast accuracy", num: true, sortable: false, render: (r) => (r.acc === null ? "–" : el("b", {}, fmtNum(r.acc * 100, 1) + "%")) },
+    { key: "biasPct", label: "Forecast bias", num: true, sortable: false, render: (r) => (r.biasPct === null ? "–" : el("b", { style: `color:${Math.abs(r.biasPct) <= 0.1 ? "var(--good)" : "var(--warn)"}` }, (r.biasPct > 0 ? "+" : "") + fmtNum(r.biasPct * 100, 1) + "%")) },
     { key: "act", label: "Actual CPRs held / day (avg)", num: true, sortable: false, render: (r) => fmtNum(r.act, 1) },
     { key: "fc", label: "Forecast CPRs held / day (avg)", num: true, sortable: false, render: (r) => fmtNum(r.fc, 1) },
     { key: "mae", label: "Avg daily difference (MAE)", num: true, sortable: false, render: (r) => fmtNum(r.mae, 1) },
@@ -4141,13 +4146,14 @@ function renderLoadCheck() {
     { key: "w2", label: "Days within ±2 CPRs", num: true, sortable: false, render: (r) => fmtNum(r.w2 * 100, 0) + "%" },
     { key: "pk", label: "Busiest day: actual / forecast", num: true, sortable: false, render: (r) => `${fmtInt(r.pkA)} / ${fmtInt(r.pkF)}` }
   ], rows);
-  $("lcNote").textContent = `${fmtInt(lc.n)} CPRs created ${fmtDay(lc.from)} – ${fmtDay(lc.to)}, ${fmtInt(lc.days.length)} working days. Difference = forecast − actual: + means the forecast expected more CPRs at the KA that day than there really were. Early days in the window are low on both sides because only CPRs created in the window are counted.`;
+  $("lcNote").textContent = `Forecast accuracy = 1 − Σ|forecast − actual| ÷ Σ actual over the working days (100% = perfect; also called 1 − WAPE). Forecast bias = Σ(forecast − actual) ÷ Σ actual: negative = the forecast expected less workload than there was (under-forecast), positive = more (over-forecast); within ±10% is shown in green. ` + `${fmtInt(lc.n)} CPRs created ${fmtDay(lc.from)} – ${fmtDay(lc.to)}, ${fmtInt(lc.days.length)} working days. Difference = forecast − actual: + means the forecast expected more CPRs at the KA that day than there really were. Early days in the window are low on both sides because only CPRs created in the window are counted.`;
 }
 $("lcKa").addEventListener("change", renderLoadCheck);
 $("lcCopy").addEventListener("click", async () => {
   const lc = loadCheck(); if (!lc) return;
-  const lines = [["Date", "Key Account", "Actual CPRs held", "Forecast CPRs held", "Difference (forecast - actual)"].join("\t")];
-  for (const k of lc.kas) { const g = lc.grid.get(k); lc.days.forEach((d, i) => lines.push([dayToIso(d), kaLabel(k), g.act[i], g.fc[i], g.fc[i] - g.act[i]].join("\t"))); }
+  const lines = [["Date", "Key Account", "Actual CPRs held", "Forecast CPRs held", "Difference (forecast - actual)", "Accuracy (1 - |F-A|/A)", "Bias ((F-A)/A)"].join("\t")];
+  const pct = (x) => (x === null ? "" : (x * 100).toFixed(1) + "%");
+  for (const k of lc.kas) { const g = lc.grid.get(k); lc.days.forEach((d, i) => { const a = g.act[i], f = g.fc[i]; lines.push([dayToIso(d), kaLabel(k), a, f, f - a, pct(a ? Math.max(0, 1 - Math.abs(f - a) / a) : null), pct(a ? (f - a) / a : null)].join("\t")); }); }
   try { await navigator.clipboard.writeText(lines.join("\n")); setStatus(`${fmtInt(lines.length - 1)} rows copied (one per KA per working day). Paste into Excel with Ctrl+V.`); } catch { setStatus("The browser blocked copying."); }
 });
 function renderBukti() {
