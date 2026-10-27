@@ -392,7 +392,7 @@ body.locked #loginForm .btn { width: 100%; }
     <p class="note" id="kaNote"></p>
     <div class="section-title"><h2>Average KA processing time per CPR</h2><p>Sequence 3 = from receipt by the KA until approval. Sequence 8 = from the CPR's return to the KA until approval. Time spent waiting for other approvers is excluded.</p></div>
     <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Sequence 3</span><span><i style="background:var(--s2)"></i>Sequence 8</span></div><div class="chart" id="chKa"></div></div>
-    <div class="section-title"><h2>Current task load</h2><p>CPRs each KA is holding right now (Sequence 3, Sequence 8, Rework).</p></div>    <div class="card" id="cardTask" hidden><h3>Open tasks per KA</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div><p class="note">Open task = a CPR the KA is holding now (Sequence 3, Sequence 8 or rework). Click a Key Account, a bar or "Show CPRs" to list them.</p>
+    <div class="section-title"><h2>Current task load</h2><p>CPRs each KA is holding right now (Sequence 3, Sequence 8, Rework).</p></div>    <div class="card" id="cardTask" hidden><h3>Open tasks per KA</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div><p class="note">Open task = a CPR that is still the KA's responsibility: waiting for the KA at Sequence 3 or 8, in rework, or approved by the KA at Sequence 8 but still with Purchasing Head HO / Director. Click a Key Account, a bar or "Show CPRs" to list them.</p>
       <div id="otDetail" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="otTitle"></h3><div class="sub" id="otSub"></div></div><button class="btn ghost" type="button" id="otClose">Close</button></div>
         <div class="tbl-wrap" style="max-height:520px;overflow:auto"><table id="tblOt"></table></div></div>
       <details class="capbox" id="twBox" hidden><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Sequence 8 about 2.4–3× Sequence 3, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
@@ -4409,8 +4409,8 @@ function showOpenTasks(ka) {
     { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (t) => cprLink(t.r.cpr) },
     { key: "unit", label: "Hospital", sortable: false, render: (t) => t.r.unit || "–" },
     { key: "desc", label: "Description", wrap: true, sortable: false, render: (t) => (t.r.vendorName ? String(t.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 70) : "–") },
-    { key: "task", label: "Task", sortable: false, render: (t) => pill(t.label, t.task === "rw" ? "warn" : "info") },
-    { key: "since", label: "At KA since", sortable: false, render: (t) => (t.since !== null && t.since !== undefined ? fmtDay(t.since) : "–") },
+    { key: "task", label: "Task", sortable: false, render: (t) => { const d = el("div"); d.append(pill(t.label, t.task === "rw" ? "warn" : t.task === "fin" ? "muted" : "info")); if (t.task === "fin") d.append(smallNote(posLabel(t.r) || "")); return d; } },
+    { key: "since", label: "Since", sortable: false, render: (t) => (t.since !== null && t.since !== undefined ? fmtDay(t.since) : "–") },
     ...(!TL_ON.age ? [] : [
     { key: "age", label: "Days open", num: true, sortable: false, render: (t) => (t.age === null ? "–" : el("span", { style: t.age > 7 ? "color:var(--bad);font-weight:600" : "" }, fmtInt(t.age))) },
     { key: "risk", label: "Rework risk", sortable: false, render: (t) => (t.task === "rw" ? pill("Already in rework", "warn") : t.risk ? pill(`${t.risk.level} · ${fmtNum(t.risk.p * 100, 0)}%`, RISK_KIND[t.risk.level]) : "–") },
@@ -4424,17 +4424,31 @@ function showOpenTasks(ka) {
   ], rows);
 }
 $("otClose").addEventListener("click", () => { OT_OPEN = null; $("otDetail").hidden = true; });
-// every CPR a KA is holding now: Sequence 3, Sequence 8 or rework
+// open task of a CPR for its KA (the KA who approved Sequence 3 keeps the CPR until the end):
+//   rec = Sequence 3 waiting for the KA, mat = Sequence 8 waiting for the KA, rw = sent back (rework), not approved again,
+//   fin = Sequence 8 approved, now with Purchasing Head HO / Purchasing Director: still the KA's responsibility,
+//         because it may come back as rework
+const TASK_LABEL = { rec: "Sequence 3", mat: "Sequence 8", rw: "Rework", fin: "With Purchasing Head HO / Director" };
+function taskOf(r) {
+  if (isInactive(r) || IGNORED[r.cpr]) return null;
+  const back = r.backFirst ?? r.back, out8 = r.backOutFirst ?? r.backOut;
+  if (inRework(r)) return "rw";
+  if (!r.done && r.kaIn !== null && r.kaOut === null) return "rec";
+  if (!r.done && back !== null && back !== undefined && (out8 === null || out8 === undefined)) return "mat";
+  // after Sequence 8: not finished yet (no PR/PO, not fully approved, not rejected) and now at Purchasing Head HO / Director
+  const p = r.prog, finished = r.erp || (p && p.po !== null && p.po !== undefined) || /^approved$/i.test(r.hstatus || "") || (p && isRejected(p));
+  if (out8 !== null && out8 !== undefined && !finished && /purchasing (head ho|director)/i.test(posLabel(r) || "")) return "fin";
+  return null;
+}
+// every CPR a KA is holding now
 function openTasks() {
   const D = dataDate(), out = [];
   if (!SIM) return out;
   for (const c of SIM.assigned) {
-    const r = c.r; if (r.done || isInactive(r) || IGNORED[r.cpr]) continue;
-    const back = r.backFirst ?? r.back, out8 = r.backOutFirst ?? r.backOut;
-    const task = inRework(r) ? "rw" : r.kaIn !== null && r.kaOut === null ? "rec" : back !== null && back !== undefined && (out8 === null || out8 === undefined) ? "mat" : null;
+    const r = c.r, task = taskOf(r);
     if (!task) continue;
-    const since = task === "rw" ? r.stageSince : task === "rec" ? r.kaIn : back;
-    out.push({ c, r, ka: c.ka, task, label: task === "rec" ? "Sequence 3" : task === "mat" ? "Sequence 8" : "Rework", since, age: D !== null && since !== null && since !== undefined ? D - since : null, risk: task === "rw" || !TL_ON.risk ? null : riskOf(r) });
+    const since = task === "rw" ? r.stageSince : task === "rec" ? r.kaIn : task === "mat" ? r.backFirst ?? r.back : r.backOutFirst ?? r.backOut;
+    out.push({ c, r, ka: c.ka, task, label: TASK_LABEL[task], since, age: D !== null && since !== null && since !== undefined ? D - since : null, risk: task === "rw" || !TL_ON.risk ? null : riskOf(r) });
   }
   return out;
 }
@@ -4445,30 +4459,30 @@ function renderTaskLoad() {
   const card = $("cardTask"); if (!SIM || SIM.actual) { card.hidden = true; return; } card.hidden = false;
   const D = dataDate(), per = {};
   for (const c of SIM.assigned) {
-    const r = c.r; if (r.done || isInactive(r) || IGNORED[r.cpr]) continue;
-    const back = r.backFirst ?? r.back, out8 = r.backOutFirst ?? r.backOut;
-    const task = inRework(r) ? "rw" : r.kaIn !== null && r.kaOut === null ? "rec" : back !== null && back !== undefined && (out8 === null || out8 === undefined) ? "mat" : null;
+    const r = c.r, task = taskOf(r);
     if (!task) continue;
-    const x = per[c.ka] || (per[c.ka] = { rec: 0, mat: 0, rw: 0, wRec: 0, wMat: 0, wRw: 0, big: 0 });
+    const x = per[c.ka] || (per[c.ka] = { rec: 0, mat: 0, rw: 0, fin: 0, wRec: 0, wMat: 0, wRw: 0, wFin: 0, big: 0 });
     const mult = task === "mat" && Number(r.amount) > 1e9 ? TASK_W.big : 1; if (mult > 1) x.big++;
-    x[task]++; x["w" + task[0].toUpperCase() + task.slice(1)] += TASK_W[task] * mult;
+    x[task]++; x["w" + task[0].toUpperCase() + task.slice(1)] += (TASK_W[task] ?? 0) * mult;
   }
   const ot = openTasks(), old = {}, high = {};
   for (const t of ot) { if (t.age !== null && t.age > 7) old[t.ka] = (old[t.ka] || 0) + 1; if (t.risk && t.risk.level === "High") high[t.ka] = (high[t.ka] || 0) + 1; }
-  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw, n: per[ka].rec + per[ka].mat + per[ka].rw })).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.n - a.n));
-  $("subTask").textContent = !TL_ON.weights ? `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), read from the current step in CPRHistory: Sequence 3 = waiting for the KA (Key Account HO), Sequence 8 = waiting for the KA (Purchasing HO), Rework = sent back by Purchasing Head HO / Director and not yet approved again. Counted as is, without weights.` : `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Sequence 3 ×${fmtNum(TASK_W.rec, 1)}, Sequence 8 ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Sequence 8 of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed below the table.`;
-  $("lgTask").innerHTML = [["Sequence 3", "var(--s1)"], ["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
+  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin })).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.n - a.n));
+  $("subTask").textContent = !TL_ON.weights ? `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), read from the current step in CPRHistory: Sequence 3 = waiting for the KA (Key Account HO), Sequence 8 = waiting for the KA (Purchasing HO), Rework = sent back by Purchasing Head HO / Director and not yet approved again; With Purchasing Head HO / Director = Sequence 8 approved by the KA but still waiting for the final approvals, so it can still come back as rework. Counted as is, without weights.` : `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Sequence 3 ×${fmtNum(TASK_W.rec, 1)}, Sequence 8 ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Sequence 8 of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed below the table.`;
+  $("lgTask").innerHTML = [["Sequence 3", "var(--s1)"], ["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"], ["With Purchasing Head HO / Director", "var(--line-strong)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
   const W = TL_ON.weights;
   barChartH($("chTask"), kas.map((k) => `${k.name} (${k.n} CPRs)`), [
     { name: "Sequence 3", color: "var(--s1)", values: kas.map((k) => (W ? k.wRec : k.rec)) },
     { name: "Sequence 8", color: "var(--s2)", values: kas.map((k) => (W ? k.wMat : k.mat)) },
-    { name: "Rework", color: "var(--s3, #8e5bd8)", values: kas.map((k) => (W ? k.wRw : k.rw)) }
+    { name: "Rework", color: "var(--s3, #8e5bd8)", values: kas.map((k) => (W ? k.wRw : k.rw)) },
+    { name: "With Purchasing Head HO / Director", color: "var(--line-strong)", values: kas.map((k) => (W ? k.wFin : k.fin)) }
   ], { stacked: true, dec: W ? 1 : 0, label: W ? "Weighted task load per KA" : "Open tasks per KA", onClick: (i) => showOpenTasks(kas[i].ka), tipRows: () => [{ value: "", label: "click to see the open CPRs" }] });
   renderTable($("tblTask"), [
     { key: "name", label: "Key Account", render: (r) => Object.assign(el("button", { class: "linkbtn", type: "button", title: "Show the open CPRs of this KA" }, r.name), { onclick: () => showOpenTasks(r.ka) }) },
     { key: "rec", label: "Sequence 3", num: true, render: (r) => fmtInt(r.rec) },
     { key: "mat", label: "Sequence 8", num: true, render: (r) => fmtInt(r.mat) + (TL_ON.weights && r.big ? ` (${r.big} > Rp1 M)` : "") },
     { key: "rw", label: "Rework", num: true, render: (r) => fmtInt(r.rw) },
+    { key: "fin", label: "With Purchasing Head HO / Director", num: true, render: (r) => fmtInt(r.fin) },
     { key: "n", label: "CPRs held", num: true, render: (r) => fmtInt(r.n) },
     ...(TL_ON.weights ? [{ key: "total", label: "Weighted load", num: true, render: (r) => fmtNum(r.total, 1) }] : []),
     ...(TL_ON.age ? [{ key: "old", label: "Open > 7 days", num: true, render: (r) => fmtInt(r.old) }] : []),
