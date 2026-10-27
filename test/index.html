@@ -392,7 +392,7 @@ body.locked #loginForm .btn { width: 100%; }
     <p class="note" id="kaNote"></p>
     <div class="section-title"><h2>Average KA processing time per CPR</h2><p>Sequence 3 = from receipt by the KA until approval. Sequence 8 = from the CPR's return to the KA until approval. Time spent waiting for other approvers is excluded.</p></div>
     <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Sequence 3</span><span><i style="background:var(--s2)"></i>Sequence 8</span></div><div class="chart" id="chKa"></div></div>
-    <div class="section-title"><h2>Current task load</h2><p>CPRs each KA is holding right now (Sequence 3, Sequence 8, Rework).</p></div>    <div class="card" id="cardTask" hidden><h3>Open tasks per KA</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div><p class="note">Open task = a CPR that is still the KA's responsibility: waiting for the KA at Sequence 3 or 8, in rework, or approved by the KA at Sequence 8 but still with Purchasing Head HO / Director. TAT (turnaround time) is counted per KA step in calendar days: Sequence 3 = arrival at KA until the KA approves it; Sequence 8 = return to KA until the KA approves it. "So far" = not approved yet, counted until the data date. Click a Key Account, a bar or "Show CPRs" to list them.</p>
+    <div class="section-title"><h2>Current task load</h2><p>CPRs each KA is holding right now (Sequence 3, Sequence 8, Rework).</p></div>    <div class="card" id="cardTask" hidden><h3>Open tasks per KA</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div><p class="note">Open task = a CPR that is still the KA's responsibility: waiting for the KA at Sequence 3 or 8, in rework, or approved by the KA at Sequence 8 but still with Purchasing Head HO / Director. TAT (turnaround time) is counted per KA step in calendar days: Sequence 3 = arrival at KA until the KA approves it; Sequence 8 = return to KA until the KA approves it. "So far" = not approved yet, counted until the data date. Targets: Sequence 3 at most 1 day (green), more = red; Sequence 8 up to 5 days green, 6–14 days yellow, more than 14 days red. The coloured counts are the open CPRs at that step. Click a Key Account, a bar or "Show CPRs" to list them.</p>
       <div id="otDetail" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="otTitle"></h3><div class="sub" id="otSub"></div></div><button class="btn ghost" type="button" id="otClose">Close</button></div>
         <div class="tbl-wrap" style="max-height:520px;overflow:auto"><table id="tblOt"></table></div></div>
       <details class="capbox" id="twBox" hidden><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Sequence 8 about 2.4–3× Sequence 3, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
@@ -4411,8 +4411,8 @@ function showOpenTasks(ka) {
     { key: "desc", label: "Description", wrap: true, sortable: false, render: (t) => (t.r.vendorName ? String(t.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 70) : "–") },
     { key: "task", label: "Task", sortable: false, render: (t) => { const d = el("div"); d.append(pill(t.label, t.task === "rw" ? "warn" : t.task === "fin" ? "muted" : "info")); if (t.task === "fin") d.append(smallNote(posLabel(t.r) || "")); return d; } },
     { key: "since", label: "Since", sortable: false, render: (t) => (t.since !== null && t.since !== undefined ? fmtDay(t.since) : "–") },
-    { key: "tat3", label: "Sequence 3 TAT (days)", num: true, sortable: false, render: (t) => tatText(t.tat3) },
-    { key: "tat8", label: "Sequence 8 TAT (days)", num: true, sortable: false, render: (t) => tatText(t.tat8) },
+    { key: "tat3", label: "Sequence 3 TAT (days)", num: true, sortable: false, render: (t) => tatText(t.tat3, 3) },
+    { key: "tat8", label: "Sequence 8 TAT (days)", num: true, sortable: false, render: (t) => tatText(t.tat8, 8) },
     ...(!TL_ON.age ? [] : [
     { key: "age", label: "Days open", num: true, sortable: false, render: (t) => (t.age === null ? "–" : el("span", { style: t.age > 7 ? "color:var(--bad);font-weight:600" : "" }, fmtInt(t.age))) },
     { key: "risk", label: "Rework risk", sortable: false, render: (t) => (t.task === "rw" ? pill("Already in rework", "warn") : t.risk ? pill(`${t.risk.level} · ${fmtNum(t.risk.p * 100, 0)}%`, RISK_KIND[t.risk.level]) : "–") },
@@ -4452,7 +4452,13 @@ function tatOf(r, seq, D) {
   if (b !== null && b !== undefined && b >= a) return { d: b - a, running: false };
   return D !== null && D >= a ? { d: D - a, running: true } : null;
 }
-const tatText = (t) => (!t ? "–" : (() => { const s = el("span", { style: t.running ? "font-weight:600" : "color:var(--muted)" }, fmtInt(t.d)); const box = el("div"); box.append(s, smallNote(t.running ? "so far" : "done")); return box; })());
+// TAT indicator (supervisor's targets): Sequence 3 at most 1 day after the KA receives the CPR;
+// Sequence 8: up to 5 days fine (green), more than 5 up to 14 days warning (yellow), more than 14 days bad (red)
+const TAT_LIMIT = { s3: 1, s8warn: 5, s8bad: 14 };
+const tatLevel = (seq, d) => (d === null || d === undefined ? null : seq === 3 ? (d <= TAT_LIMIT.s3 ? "good" : "bad") : d <= TAT_LIMIT.s8warn ? "good" : d <= TAT_LIMIT.s8bad ? "warn" : "bad");
+const TAT_WORD = { good: "on target", warn: "warning", bad: "over target" };
+const tatText = (t, seq) => { if (!t) return "–"; const lv = tatLevel(seq, t.d), box = el("div");
+  box.append(pill(`${fmtInt(t.d)} day${t.d === 1 ? "" : "s"}`, lv), smallNote(`${t.running ? "so far" : "done"} · ${TAT_WORD[lv]}`)); return box; };
 // every CPR a KA is holding now
 function openTasks() {
   const D = dataDate(), out = [];
@@ -4479,9 +4485,11 @@ function renderTaskLoad() {
     x[task]++; x["w" + task[0].toUpperCase() + task.slice(1)] += (TASK_W[task] ?? 0) * mult;
   }
   const ot = openTasks(), old = {}, high = {}, run3 = {}, run8 = {};
+  const lvCount = (list, seq) => { const c = { good: 0, warn: 0, bad: 0 }; for (const d of list || []) c[tatLevel(seq, d)]++; return c; };
+  const lvCell = (c, seq) => { const box = el("div", { style: "display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap" }); for (const k of seq === 3 ? ["good", "bad"] : ["good", "warn", "bad"]) if (c[k]) box.append(pill(fmtInt(c[k]), k)); return box.childNodes.length ? box : "–"; };
   for (const t of ot) { if (t.task === "rec" && t.tat3) (run3[t.ka] = run3[t.ka] || []).push(t.tat3.d); if (t.task === "mat" && t.tat8) (run8[t.ka] = run8[t.ka] || []).push(t.tat8.d); }
   for (const t of ot) { if (t.age !== null && t.age > 7) old[t.ka] = (old[t.ka] || 0) + 1; if (t.risk && t.risk.level === "High") high[t.ka] = (high[t.ka] || 0) + 1; }
-  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin, tat3: mean(run3[ka] || []), tat8: mean(run8[ka] || []), max3: run3[ka] ? Math.max(...run3[ka]) : null, max8: run8[ka] ? Math.max(...run8[ka]) : null })).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.n - a.n));
+  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin, lv3: lvCount(run3[ka], 3), lv8: lvCount(run8[ka], 8), tat3: mean(run3[ka] || []), tat8: mean(run8[ka] || []), max3: run3[ka] ? Math.max(...run3[ka]) : null, max8: run8[ka] ? Math.max(...run8[ka]) : null })).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.n - a.n));
   $("subTask").textContent = !TL_ON.weights ? `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), read from the current step in CPRHistory: Sequence 3 = waiting for the KA (Key Account HO), Sequence 8 = waiting for the KA (Purchasing HO), Rework = sent back by Purchasing Head HO / Director and not yet approved again; With Purchasing Head HO / Director = Sequence 8 approved by the KA but still waiting for the final approvals, so it can still come back as rework. Counted as is, without weights.` : `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Sequence 3 ×${fmtNum(TASK_W.rec, 1)}, Sequence 8 ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Sequence 8 of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed below the table.`;
   $("lgTask").innerHTML = [["Sequence 3", "var(--s1)"], ["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"], ["With Purchasing Head HO / Director", "var(--line-strong)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
   const W = TL_ON.weights;
@@ -4498,6 +4506,8 @@ function renderTaskLoad() {
     { key: "rw", label: "Rework", num: true, render: (r) => fmtInt(r.rw) },
     { key: "fin", label: "With PH HO / Director", num: true, render: (r) => fmtInt(r.fin) },
     { key: "n", label: "CPRs held", num: true, render: (r) => fmtInt(r.n) },
+    { key: "lv3", label: "Seq 3 TAT (≤1 day / over)", num: true, sortable: false, render: (r) => lvCell(r.lv3, 3) },
+    { key: "lv8", label: "Seq 8 TAT (≤5 / 6–14 / >14 days)", num: true, sortable: false, render: (r) => lvCell(r.lv8, 8) },
     { key: "tat3", label: "Seq 3 TAT so far, days (avg / max)", num: true, render: (r) => (r.tat3 === null ? "–" : `${fmtNum(r.tat3, 1)} / ${fmtInt(r.max3)}`) },
     { key: "tat8", label: "Seq 8 TAT so far, days (avg / max)", num: true, render: (r) => (r.tat8 === null ? "–" : `${fmtNum(r.tat8, 1)} / ${fmtInt(r.max8)}`) },
     ...(TL_ON.weights ? [{ key: "total", label: "Weighted load", num: true, render: (r) => fmtNum(r.total, 1) }] : []),
