@@ -392,7 +392,9 @@ body.locked #loginForm .btn { width: 100%; }
     <p class="note" id="kaNote"></p>
     <div class="section-title"><h2>Average KA processing time per CPR</h2><p>Sequence 3 = from receipt by the KA until approval. Sequence 8 = from the CPR's return to the KA until approval. Time spent waiting for other approvers is excluded.</p></div>
     <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Sequence 3</span><span><i style="background:var(--s2)"></i>Sequence 8</span></div><div class="chart" id="chKa"></div></div>
-    <div class="section-title"><h2>Current task load</h2><p>CPRs each KA is holding right now (Sequence 3, Sequence 8, Rework), weighted by how heavy each task is.</p></div>    <div class="card" id="cardTask" hidden><h3>Current task load per KA (weighted)</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div>
+    <div class="section-title"><h2>Current task load</h2><p>CPRs each KA is holding right now (Sequence 3, Sequence 8, Rework), weighted by how heavy each task is.</p></div>    <div class="card" id="cardTask" hidden><h3>Current task load per KA (weighted)</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div><p class="note">Open task = a CPR the KA is holding now (Sequence 3, Sequence 8 or rework). Click a Key Account, a bar or "Show CPRs" to list them with how long they have been open and their rework risk.</p>
+      <div id="otDetail" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="otTitle"></h3><div class="sub" id="otSub"></div></div><button class="btn ghost" type="button" id="otClose">Close</button></div>
+        <div class="tbl-wrap" style="max-height:520px;overflow:auto"><table id="tblOt"></table></div></div>
       <details class="capbox" id="twBox"><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Sequence 8 about 2.4–3× Sequence 3, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
         <div class="capgrid"><label>Sequence 3<input type="number" id="twRec" min="0" step="0.1"></label><label>Sequence 8<input type="number" id="twMat" min="0" step="0.1"></label><label>Rework<input type="number" id="twRw" min="0" step="0.1"></label><label>× CPR &gt; Rp1 M<input type="number" id="twBig" min="1" step="0.1"></label></div></details></div>
     <div class="section-title"><h2>Rework per KA</h2><p>Rework = a CPR sent back to the KA for correction (by Purchasing Head HO or Purchasing Director). Lower is better.</p></div>
@@ -510,6 +512,7 @@ body.locked #loginForm .btn { width: 100%; }
       <p class="note" id="fcSetNote"></p>
     </div>
     <div class="card" style="margin-top:12px"><h3>Model selection in the dashboard (automatic)</h3><div class="sub">Same procedure as the analysis notebook: each candidate learns from older history and is checked on a 3-month validation window (2026-process CPRs); the lowest validation MAE is chosen, tested on the latest 3 months, then retrained on all history to forecast the queue.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
+    <div class="card" style="margin-top:12px"><h3>Rework risk: does the warning work?</h3><div class="sub">The risk model learns from older CPRs whose Sequence 8 is finished, then is checked on the CPRs of the latest months it has not seen. A useful warning sends back clearly more "High" CPRs than "Low" ones. AUC: 0.5 = no better than chance, 1.0 = perfect.</div><div class="tbl-wrap"><table id="tblRiskChk"></table></div><p class="note" id="riskNote"></p></div>
     <div class="card" style="margin-top:12px"><h3>Comparison of the four models (analysis notebook)</h3><div class="sub">Study in the Python notebook on CPR_Cleaned 2023–2026: each forecast is learned by Linear Regression, Random Forest, XGBoost and a Neural Network (MLP), plus an Ensemble of the best two. The model with the lowest validation MAE (Apr–Jun 2026) is chosen and then tested once on Jul–Sep 2026; "p" is the Wilcoxon test against the simple guess; the test MAE of the chosen model uses whole-day forecasts, as shown in the dashboard. The dashboard itself keeps choosing automatically between Linear Regression and XGBoost (the table above), retrained on the uploaded CPRHistory + CPRSummary.</div><div class="tbl-wrap"><table id="tblStudy"></table></div></div>
     <div class="card" style="margin-top:12px"><h3>Forecast 1: mean absolute error per week (test months)</h3><div class="sub">Lower values indicate higher accuracy. Compared against a simple baseline (median per hospital, 2026 process).</div><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
     <div class="section-title"><h2>2. Is the KA workload more evenly distributed?</h2><p id="bkLoadDesc"></p></div>
@@ -4034,8 +4037,20 @@ $("chkCopy").addEventListener("click", async () => {
     ...CHK_LIST.map((r) => [r.cpr, r.unit || "", r.ka ? kaLabel(r.ka) : "", dayToIso(r.day), r.forecast, r.lo, r.hi, r.actual, r.diff, r.inRange === 1 ? "yes" : "no"].join("\t"))];
   try { await navigator.clipboard.writeText(lines.join("\n")); setStatus(`${fmtInt(lines.length - 1)} rows copied. Paste into Excel with Ctrl+V.`); } catch { setStatus("The browser blocked copying."); }
 });
+function renderRiskCheck() {
+  const x = SIM ? (riskOf({ unit: null, vendorName: "" }), RISK) : null, t = x && x.test;
+  if (!t) { $("tblRiskChk").replaceChildren(); $("riskNote").textContent = "Not enough finished CPRs yet to test the rework risk (at least 300 older and 100 recent CPRs with Sequence 8 approved)."; return; }
+  const rows = ["High", "Medium", "Low"].map((L) => ({ L, n: t.byLvl[L] ? t.byLvl[L][1] : 0, rw: t.byLvl[L] ? t.byLvl[L][0] : 0 }));
+  renderTable($("tblRiskChk"), [
+    { key: "L", label: "Risk level given", sortable: false, render: (r) => pill(r.L, RISK_KIND[r.L]) },
+    { key: "n", label: "Test CPRs", num: true, sortable: false, render: (r) => fmtInt(r.n) },
+    { key: "rw", label: "Actually sent back", num: true, sortable: false, render: (r) => fmtInt(r.rw) },
+    { key: "rate", label: "Rework rate", num: true, sortable: false, render: (r) => (r.n ? fmtNum((r.rw / r.n) * 100, 1) + "%" : "–") }
+  ], rows);
+  $("riskNote").textContent = `Test: ${fmtInt(t.n)} CPRs that reached Sequence 8 between ${fmtDay(t.from)} and ${fmtDay(t.to)} (${fmtInt(t.nRw)} sent back, ${fmtNum((t.nRw / t.n) * 100, 1)}%), model learned from ${fmtInt(t.trainN)} older CPRs. AUC ${fmtNum(t.auc, 2)}. The signal is still weak: use the level to decide which CPRs to double-check before Sequence 8, not as a prediction for one CPR.`;
+}
 function renderBukti() {
-  renderFcSettings(); renderStudy();
+  renderFcSettings(); renderStudy(); try { renderRiskCheck(); } catch (e) {}
   const clear = () => { for (const id of ["tblModels", "bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
   if (!SIM) { clear(); $("bkNote").textContent = "Please run the allocation in the CPR Allocation tab first."; return; }
   const mRows = [];
@@ -4196,6 +4211,119 @@ for (const [id, k] of [["twRec", "rec"], ["twMat", "mat"], ["twRw", "rw"], ["twB
   document.getElementById(id).addEventListener("change", async (e) => { const v = parseFloat(e.target.value); TASK_W[k] = Number.isFinite(v) && v >= 0 ? v : TW_DEFAULT[k]; syncTw(); try { renderTaskLoad(); } catch {} if (canSave() && !IS_SAMPLE) { try { await saveParams(); } catch {} } });
 }
 // the CPRs each KA is holding right now (data date), by task, and their weighted load
+// ---------- rework risk: will a CPR still being worked on be sent back after Sequence 8? ----------
+// Learned from CPRs whose Sequence 8 was approved at least 14 days before the data date (so the label is known):
+// label = sent back by Purchasing Head HO / Purchasing Director. Two logistic regressions, averaged:
+//   a) the description words (TF-IDF, single words + word pairs, words in 3+ CPRs)
+//   b) the rework rate of the KA and of the hospital (smoothed), the CPR amount (log10) and capex category "fa"
+// Tested like the forecasts: learn from older CPRs, check on the latest ~70 days. It gives a risk level, not a certainty.
+const RW_MIN_AGE = 14, RW_SMOOTH = 20;
+const rwTokens = (s) => { const t = String(s || "").toLowerCase().match(/[\p{L}\p{N}_]{2,}/gu) || []; const out = t.slice(); for (let i = 0; i + 1 < t.length; i++) out.push(t[i] + " " + t[i + 1]); return out; };
+function fitTfidf(texts, minDf = 3) {
+  const toks = texts.map(rwTokens), df = new Map();
+  for (const t of toks) for (const w of new Set(t)) df.set(w, (df.get(w) || 0) + 1);
+  const vocab = new Map(), idf = []; const n = texts.length;
+  for (const [w, c] of df) if (c >= minDf) { vocab.set(w, idf.length); idf.push(Math.log((1 + n) / (1 + c)) + 1); }
+  const transform = (text) => { const tf = new Map(); for (const w of rwTokens(text)) { const j = vocab.get(w); if (j !== undefined) tf.set(j, (tf.get(j) || 0) + 1); }
+    let norm = 0; const v = []; for (const [j, c] of tf) { const x = c * idf[j]; v.push([j, x]); norm += x * x; } norm = Math.sqrt(norm); return norm ? v.map(([j, x]) => [j, x / norm]) : []; };
+  return { size: idf.length, transform, vocab };
+}
+// logistic regression with L2 (like sklearn: C * total log loss + 0.5 * |w|^2, intercept not penalised), full-batch Adam
+function fitLogit(X, y, nF, C, iters = 500) {
+  const w = new Float64Array(nF), m = new Float64Array(nF + 1), v = new Float64Array(nF + 1); let b = Math.log((mean(y) + 1e-6) / (1 - mean(y) + 1e-6));
+  const lr = 0.05, b1 = 0.9, b2 = 0.999;
+  for (let t = 1; t <= iters; t++) {
+    const g = new Float64Array(nF + 1);
+    for (let i = 0; i < X.length; i++) { let z = b; for (const [j, x] of X[i]) z += w[j] * x; const e = 1 / (1 + Math.exp(-z)) - y[i]; for (const [j, x] of X[i]) g[j] += C * e * x; g[nF] += C * e; }
+    for (let j = 0; j < nF; j++) g[j] += w[j];
+    for (let j = 0; j <= nF; j++) { m[j] = b1 * m[j] + (1 - b1) * g[j]; v[j] = b2 * v[j] + (1 - b2) * g[j] * g[j]; const step = (lr * (m[j] / (1 - b1 ** t))) / (Math.sqrt(v[j] / (1 - b2 ** t)) + 1e-8); if (j < nF) w[j] -= step; else b -= step; }
+  }
+  return { w, b, p: (row) => { let z = b; for (const [j, x] of row) z += w[j] * x; return 1 / (1 + Math.exp(-z)); } };
+}
+function auc(y, p) { const idx = p.map((x, i) => i).sort((a, c) => p[a] - p[c]); let rank = 0, sumPos = 0, nPos = 0; for (let k = 0; k < idx.length;) { let e = k; while (e < idx.length && p[idx[e]] === p[idx[k]]) e++; const r = (k + e + 1) / 2; for (let q = k; q < e; q++) if (y[idx[q]]) { sumPos += r; nPos++; } k = e; } const nNeg = y.length - nPos; return nPos && nNeg ? (sumPos - (nPos * (nPos + 1)) / 2) / (nPos * nNeg) : null; }
+const rwKa = (r) => dataKa(r);
+const rwAmt = (r) => Math.log10(Math.max(1, Number(r.amount) || 1e8));
+function trainRisk(list) {   // list: [{ r, y }] -> predict(r) = probability
+  const p0 = mean(list.map((x) => x.y));
+  const rateMap = (rows, key) => { const g = new Map(); for (const x of rows) { const k = key(x.r); if (k === null || k === undefined) continue; const a = g.get(k) || [0, 0]; a[0] += x.y; a[1]++; g.set(k, a); } return (r) => { const a = g.get(key(r)); return a ? (a[0] + RW_SMOOTH * p0) / (a[1] + RW_SMOOTH) : p0; }; };
+  // dense features; the KA / hospital rates of a training CPR come from the other folds (no peeking at its own label)
+  const dense = (r, kaR, unitR) => [kaR(r), unitR(r), rwAmt(r), String(r.capex || "").toLowerCase() === "fa" ? 1 : 0];
+  const raw = list.map((x) => null);
+  for (let f = 0; f < 5; f++) { const other = list.filter((x, i) => i % 5 !== f), kaR = rateMap(other, rwKa), unitR = rateMap(other, (r) => r.unit); list.forEach((x, i) => { if (i % 5 === f) raw[i] = dense(x.r, kaR, unitR); }); }
+  const mu = [0, 1, 2, 3].map((j) => mean(raw.map((v) => v[j]))), sd = [0, 1, 2, 3].map((j) => stdev(raw.map((v) => v[j])) || 1);
+  const z = (v) => v.map((x, j) => [j, (x - mu[j]) / sd[j]]);
+  const y = list.map((x) => x.y);
+  const mA = fitLogit(raw.map(z), y, 4, 1.0, 400);
+  const tf = fitTfidf(list.map((x) => x.r.vendorName || ""));
+  const mT = fitLogit(list.map((x) => tf.transform(x.r.vendorName || "")), y, tf.size, 0.5, 500);
+  const kaR = rateMap(list, rwKa), unitR = rateMap(list, (r) => r.unit);
+  const predict = (r) => { const pa = mA.p(z(dense(r, kaR, unitR))), pt = mT.p(tf.transform(r.vendorName || "")); return { p: (pa + pt) / 2, ka: kaR(r), unit: unitR(r), pText: pt }; };
+  return { predict, base: p0, n: list.length };
+}
+let RISK = null;
+function buildRisk() {
+  const D = dataDate(); if (D === null) return null;
+  const labelled = RECS.filter((r) => r.hstatus && r.backOutFirst !== null && r.backOutFirst !== undefined && r.backOutFirst <= D - RW_MIN_AGE)
+    .map((r) => ({ r, y: reworkList(r).length ? 1 : 0, t: r.back ?? r.backOutFirst })).sort((a, b) => a.t - b.t || (a.r.cpr < b.r.cpr ? -1 : 1));
+  if (labelled.length < 300 || labelled.filter((x) => x.y).length < 30) return null;
+  // test: learn from CPRs that reached Sequence 8 before the last ~70 days, check those after
+  const testStart = D - RW_MIN_AGE - 70, before = labelled.filter((x) => x.t < testStart), after = labelled.filter((x) => x.t >= testStart);
+  let test = null;
+  if (before.length >= 300 && after.length >= 100 && after.some((x) => x.y)) {
+    const m = trainRisk(before), p = after.map((x) => m.predict(x.r).p), y = after.map((x) => x.y);
+    const cut = [quantile(before.map((x) => m.predict(x.r).p), 1 / 3), quantile(before.map((x) => m.predict(x.r).p), 2 / 3)];
+    const lvl = (q) => (q >= cut[1] ? "High" : q >= cut[0] ? "Medium" : "Low");
+    const byLvl = {}; after.forEach((x, i) => { const L = lvl(p[i]); (byLvl[L] = byLvl[L] || [0, 0]); byLvl[L][0] += x.y; byLvl[L][1]++; });
+    test = { from: testStart, to: Math.max(...after.map((x) => x.t)), n: after.length, nRw: y.reduce((a, c) => a + c, 0), auc: auc(y, p), byLvl, trainN: before.length };
+  }
+  const m = trainRisk(labelled), all = labelled.map((x) => m.predict(x.r).p);
+  return { ...m, cut: [quantile(all, 1 / 3), quantile(all, 2 / 3)], test, key: modelKey() };
+}
+const riskLevel = (p) => (!RISK ? null : p >= RISK.cut[1] ? "High" : p >= RISK.cut[0] ? "Medium" : "Low");
+const RISK_KIND = { High: "bad", Medium: "warn", Low: "good" };
+function riskOf(r) { if (!RISK || RISK.key !== modelKey()) { try { RISK = buildRisk(); } catch (e) { RISK = null; } } if (!RISK) return null; const x = RISK.predict(r); return { ...x, level: riskLevel(x.p) }; }
+// why: the strongest of the three signals compared with the average
+function riskWhy(x) {
+  if (!x || !RISK) return "";
+  const out = []; const b = RISK.base;
+  if (x.ka > b * 1.15) out.push(`KA sent back often (${fmtNum(x.ka * 100, 0)}%)`);
+  if (x.unit > b * 1.15) out.push(`hospital sent back often (${fmtNum(x.unit * 100, 0)}%)`);
+  if (x.pText > b * 1.3) out.push("description like CPRs often sent back");
+  return out.length ? out.join(" · ") : "no strong signal";
+}
+// open task list of one KA (click the KA in Current task load)
+let OT_OPEN = null;
+function showOpenTasks(ka) {
+  OT_OPEN = ka; const box = $("otDetail"); box.hidden = false;
+  const D = dataDate(), rows = openTasks().filter((t) => t.ka === ka).sort((a, b) => (b.risk ? b.risk.p : -1) - (a.risk ? a.risk.p : -1) || b.age - a.age);
+  $("otTitle").textContent = `Open tasks of ${kaLabel(ka)}`;
+  $("otSub").textContent = `${fmtInt(rows.length)} CPRs the KA is holding on ${D !== null ? fmtDay(D) : "–"}. Rework risk = chance that Purchasing Head HO / Director sends the CPR back after Sequence 8, compared with the other CPRs (High = top third). It is a warning to check the CPR carefully, not a certainty.`;
+  renderTable($("tblOt"), [
+    { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (t) => cprLink(t.r.cpr) },
+    { key: "unit", label: "Hospital", sortable: false, render: (t) => t.r.unit || "–" },
+    { key: "desc", label: "Description", wrap: true, sortable: false, render: (t) => (t.r.vendorName ? String(t.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 70) : "–") },
+    { key: "task", label: "Task", sortable: false, render: (t) => pill(t.label, t.task === "rw" ? "warn" : "info") },
+    { key: "since", label: "At KA since", sortable: false, render: (t) => (t.since !== null && t.since !== undefined ? fmtDay(t.since) : "–") },
+    { key: "age", label: "Days open", num: true, sortable: false, render: (t) => (t.age === null ? "–" : el("span", { style: t.age > 7 ? "color:var(--bad);font-weight:600" : "" }, fmtInt(t.age))) },
+    { key: "risk", label: "Rework risk", sortable: false, render: (t) => (t.task === "rw" ? pill("Already in rework", "warn") : t.risk ? pill(`${t.risk.level} · ${fmtNum(t.risk.p * 100, 0)}%`, RISK_KIND[t.risk.level]) : "–") },
+    { key: "why", label: "Why", wrap: true, sortable: false, render: (t) => (t.task === "rw" ? "" : smallNote(riskWhy(t.risk))) }
+  ], rows);
+}
+$("otClose").addEventListener("click", () => { OT_OPEN = null; $("otDetail").hidden = true; });
+// every CPR a KA is holding now: Sequence 3, Sequence 8 or rework
+function openTasks() {
+  const D = dataDate(), out = [];
+  if (!SIM) return out;
+  for (const c of SIM.assigned) {
+    const r = c.r; if (r.done || isInactive(r) || IGNORED[r.cpr]) continue;
+    const back = r.backFirst ?? r.back, out8 = r.backOutFirst ?? r.backOut;
+    const task = inRework(r) ? "rw" : r.kaIn !== null && r.kaOut === null ? "rec" : back !== null && back !== undefined && (out8 === null || out8 === undefined) ? "mat" : null;
+    if (!task) continue;
+    const since = task === "rw" ? r.stageSince : task === "rec" ? r.kaIn : back;
+    out.push({ c, r, ka: c.ka, task, label: task === "rec" ? "Sequence 3" : task === "mat" ? "Sequence 8" : "Rework", since, age: D !== null && since !== null && since !== undefined ? D - since : null, risk: task === "rw" ? null : riskOf(r) });
+  }
+  return out;
+}
 function renderTaskLoad() {
   const card = $("cardTask"); if (!SIM || SIM.actual) { card.hidden = true; return; } card.hidden = false;
   const D = dataDate(), per = {};
@@ -4208,22 +4336,28 @@ function renderTaskLoad() {
     const mult = task === "mat" && Number(r.amount) > 1e9 ? TASK_W.big : 1; if (mult > 1) x.big++;
     x[task]++; x["w" + task[0].toUpperCase() + task.slice(1)] += TASK_W[task] * mult;
   }
-  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw, n: per[ka].rec + per[ka].mat + per[ka].rw })).sort((a, b) => b.total - a.total);
+  const ot = openTasks(), old = {}, high = {};
+  for (const t of ot) { if (t.age !== null && t.age > 7) old[t.ka] = (old[t.ka] || 0) + 1; if (t.risk && t.risk.level === "High") high[t.ka] = (high[t.ka] || 0) + 1; }
+  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw, n: per[ka].rec + per[ka].mat + per[ka].rw })).sort((a, b) => b.total - a.total);
   $("subTask").textContent = `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Sequence 3 ×${fmtNum(TASK_W.rec, 1)}, Sequence 8 ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Sequence 8 of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed below the table.`;
   $("lgTask").innerHTML = [["Sequence 3", "var(--s1)"], ["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
   barChartH($("chTask"), kas.map((k) => `${k.name} (${k.n} CPRs)`), [
     { name: "Sequence 3", color: "var(--s1)", values: kas.map((k) => k.wRec) },
     { name: "Sequence 8", color: "var(--s2)", values: kas.map((k) => k.wMat) },
     { name: "Rework", color: "var(--s3, #8e5bd8)", values: kas.map((k) => k.wRw) }
-  ], { stacked: true, dec: 1, label: "Weighted task load per KA" });
+  ], { stacked: true, dec: 1, label: "Weighted task load per KA", onClick: (i) => showOpenTasks(kas[i].ka), tipRows: () => [{ value: "", label: "click to see the open CPRs" }] });
   renderTable($("tblTask"), [
-    { key: "name", label: "Key Account" },
+    { key: "name", label: "Key Account", render: (r) => Object.assign(el("button", { class: "linkbtn", type: "button", title: "Show the open CPRs of this KA" }, r.name), { onclick: () => showOpenTasks(r.ka) }) },
     { key: "rec", label: "Sequence 3", num: true, render: (r) => fmtInt(r.rec) },
     { key: "mat", label: "Sequence 8", num: true, render: (r) => fmtInt(r.mat) + (r.big ? ` (${r.big} > Rp1 M)` : "") },
     { key: "rw", label: "Rework", num: true, render: (r) => fmtInt(r.rw) },
     { key: "n", label: "CPRs held", num: true, render: (r) => fmtInt(r.n) },
-    { key: "total", label: "Weighted load", num: true, render: (r) => fmtNum(r.total, 1) }
+    { key: "total", label: "Weighted load", num: true, render: (r) => fmtNum(r.total, 1) },
+    { key: "old", label: "Open > 7 days", num: true, render: (r) => fmtInt(r.old) },
+    { key: "high", label: "High rework risk", num: true, render: (r) => (RISK ? fmtInt(r.high) : "–") },
+    { key: "open", label: "", sortable: false, render: (r) => Object.assign(el("button", { class: "linkbtn", type: "button" }, "Show CPRs"), { onclick: () => showOpenTasks(r.ka) }) }
   ], kas);
+  if (OT_OPEN) { if (kas.some((k) => k.ka === OT_OPEN)) showOpenTasks(OT_OPEN); else $("otDetail").hidden = true; }
 }
 // ---------- capacity per KA (% of a full CPR-review load) ----------
 let CAPACITY = {};   // ka -> percent (missing = 100)
