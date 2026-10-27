@@ -399,6 +399,9 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="tiles" id="rwTiles"></div>
     <div class="card" style="margin-top:12px"><h3>Rework rate per KA (%)</h3><div class="sub">In brackets: reworked CPRs / CPRs completed by the KA.</div><div class="chart" id="chRw"></div></div>
     <div class="tbl-wrap" style="margin-top:12px"><table id="tblRw"></table></div>
+    <p class="note">Hover over a bar to see the reworked CPR numbers; click a bar or a Key Account name to list them all.</p>
+    <div class="card" id="rwDetail" style="margin-top:12px" hidden><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="rwDetTitle"></h3><div class="sub" id="rwDetSub"></div></div><button class="btn ghost" type="button" id="rwDetClose">Close</button></div>
+      <div class="tbl-wrap" style="max-height:480px;overflow:auto"><table id="tblRwDet"></table></div></div>
     <div class="section-title"><h2>By KA</h2><p>Workload = number of CPRs under review on a given working day.</p></div>
     <div class="tbl-wrap"><table id="tblKa"></table></div>
     <details class="more">
@@ -766,8 +769,9 @@ function barChartH(container, cats, series, opts = {}) {
     });
     if (stacked) { const t = svgEl("text", { x: m.l + X(acc) + 6, y: y0 + rowH / 2 + 4, class: "vlbl" }); t.textContent = fmtNum(acc, opts.dec ?? 1); svg.append(t); }
     const hit = svgEl("rect", { x: 0, y: y0, width: W, height: rowH, fill: "transparent", tabindex: 0 });
-    hit.addEventListener("pointermove", (e) => showTip(e, c, series.map((s) => ({ value: fmtNum(s.values[i], opts.dec ?? 1), label: s.name, color: s.color }))));
+    hit.addEventListener("pointermove", (e) => showTip(e, c, [...series.map((s) => ({ value: fmtNum(s.values[i], opts.dec ?? 1), label: s.name, color: s.color })), ...(opts.tipRows ? opts.tipRows(i) : [])]));
     hit.addEventListener("pointerleave", hideTip);
+    if (opts.onClick) { hit.style.cursor = "pointer"; hit.addEventListener("click", () => { hideTip(); opts.onClick(i); }); hit.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); opts.onClick(i); } }); }
     svg.append(hit);
   });
   svg.append(svgEl("line", { x1: m.l, x2: m.l, y1: m.t, y2: H - m.b, class: "base" }));
@@ -2328,7 +2332,8 @@ function renderKaFromHistory(view) {
     const b8 = r.backOutFirst ?? null, a8 = r.backFirst ?? r.back;
     if (inP(b8) && a8 !== null && a8 !== undefined) { const ka = userKa(r.ka8User); if (ka) { const x = get(ka); x.s8.push({ d: b8 - a8, h: hoursBetween(r.backFirstAt ?? r.backAt, r.backOutFirstAt ?? r.backOutAt) }); x.ev.push(b8); n8++; } else unknown++; }
     for (const e of reworkList(r)) if (inP(e.start)) { const ka = userKa(r.ka8User || r.kaUser); if (!ka) continue; const x = get(ka);
-      x.rework++; x.rwCpr.add(r.cpr); if (e.who === "Purchasing Director") x.byD++; else x.byH++; if (e.end !== null) x.fix.push(e.end - e.start); else x.open++; }
+      x.rework++; x.rwCpr.add(r.cpr); if (e.who === "Purchasing Director") x.byD++; else x.byH++; if (e.end !== null) x.fix.push(e.end - e.start); else x.open++;
+      (x.rwEvents || (x.rwEvents = [])).push({ r, ...e }); }
   }
   if (view) for (const ka of currentKas(SIM.kaList)) get(ka);
   $("poInfo").textContent = `${fmtInt(n3)} Sequence 3 approvals and ${fmtInt(n8)} Sequence 8 approvals between ${$("poFrom").value ? fmtDay(from) : "–"} and ${$("poTo").value ? fmtDay(to) : "–"}.` + (unknown ? ` ${fmtInt(unknown)} steps without a recognised KA user are excluded.` : "");
@@ -2339,7 +2344,7 @@ function renderKaFromHistory(view) {
     const pd = [...perDay.values()], lv = view && view.perKa[ka];
     return { ka, name: kaLabel(ka), n: x.s3.length, n8: x.s8.length, r1avg: r1, r2avg: r2, totAvg: r1 !== null && r2 !== null ? r1 + r2 : null,
       r1h: median(x.s3.map((y) => y.h)), r2h: median(x.s8.map((y) => y.h)), perDay: mean(pd), perDayP90: quantile(pd, 0.9),
-      rework: x.rework, rwCprs: x.rwCpr.size, byH: x.byH, byD: x.byD, fixAvg: mean(x.fix), fixList: x.fix, rwOpen: x.open, reworkRate: x.s8.length ? (x.rwCpr.size / x.s8.length) * 100 : null, loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null };
+      rework: x.rework, rwCprs: x.rwCpr.size, byH: x.byH, byD: x.byD, fixAvg: mean(x.fix), fixList: x.fix, rwOpen: x.open, rwEvents: x.rwEvents || [], reworkRate: x.s8.length ? (x.rwCpr.size / x.s8.length) * 100 : null, loadAvg: lv ? lv.avg : null, loadPeak: lv ? lv.peak : null };
   }).sort((a, b) => (b.totAvg ?? 0) - (a.totAvg ?? 0));
   const withWork = rows.filter((r) => r.n + r.n8 > 0);
   barChartH($("chKa"), withWork.map((r) => `${r.name} (${r.n}/${r.n8})`), [
@@ -2355,7 +2360,7 @@ function renderKaFromHistory(view) {
     { key: "r2avg", label: "Sequence 8 (days)", num: true, render: (r) => fmtNum(r.r2avg) },
     { key: "r2h", label: "Sequence 8 (hours, median)", num: true, render: (r) => fmtNum(r.r2h) },
     { key: "totAvg", label: "Total Seq. 3 + Seq. 8 (days)", num: true, render: (r) => fmtNum(r.totAvg) },
-    { key: "rwCprs", label: "Reworked CPRs", num: true, render: (r) => fmtInt(r.rwCprs) },
+    { key: "rwCprs", label: "Reworked CPRs", num: true, render: (r) => (r.rwCprs ? Object.assign(el("button", { class: "linkbtn", type: "button", title: "Show the reworked CPRs" }, fmtInt(r.rwCprs)), { onclick: () => showReworkList(r) }) : fmtInt(r.rwCprs)) },
     { key: "perDay", label: "Approvals/day (avg)", num: true, render: (r) => fmtNum(r.perDay) },
     { key: "perDayP90", label: "Busiest day (P90)", num: true, render: (r) => fmtNum(r.perDayP90, 0) },
     { key: "loadAvg", label: "Avg workload/day", num: true, render: (r) => fmtNum(r.loadAvg) }
@@ -2374,15 +2379,40 @@ function renderRework(rows) {
     tile("Still in rework", fmtInt(list.reduce((a, r) => a + r.rwOpen, 0)), "CPRs", "sent back and not yet approved again by the KA"),
     tile("Days to fix (avg)", allFix.length ? fmtNum(mean(allFix)) : "–", "days", "until the KA approves it again")
   );
-  barChartH($("chRw"), list.map((r) => `${r.name} (${r.rwCprs}/${r.n8})`), [{ name: "Rework rate (%)", color: "var(--s2)", values: list.map((r) => r.reworkRate ?? 0) }], { dec: 1, label: "Rework rate per KA (%)" });
+  const cprsOf = (r) => [...new Set(r.rwEvents.map((e) => e.r.cpr))];
+  barChartH($("chRw"), list.map((r) => `${r.name} (${r.rwCprs}/${r.n8})`), [{ name: "Rework rate (%)", color: "var(--s2)", values: list.map((r) => r.reworkRate ?? 0) }], { dec: 1, label: "Rework rate per KA (%)",
+    tipRows: (i) => { const c = cprsOf(list[i]); return [...c.slice(0, 8).map((cpr) => ({ value: cpr, label: "" })), ...(c.length ? [{ value: "", label: c.length > 8 ? `+${c.length - 8} more · click to see all` : "click to see the details" }] : [])]; },
+    onClick: (i) => showReworkList(list[i]) });
   renderTable($("tblRw"), [
-    { key: "name", label: "Key Account" },
+    { key: "name", label: "Key Account", render: (r) => (r.rwEvents.length ? Object.assign(el("button", { class: "linkbtn", type: "button", title: "Reworked CPRs: " + cprsOf(r).slice(0, 15).join(", ") + (cprsOf(r).length > 15 ? " …" : "") }, r.name), { onclick: () => showReworkList(r) }) : r.name) },
     { key: "rwCprs", label: "Reworked CPRs", num: true, render: (r) => `${fmtInt(r.rwCprs)} of ${fmtInt(r.n8)}` },
     { key: "reworkRate", label: "Rework rate", num: true, render: (r) => (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 1) + "%") },
     { key: "fixAvg", label: "Days to fix (avg)", num: true, render: (r) => fmtNum(r.fixAvg) },
     { key: "rwOpen", label: "Still in rework", num: true, render: (r) => fmtInt(r.rwOpen) }
   ], list);
+  RW_ROWS = list;
+  if (RW_OPEN) { const again = list.find((r) => r.ka === RW_OPEN); if (again) showReworkList(again, true); else $("rwDetail").hidden = true; }
 }
+// list of the reworked CPRs of one KA (click a bar or a KA name)
+let RW_ROWS = [], RW_OPEN = null;
+function showReworkList(row, keepScroll) {
+  RW_OPEN = row.ka;
+  const box = $("rwDetail"); box.hidden = false;
+  $("rwDetTitle").textContent = `Reworked CPRs of ${row.name}`;
+  const ev = row.rwEvents.slice().sort((a, b) => b.start - a.start);
+  $("rwDetSub").textContent = `${fmtInt(new Set(ev.map((e) => e.r.cpr)).size)} CPRs, ${fmtInt(ev.length)} times sent back in the selected period. Click a CPR number to see all its approval steps and notes.`;
+  renderTable($("tblRwDet"), [
+    { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (e) => cprLink(e.r.cpr) },
+    { key: "unit", label: "Hospital", sortable: false, render: (e) => e.r.unit || "–" },
+    { key: "desc", label: "Description", wrap: true, sortable: false, render: (e) => (e.r.vendorName ? String(e.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 70) : "–") },
+    { key: "who", label: "Sent back by", sortable: false, render: (e) => e.who },
+    { key: "start", label: "Sent back on", sortable: false, render: (e) => fmtDay(e.start) },
+    { key: "end", label: "Approved again by KA", sortable: false, render: (e) => (e.end !== null ? fmtDay(e.end) : pill("Still in rework", "warn")) },
+    { key: "fix", label: "Days to fix", num: true, sortable: false, render: (e) => (e.end !== null ? fmtInt(e.end - e.start) : fmtInt((dataDate() ?? e.start) - e.start) + " so far") }
+  ], ev);
+  if (!keepScroll) box.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+$("rwDetClose").addEventListener("click", () => { RW_OPEN = null; $("rwDetail").hidden = true; });
 function renderKaFromPo(view) {
   const from = isoToDay($("poFrom").value), to = isoToDay($("poTo").value);
   const inRange = PO_RECS.filter((r) => (from === null || r.po >= from) && (to === null || r.po <= to));
