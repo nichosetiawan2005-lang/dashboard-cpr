@@ -3421,8 +3421,8 @@ async function renderSteps(cpr) {
   // Forecast 3 / 4 ranges: from the (actual or estimated) start of the KA step
   const holdRange = (f, start) => (f && f.hi > f.lo ? `${fmtDay(start + f.lo)} – ${fmtDay(start + f.hi)}` : null);
   const out8 = r0 ? r0.backOutFirst ?? r0.backOut : null;
-  const range3b = c && r0.kaOut === null ? holdRange(c.f3, estS3(c) - c.w1) : null;
-  const range8 = c && (out8 === null || out8 === undefined) ? holdRange(c.f4, estS8(c) - c.w2) : null;
+  const range3b = c ? holdRange(c.f3, startS3(c)) : null;
+  const range8 = c ? holdRange(c.f4, startS8(c)) : null;
   const lastKaIdx = rows.reduce((m, x, i) => (normRole(x[1]).replace(/[^a-z]/g, "").includes("keyaccount") ? i : m), -1);
   const firstPhoIdx = rows.findIndex((x) => normRole(x[1]).replace(/[^a-z]/g, "") === "purchasingho");
   const time = (x) => x[4] || x[3] || "";
@@ -3464,8 +3464,8 @@ async function renderSteps(cpr) {
     const wm = el("div", { class: "when-m" }, `${fmtStampDay(stamp)} ${fmtStampTime(stamp)}`); card.append(wm);
     const notes = [["Req note", nReq], ["Approver note", nAppr], ["Consult note", nCons]].filter(([, v]) => v);
     if (notes.length) { const n = el("div", { class: "notes" }); for (const [k, v] of notes) { const d = el("div"); d.append(el("b", {}, k + ": "), document.createTextNode(v)); n.append(d); } card.append(n); }
-    if (c && i === lastKaIdx) card.append(estLine("arrival at KA (Forecast 1)", estArr, actArr, range3), estLine("Sequence 3 approval (Forecast 3)", estS3(c), r0.kaOut, range3b));
-    if (c && i === firstPhoIdx) card.append(estLine("return to KA (Forecast 2)", estBack, actBack, null), estLine("Sequence 8 approval (Forecast 4)", estS8(c), out8, range8));
+    if (c && i === lastKaIdx) card.append(estLine("arrival at KA (Forecast 1)", estArr, actArr, range3), estLine("Sequence 3 approval (Forecast 3)", predS3(c), r0.kaOut, range3b));
+    if (c && i === firstPhoIdx) card.append(estLine("return to KA (Forecast 2)", estBack, actBack, null), estLine("Sequence 8 approval (Forecast 4)", predS8(c), out8, range8));
     li.append(t, el("span", { class: "dot" }), card);
     return li;
   });
@@ -3481,8 +3481,8 @@ async function renderSteps(cpr) {
     li.append(t, el("span", { class: "dot" }), card); return li;
   };
   if (c && !(r0 && /^approved$/i.test(r0.hstatus || ""))) {
-    if (lastKaIdx < 0) items.push(future(3, "Key Account HO", "arrival at KA (Forecast 1)", estArr, actArr, range3, actArr !== null, estLine("Sequence 3 approval (Forecast 3)", estS3(c), r0.kaOut, range3b)));
-    if (firstPhoIdx < 0) items.push(future(8, "Purchasing HO", "return to KA (Forecast 2)", estBack, actBack, null, actBack !== null, estLine("Sequence 8 approval (Forecast 4)", estS8(c), out8, range8)));
+    if (lastKaIdx < 0) items.push(future(3, "Key Account HO", "arrival at KA (Forecast 1)", estArr, actArr, range3, actArr !== null, estLine("Sequence 3 approval (Forecast 3)", predS3(c), r0.kaOut, range3b)));
+    if (firstPhoIdx < 0) items.push(future(8, "Purchasing HO", "return to KA (Forecast 2)", estBack, actBack, null, actBack !== null, estLine("Sequence 8 approval (Forecast 4)", predS8(c), out8, range8)));
   }
   box.replaceChildren(...items);
 }
@@ -3597,6 +3597,12 @@ function holdText(c, est, actual, f, startKnown) {
   if (startKnown && !c.r.done && !isInactive(c.r) && D !== null && D > limit) box.append(smallNote(`late ${D - limit} days`, "var(--warn)"));
   return box;
 }
+// the forecast itself (never replaced by the actual date), to compare with what happened:
+// start of the KA step (actual when known) + the Forecast 3 / 4 days
+const startS3 = (c) => actualArrival(c.r) ?? c.r.kaIn ?? c.predArrival;
+const startS8 = (c) => c.r.back ?? estReturn(c);
+const predS3 = (c) => startS3(c) + (c.f3 ? c.f3.days : c.w1);
+const predS8 = (c) => startS8(c) + (c.f4 ? c.f4.days : c.w2);
 const s3Text = (c) => holdText(c, estS3(c), c.r.kaOut !== null, c.f3, c.r.kaIn !== null);
 const s8Text = (c) => { const out = c.r.backOutFirst ?? c.r.backOut; return holdText(c, estS8(c), out !== null && out !== undefined, c.f4, c.r.back !== null); };
 const actualArrival = (r) => (r.prog && r.prog.kaIn !== null && r.prog.kaIn !== undefined ? r.prog.kaIn : null);
