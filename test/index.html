@@ -478,6 +478,19 @@ body.locked #loginForm .btn { width: 100%; }
     <p class="note" id="bkNote"></p>
     <div class="section-title"><h2>1. Is the forecast accurate?</h2><p>Same test as the analysis notebook: the model learns only from history before the last 3 months, then forecasts the CPRs of those 3 months (2026 process). These CPRs were never used to choose or train the tested model, so this is an out-of-sample test.</p></div>
     <div id="bkFcTiles"></div><p class="note" id="bkFcNote"></p>
+    <div class="card" id="chkCard" style="margin-top:12px"><h3>Check the forecast CPR by CPR (test months)</h3>
+      <div class="sub">Every CPR below was forecast by a model that had never seen it (it learned only from older CPRs), so this is how the forecast really performs. Use the groups to find where it misses most: a positive average difference = the forecast was too long, negative = too short.</div>
+      <div class="filters" style="border:0;padding:0;margin:8px 0">
+        <div class="field"><label for="chkFc">Forecast</label><select id="chkFc"><option value="f1">Forecast 1 · created → arrives at KA</option><option value="f3">Forecast 3 · KA holds it at Sequence 3</option><option value="f2">Forecast 2 · Seq 3 approval → returns to KA</option><option value="f4" selected>Forecast 4 · KA holds it at Sequence 8</option></select></div>
+        <div class="field"><label for="chkBy">Group by</label><select id="chkBy"><option value="ka">Key Account</option><option value="unit">Hospital</option><option value="week">Week</option><option value="size">Actual duration</option></select></div>
+        <div class="field"><label for="chkGroup">Show CPRs of</label><select id="chkGroup"></select></div>
+        <div class="field"><label for="chkSort">Sort CPRs by</label><select id="chkSort"><option value="err">Largest difference first</option><option value="date">Date</option></select></div>
+        <button class="btn ghost" type="button" id="chkCopy">Copy CPR list</button>
+      </div>
+      <div class="tbl-wrap"><table id="tblChkGroup"></table></div>
+      <div class="tbl-wrap" style="margin-top:10px;max-height:520px;overflow:auto"><table id="tblChkCpr"></table></div>
+      <p class="note" id="chkNote"></p>
+    </div>
     <div class="card" id="fcSetCard" style="margin-top:12px"><h3>Forecast settings</h3><div class="sub">Choose which history the forecast learns from. Default = the analysis notebook. "Apply and retrain" tests the new setting on the latest months and shows its test MAE next to the default, so the effect is visible before it is relied on. Only CPRs allocated after the change use the new forecast; saved Key Account assignments do not change.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
         <div class="field"><label for="fcFrom">Learn from CPRs created from</label><input type="date" id="fcFrom"></div>
@@ -2797,7 +2810,9 @@ async function ensureModels(_start, onStatus) {
   const { testStart, valStart } = testWindow(all, Number(FC_SET.months) || 3);
   // very long CPRs can be left out of what the model LEARNS from; the test still counts every CPR, so the MAE stays honest
   const learnable = (list) => (maxDays > 0 ? list.filter((r) => r.y <= maxDays) : list);
-  const saved = MODEL_CHOICE && MODEL_CHOICE.key === choiceKey() && "f3" in MODEL_CHOICE ? MODEL_CHOICE : null;
+  // a saved choice from before Forecast 3/4 or before the per-CPR check (test rows without the CPR number) is tuned again
+  const fullTest = (m) => !m || !m.test || !m.test.rows.length || m.test.rows[0].length >= 10;
+  const saved = MODEL_CHOICE && MODEL_CHOICE.key === choiceKey() && "f3" in MODEL_CHOICE && ["f1", "f2", "f3", "f4"].every((k) => fullTest(MODEL_CHOICE[k])) ? MODEL_CHOICE : null;
   const fitOn = (sel, list0, stats, feats) => { const list = learnable(list0); const st = stats(list), X = list.map((r) => feats(r, st)), y = list.map((r) => Math.log1p(r.y)); const f = findCandidate(sel.chosen).fit(X, y); return { st, X, y, f }; };
   const pick = async (label, hist, dateOf, stats, feats, savedSel) => {
     if (hist.length < 100) return null;
@@ -2820,7 +2835,8 @@ async function ensureModels(_start, onStatus) {
         const baseUnit = groupStat(newBefore, (r) => r.unit, (r) => r.y, median);
         const rows = testRows.map((r) => { const lg = m.f(feats(r, m.st)), p = roundHalfEven(Math.max(0, Math.expm1(lg)));
           const lo = roundHalfEven(Math.max(0, Math.expm1(lg + q20))), hi = roundHalfEven(Math.max(0, Math.expm1(lg + q80)));
-          return [dateOf(r), p - r.y, Math.round(baseUnit.get(r.unit) ?? baseAll) - r.y, r.y >= lo && r.y <= hi ? 1 : 0]; });
+          // [day, error, baseline error, inside range, cpr, forecast days, hospital, KA, range low, range high]
+          return [dateOf(r), p - r.y, Math.round(baseUnit.get(r.unit) ?? baseAll) - r.y, r.y >= lo && r.y <= hi ? 1 : 0, r.cpr ?? null, p, r.unit ?? null, r.ka ?? null, lo, hi]; });
         sel = { ...sel, test: { from: testStart, to: Math.max(...testRows.map(dateOf)), trainN: before.length, rows } };
       }
     }
@@ -3589,9 +3605,22 @@ function returnText(c) {
 // Forecast 3 / 4 columns: the actual KA approval when it happened, else the estimate (arrival + Forecast 3, return + Forecast 4)
 const estS3 = (c) => (c.r.kaOut !== null ? c.r.kaOut : (actualArrival(c.r) ?? c.r.kaIn ?? c.predArrival) + c.w1);
 const estS8 = (c) => { const out = c.r.backOutFirst ?? c.r.backOut; return out !== null && out !== undefined ? out : estReturn(c) + c.w2; };
-function holdText(c, est, actual, f, startKnown) {
+// test-month forecast of one CPR (made by a model that had not seen it): [forecast days, low, high] or null
+let TEST_PRED = { key: null, maps: {} };
+function testPred(k, cpr) {
+  const m = SIM && SIM.models && SIM.models[k];
+  if (TEST_PRED.key !== (SIM && SIM.models ? SIM.models.key : null)) TEST_PRED = { key: SIM && SIM.models ? SIM.models.key : null, maps: {} };
+  if (!TEST_PRED.maps[k]) TEST_PRED.maps[k] = new Map(m && m.test ? m.test.rows.filter((x) => x[4]).map((x) => [x[4], [x[5], x[8], x[9], x[5] - x[1]]]) : []);
+  return TEST_PRED.maps[k].get(cpr) || null;
+}
+function holdText(c, est, actual, f, startKnown, k, start) {
   const box = el("div"); box.append(el("div", {}, fmtDay(est)));
-  if (actual) { box.append(smallNote("actual")); return box; }
+  if (actual) {
+    const tp = k ? testPred(k, c.r.cpr) : null;
+    if (tp) { const a = tp[3], d = tp[0] - a; box.append(smallNote(`actual ${a}d · forecast ${tp[0]}d${d === 0 ? " ✓" : ` (${d > 0 ? "+" : ""}${d})`}`, d === 0 ? "var(--good)" : Math.abs(d) <= 2 ? "var(--muted)" : "var(--warn)")); }
+    else box.append(smallNote("actual"));
+    return box;
+  }
   if (f) box.append(smallNote(`${f.days === 0 ? "same day" : `${f.days} day${f.days === 1 ? "" : "s"}`} at KA${f.hi > f.lo ? ` · likely ${f.lo}–${f.hi} days` : ""}`));
   const D = dataDate(), limit = est + (f ? f.hi - f.days : 0);
   if (startKnown && !c.r.done && !isInactive(c.r) && D !== null && D > limit) box.append(smallNote(`late ${D - limit} days`, "var(--warn)"));
@@ -3601,10 +3630,11 @@ function holdText(c, est, actual, f, startKnown) {
 // start of the KA step (actual when known) + the Forecast 3 / 4 days
 const startS3 = (c) => actualArrival(c.r) ?? c.r.kaIn ?? c.predArrival;
 const startS8 = (c) => c.r.back ?? estReturn(c);
-const predS3 = (c) => startS3(c) + (c.f3 ? c.f3.days : c.w1);
-const predS8 = (c) => startS8(c) + (c.f4 ? c.f4.days : c.w2);
-const s3Text = (c) => holdText(c, estS3(c), c.r.kaOut !== null, c.f3, c.r.kaIn !== null);
-const s8Text = (c) => { const out = c.r.backOutFirst ?? c.r.backOut; return holdText(c, estS8(c), out !== null && out !== undefined, c.f4, c.r.back !== null); };
+// a CPR of the test months uses the forecast of the model that had not seen it
+const predS3 = (c) => { const tp = testPred("f3", c.r.cpr); return startS3(c) + (tp ? tp[0] : c.f3 ? c.f3.days : c.w1); };
+const predS8 = (c) => { const tp = testPred("f4", c.r.cpr); return startS8(c) + (tp ? tp[0] : c.f4 ? c.f4.days : c.w2); };
+const s3Text = (c) => holdText(c, estS3(c), c.r.kaOut !== null, c.f3, c.r.kaIn !== null, "f3", c.r.kaIn);
+const s8Text = (c) => { const out = c.r.backOutFirst ?? c.r.backOut; return holdText(c, estS8(c), out !== null && out !== undefined, c.f4, c.r.back !== null, "f4", c.r.back); };
 const actualArrival = (r) => (r.prog && r.prog.kaIn !== null && r.prog.kaIn !== undefined ? r.prog.kaIn : null);
 function renderIncoming() {
   if (!SIM) return;
@@ -3913,6 +3943,67 @@ function renderStudy() {
     { key: "chosen", label: "", sortable: false, render: (r) => (r.chosen ? pill(`Chosen · p ${r.p} vs simple guess`, "good") : "") }
   ], rows);
 }
+// ---- forecast check: every test CPR with its forecast and actual duration ----
+const CHK_START = { f1: "Created", f3: "Arrived at KA", f2: "Sequence 3 approved", f4: "Returned to KA" };
+function chkRows() {
+  const k = $("chkFc").value, m = SIM && SIM.models && SIM.models[k], t = m && m.test;
+  if (!t) return [];
+  const recBy = new Map(RECS.map((r) => [r.cpr, r]));
+  return t.rows.filter((x) => x[4] !== undefined && x[4] !== null).map((x) => {
+    const r = recBy.get(x[4]), ka = x[7] ?? (r ? dataKa(r) : null);
+    return { day: x[0], cpr: x[4], forecast: x[5], actual: x[5] - x[1], diff: x[1], inRange: x[3], lo: x[8], hi: x[9], unit: x[6] ?? (r ? r.unit : null), ka };
+  });
+}
+const chkKey = (row, by) => (by === "ka" ? (row.ka ? kaLabel(row.ka) : "(unknown)") : by === "unit" ? row.unit || "(unknown)" : by === "week" ? fmtDay(row.day - weekday(row.day)) : row.actual <= 1 ? "a. 0–1 day" : row.actual <= 3 ? "b. 2–3 days" : row.actual <= 7 ? "c. 4–7 days" : row.actual <= 14 ? "d. 8–14 days" : "e. more than 14 days");
+function renderCheck() {
+  const rows = chkRows(), by = $("chkBy").value;
+  if (!rows.length) { $("tblChkGroup").replaceChildren(); $("tblChkCpr").replaceChildren(); $("chkNote").textContent = "No test CPRs yet for this forecast (at least 3 recent months of CPRHistory are needed)."; return; }
+  const g = new Map(); for (const r of rows) { const key = chkKey(r, by); if (!g.has(key)) g.set(key, []); g.get(key).push(r); }
+  const groups = [...g].map(([key, list]) => ({ key, n: list.length, mae: mean(list.map((r) => Math.abs(r.diff))), bias: mean(list.map((r) => r.diff)),
+    exact: list.filter((r) => r.diff === 0).length / list.length, w2: list.filter((r) => Math.abs(r.diff) <= 2).length / list.length, inr: list.filter((r) => r.inRange === 1).length / list.length, fc: mean(list.map((r) => r.forecast)), act: mean(list.map((r) => r.actual)) }));
+  groups.sort(by === "week" || by === "size" ? (a, b) => (a.key < b.key ? -1 : 1) : (a, b) => b.n - a.n);
+  const all = { key: "All test CPRs", n: rows.length, mae: mean(rows.map((r) => Math.abs(r.diff))), bias: mean(rows.map((r) => r.diff)), exact: rows.filter((r) => r.diff === 0).length / rows.length, w2: rows.filter((r) => Math.abs(r.diff) <= 2).length / rows.length, inr: rows.filter((r) => r.inRange === 1).length / rows.length, fc: mean(rows.map((r) => r.forecast)), act: mean(rows.map((r) => r.actual)), all: true };
+  const worst = Math.max(...groups.filter((x) => x.n >= 10).map((x) => x.mae));
+  renderTable($("tblChkGroup"), [
+    { key: "key", label: { ka: "Key Account", unit: "Hospital", week: "Week of", size: "Actual duration" }[by], sortable: false, render: (r) => (r.all ? el("b", {}, r.key) : r.key.replace(/^[a-e]\. /, "")) },
+    { key: "n", label: "CPRs", num: true, sortable: false, render: (r) => fmtInt(r.n) },
+    { key: "fc", label: "Avg forecast (days)", num: true, sortable: false, render: (r) => fmtNum(r.fc, 1) },
+    { key: "act", label: "Avg actual (days)", num: true, sortable: false, render: (r) => fmtNum(r.act, 1) },
+    { key: "mae", label: "Avg error (MAE)", num: true, sortable: false, render: (r) => fmtNum(r.mae, 2) + (!r.all && r.n >= 10 && r.mae === worst && groups.length > 1 ? " ▲" : "") },
+    { key: "bias", label: "Avg difference", num: true, sortable: false, render: (r) => (r.bias > 0 ? "+" : "") + fmtNum(r.bias, 2) },
+    { key: "exact", label: "Exact day", num: true, sortable: false, render: (r) => fmtNum(r.exact * 100, 0) + "%" },
+    { key: "w2", label: "Within ±2 days", num: true, sortable: false, render: (r) => fmtNum(r.w2 * 100, 0) + "%" },
+    { key: "inr", label: "Inside likely range", num: true, sortable: false, render: (r) => fmtNum(r.inr * 100, 0) + "%" }
+  ], [all, ...groups]);
+  // group filter for the CPR list
+  const sel = $("chkGroup"), cur = sel.value;
+  sel.replaceChildren(el("option", { value: "" }, "All groups"), ...groups.map((x) => el("option", { value: x.key }, `${x.key.replace(/^[a-e]\. /, "")} (${fmtInt(x.n)})`)));
+  sel.value = groups.some((x) => x.key === cur) ? cur : "";
+  const list = rows.filter((r) => !sel.value || chkKey(r, by) === sel.value)
+    .sort($("chkSort").value === "err" ? (a, b) => Math.abs(b.diff) - Math.abs(a.diff) || a.day - b.day : (a, b) => a.day - b.day);
+  const k = $("chkFc").value;
+  renderTable($("tblChkCpr"), [
+    { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (r) => cprLink(r.cpr) },
+    { key: "unit", label: "Hospital", sortable: false, render: (r) => r.unit || "–" },
+    { key: "ka", label: "Key Account", sortable: false, render: (r) => (r.ka ? kaLabel(r.ka) : "–") },
+    { key: "day", label: CHK_START[k], sortable: false, render: (r) => fmtDay(r.day) },
+    { key: "forecast", label: "Forecast (days)", num: true, sortable: false, render: (r) => { const d = el("div"); d.append(el("div", {}, fmtInt(r.forecast))); if (r.hi > r.lo) d.append(smallNote(`likely ${r.lo}–${r.hi}`)); return d; } },
+    { key: "actual", label: "Actual (days)", num: true, sortable: false, render: (r) => fmtInt(r.actual) },
+    { key: "diff", label: "Difference", num: true, sortable: false, render: (r) => pill(r.diff === 0 ? "exact" : `${r.diff > 0 ? "+" : ""}${r.diff} day${Math.abs(r.diff) === 1 ? "" : "s"}`, r.diff === 0 ? "good" : Math.abs(r.diff) <= 2 ? "info" : Math.abs(r.diff) <= 5 ? "warn" : "bad") },
+    { key: "inRange", label: "Inside range", sortable: false, render: (r) => (r.inRange === 1 ? "yes" : "no") }
+  ], list.slice(0, 300));
+  $("chkNote").textContent = `${fmtInt(list.length)} CPRs${list.length > 300 ? " (first 300 shown; Copy CPR list copies all)" : ""}. Difference = forecast − actual: + means the forecast was too long (the CPR moved faster), − means too short (the CPR was late). ▲ = the group with the largest error (10+ CPRs).`;
+  CHK_LIST = list;
+}
+let CHK_LIST = [];
+for (const id of ["chkFc", "chkBy"]) $(id).addEventListener("change", () => { $("chkGroup").value = ""; renderCheck(); });
+for (const id of ["chkGroup", "chkSort"]) $(id).addEventListener("change", renderCheck);
+$("chkCopy").addEventListener("click", async () => {
+  const k = $("chkFc").value;
+  const lines = [["CPR Number", "Hospital", "Key Account", CHK_START[k], "Forecast (days)", "Likely low", "Likely high", "Actual (days)", "Difference (forecast - actual)", "Inside range"].join("\t"),
+    ...CHK_LIST.map((r) => [r.cpr, r.unit || "", r.ka ? kaLabel(r.ka) : "", dayToIso(r.day), r.forecast, r.lo, r.hi, r.actual, r.diff, r.inRange === 1 ? "yes" : "no"].join("\t"))];
+  try { await navigator.clipboard.writeText(lines.join("\n")); setStatus(`${fmtInt(lines.length - 1)} rows copied. Paste into Excel with Ctrl+V.`); } catch { setStatus("The browser blocked copying."); }
+});
 function renderBukti() {
   renderFcSettings(); renderStudy();
   const clear = () => { for (const id of ["tblModels", "bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
@@ -3957,6 +4048,7 @@ function renderBukti() {
     { key: "v", label: "", sortable: false, render: (r) => (r.n === null ? pill("Not enough history", "muted") : r.mae < r.base ? pill("More accurate than the simple guess", "good") : pill("Not yet better than the simple guess", "warn")) }
   ], accRows);
   const t0 = accRows.find((r) => r.n !== null);
+  renderCheck();
   $("bkFcNote").textContent = t0 ? `Test months: ${fmtDay(t0.from)} – ${fmtDay(t0.to)}. Simple guess = the median per hospital of the 2026 process. "Inside the likely range" = share of test CPRs whose actual date fell inside the range shown in the dashboard (P20–P80 of the model errors).` : "";
   const t1 = SIM.models && SIM.models.f1 && SIM.models.f1.test;
   const byWeek = new Map();
