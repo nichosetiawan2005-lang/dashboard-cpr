@@ -3475,12 +3475,34 @@ async function renderSteps(cpr) {
   const lastKaIdx = rows.reduce((m, x, i) => (normRole(x[1]).replace(/[^a-z]/g, "").includes("keyaccount") ? i : m), -1);
   const firstPhoIdx = rows.findIndex((x) => normRole(x[1]).replace(/[^a-z]/g, "") === "purchasingho");
   const time = (x) => x[4] || x[3] || "";
-  const list = rows.map((x, i) => ({ x, i })).sort((a, b) => (time(a.x) < time(b.x) ? -1 : time(a.x) > time(b.x) ? 1 : (Number(a.x[0]) - Number(b.x[0])) || a.i - b.i));
+  // a consulted step becomes two moments: the consult is sent (its Submit Date) and answered (its Approval Date)
+  const tm = (e) => (e.part === "sent" ? e.x[3] || "" : time(e.x));
+  const list = rows.flatMap((x, i) => (x[6] && x[3] && x[4] ? [{ x, i, part: "sent" }, { x, i, part: "answered" }] : [{ x, i }]))
+    .sort((a, b) => (tm(a) < tm(b) ? -1 : tm(a) > tm(b) ? 1 : (Number(a.x[0]) - Number(b.x[0])) || a.i - b.i || (a.part === "sent" ? -1 : 1)));
   const pretty = (v) => String(v || "").replace(/\b\w/g, (ch) => ch.toUpperCase()).replace(/\bHo\b/g, "HO").replace(/\bHu\b/g, "HU").replace(/\bFc\b/g, "FC").replace(/\bCeo\b/g, "CEO");
   let first = true; const returnedAt = new Map();
+  function consultItem(x, part) {
+    const [seq, role, user, submit, approve, , consult, nReq, nAppr, nCons] = x;
+    const sent = part === "sent", stamp = sent ? submit : approve;
+    const li = el("li", { class: "consult" });
+    const t = el("div", { class: "t" }, fmtStampDay(stamp)); t.append(el("small", {}, fmtStampTime(stamp)));
+    const card = el("div", { class: "card2" });
+    const sq = el("div", { class: "seq" }); sq.append(el("small", {}, "SEQ"), document.createTextNode(seq ?? "–"));
+    const right = el("div", { class: "right" }); right.append(el("span", { class: "badge consult" }, sent ? `Consult sent → ${consult}` : "Consult answered"));
+    if (!sent) { const dur = fmtDuration(submit, approve); if (dur) right.append(el("span", { class: "dur", title: "time between sending the consult and the answer" }, "⏱ " + dur + " waiting")); }
+    const actor = el("div", { class: "actor" }, sent ? "Sent by: " : "Answered by: "); actor.append(el("b", {}, (sent ? user : consult) || "–"));
+    card.append(sq, el("div", { class: "role" }, sent ? `${pretty(role)} · consult` : `Consult: ${consult}`), right, actor);
+    card.append(el("div", { class: "when-m" }, `${fmtStampDay(stamp)} ${fmtStampTime(stamp)}`));
+    const notes = (sent ? [["Req note", nReq], ["Approver note", nAppr]] : [["Consult note", nCons]]).filter(([, v]) => v);
+    if (notes.length) { const n = el("div", { class: "notes" }); for (const [k, v] of notes) { const d = el("div"); d.append(el("b", {}, k + ": "), document.createTextNode(v)); n.append(d); } card.append(n); }
+    if (sent) first = false;
+    li.append(t, el("span", { class: "dot" }), card);
+    return li;
+  }
   const catSt = (CATALOG.get(cpr) || {}).status || (r0 && r0.hstatus) || "", isRejectedCpr = /reject|cancel|batal|tolak/i.test(catSt);
   const lastKey = list.length ? list[list.length - 1].i : -1;   // role -> time it was sent back to that role (revise / rework)
-  const items = list.map(({ x, i }) => {
+  const items = list.map(({ x, i, part }) => {
+    if (part) return consultItem(x, part);
     const rejectedHere = (x[8] && /^\s*\[reject/i.test(x[8])) || (isRejectedCpr && i === lastKey);
     const [seq, role, user, submit, approve, revise, consult, nReq, nAppr, nCons] = x;
     const r = normRole(role), key = r.replace(/[^a-z]/g, "");
