@@ -392,10 +392,10 @@ body.locked #loginForm .btn { width: 100%; }
     <p class="note" id="kaNote"></p>
     <div class="section-title"><h2>Average KA processing time per CPR</h2><p>Sequence 3 = from receipt by the KA until approval. Sequence 8 = from the CPR's return to the KA until approval. Time spent waiting for other approvers is excluded.</p></div>
     <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Sequence 3</span><span><i style="background:var(--s2)"></i>Sequence 8</span></div><div class="chart" id="chKa"></div></div>
-    <div class="section-title"><h2>Current task load</h2><p>CPRs each KA is holding right now (Sequence 3, Sequence 8, Rework), weighted by how heavy each task is.</p></div>    <div class="card" id="cardTask" hidden><h3>Current task load per KA (weighted)</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div><p class="note">Open task = a CPR the KA is holding now (Sequence 3, Sequence 8 or rework). Click a Key Account, a bar or "Show CPRs" to list them with how long they have been open and their rework risk.</p>
+    <div class="section-title"><h2>Current task load</h2><p>CPRs each KA is holding right now (Sequence 3, Sequence 8, Rework).</p></div>    <div class="card" id="cardTask" hidden><h3>Open tasks per KA</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div><p class="note">Open task = a CPR the KA is holding now (Sequence 3, Sequence 8 or rework). Click a Key Account, a bar or "Show CPRs" to list them.</p>
       <div id="otDetail" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="otTitle"></h3><div class="sub" id="otSub"></div></div><button class="btn ghost" type="button" id="otClose">Close</button></div>
         <div class="tbl-wrap" style="max-height:520px;overflow:auto"><table id="tblOt"></table></div></div>
-      <details class="capbox" id="twBox"><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Sequence 8 about 2.4–3× Sequence 3, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
+      <details class="capbox" id="twBox" hidden><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Sequence 8 about 2.4–3× Sequence 3, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
         <div class="capgrid"><label>Sequence 3<input type="number" id="twRec" min="0" step="0.1"></label><label>Sequence 8<input type="number" id="twMat" min="0" step="0.1"></label><label>Rework<input type="number" id="twRw" min="0" step="0.1"></label><label>× CPR &gt; Rp1 M<input type="number" id="twBig" min="1" step="0.1"></label></div></details></div>
     <div class="section-title"><h2>Rework per KA</h2><p>Rework = a CPR sent back to the KA for correction (by Purchasing Head HO or Purchasing Director). Lower is better.</p></div>
     <div class="tiles" id="rwTiles"></div>
@@ -522,7 +522,7 @@ body.locked #loginForm .btn { width: 100%; }
       <p class="note" id="fcSetNote"></p>
     </div>
     <div class="card" style="margin-top:12px"><h3>Model selection in the dashboard (automatic)</h3><div class="sub">Same procedure as the analysis notebook: each candidate learns from older history and is checked on a 3-month validation window (2026-process CPRs); the lowest validation MAE is chosen, tested on the latest 3 months, then retrained on all history to forecast the queue.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
-    <div class="card" style="margin-top:12px"><h3>Rework risk: does the warning work?</h3><div class="sub">The risk model learns from older CPRs whose Sequence 8 is finished, then is checked on the CPRs of the latest months it has not seen. A useful warning sends back clearly more "High" CPRs than "Low" ones. AUC: 0.5 = no better than chance, 1.0 = perfect.</div><div class="tbl-wrap"><table id="tblRiskChk"></table></div><p class="note" id="riskNote"></p></div>
+    <div class="card" id="riskCard" style="margin-top:12px" hidden><h3>Rework risk: does the warning work?</h3><div class="sub">The risk model learns from older CPRs whose Sequence 8 is finished, then is checked on the CPRs of the latest months it has not seen. A useful warning sends back clearly more "High" CPRs than "Low" ones. AUC: 0.5 = no better than chance, 1.0 = perfect.</div><div class="tbl-wrap"><table id="tblRiskChk"></table></div><p class="note" id="riskNote"></p></div>
     <div class="card" style="margin-top:12px"><h3>Comparison of the four models (analysis notebook)</h3><div class="sub">Study in the Python notebook on CPR_Cleaned 2023–2026: each forecast is learned by Linear Regression, Random Forest, XGBoost and a Neural Network (MLP), plus an Ensemble of the best two. The model with the lowest validation MAE (Apr–Jun 2026) is chosen and then tested once on Jul–Sep 2026; "p" is the Wilcoxon test against the simple guess; the test MAE of the chosen model uses whole-day forecasts, as shown in the dashboard. The dashboard itself keeps choosing automatically between Linear Regression and XGBoost (the table above), retrained on the uploaded CPRHistory + CPRSummary.</div><div class="tbl-wrap"><table id="tblStudy"></table></div></div>
     <div class="card" style="margin-top:12px"><h3>Forecast 1: mean absolute error per week (test months)</h3><div class="sub">Lower values indicate higher accuracy. Compared against a simple baseline (median per hospital, 2026 process).</div><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
     <div class="section-title"><h2>2. Is the KA workload more evenly distributed?</h2><p id="bkLoadDesc"></p></div>
@@ -4157,7 +4157,7 @@ $("lcCopy").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(lines.join("\n")); setStatus(`${fmtInt(lines.length - 1)} rows copied (one per KA per working day). Paste into Excel with Ctrl+V.`); } catch { setStatus("The browser blocked copying."); }
 });
 function renderBukti() {
-  renderFcSettings(); renderStudy(); try { renderLoadCheck(); } catch (e) { $("lcNote").textContent = "Daily workload check failed: " + (e.message || e); } try { renderRiskCheck(); } catch (e) {}
+  renderFcSettings(); renderStudy(); try { renderLoadCheck(); } catch (e) { $("lcNote").textContent = "Daily workload check failed: " + (e.message || e); } if (TL_ON.risk) { $("riskCard").hidden = false; try { renderRiskCheck(); } catch (e) {} }
   const clear = () => { for (const id of ["tblModels", "bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
   if (!SIM) { clear(); $("bkNote").textContent = "Please run the allocation in the CPR Allocation tab first."; return; }
   const mRows = [];
@@ -4402,18 +4402,25 @@ function riskWhy(x) {
 let OT_OPEN = null;
 function showOpenTasks(ka) {
   OT_OPEN = ka; const box = $("otDetail"); box.hidden = false;
-  const D = dataDate(), rows = openTasks().filter((t) => t.ka === ka).sort((a, b) => (b.risk ? b.risk.p : -1) - (a.risk ? a.risk.p : -1) || b.age - a.age);
+  const D = dataDate(), rows = openTasks().filter((t) => t.ka === ka).sort((a, b) => (TL_ON.risk ? (b.risk ? b.risk.p : -1) - (a.risk ? a.risk.p : -1) : 0) || (a.since ?? 0) - (b.since ?? 0));
   $("otTitle").textContent = `Open tasks of ${kaLabel(ka)}`;
-  $("otSub").textContent = `${fmtInt(rows.length)} CPRs the KA is holding on ${D !== null ? fmtDay(D) : "–"}. Rework risk = chance that Purchasing Head HO / Director sends the CPR back after Sequence 8, compared with the other CPRs (High = top third). It is a warning to check the CPR carefully, not a certainty.`;
+  $("otSub").textContent = !TL_ON.risk ? `${fmtInt(rows.length)} CPRs the KA is holding on ${D !== null ? fmtDay(D) : "–"}, oldest first.` : `${fmtInt(rows.length)} CPRs the KA is holding on ${D !== null ? fmtDay(D) : "–"}. Rework risk = chance that Purchasing Head HO / Director sends the CPR back after Sequence 8, compared with the other CPRs (High = top third). It is a warning to check the CPR carefully, not a certainty.`;
   renderTable($("tblOt"), [
     { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (t) => cprLink(t.r.cpr) },
     { key: "unit", label: "Hospital", sortable: false, render: (t) => t.r.unit || "–" },
     { key: "desc", label: "Description", wrap: true, sortable: false, render: (t) => (t.r.vendorName ? String(t.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 70) : "–") },
     { key: "task", label: "Task", sortable: false, render: (t) => pill(t.label, t.task === "rw" ? "warn" : "info") },
     { key: "since", label: "At KA since", sortable: false, render: (t) => (t.since !== null && t.since !== undefined ? fmtDay(t.since) : "–") },
+    ...(!TL_ON.age ? [] : [
     { key: "age", label: "Days open", num: true, sortable: false, render: (t) => (t.age === null ? "–" : el("span", { style: t.age > 7 ? "color:var(--bad);font-weight:600" : "" }, fmtInt(t.age))) },
     { key: "risk", label: "Rework risk", sortable: false, render: (t) => (t.task === "rw" ? pill("Already in rework", "warn") : t.risk ? pill(`${t.risk.level} · ${fmtNum(t.risk.p * 100, 0)}%`, RISK_KIND[t.risk.level]) : "–") },
     { key: "why", label: "Why", wrap: true, sortable: false, render: (t) => (t.task === "rw" ? "" : smallNote(riskWhy(t.risk))) }
+    ].slice(0, 1)),
+    ...(!TL_ON.risk ? [] : [
+    { key: "age", label: "Days open", num: true, sortable: false, render: (t) => (t.age === null ? "–" : el("span", { style: t.age > 7 ? "color:var(--bad);font-weight:600" : "" }, fmtInt(t.age))) },
+    { key: "risk", label: "Rework risk", sortable: false, render: (t) => (t.task === "rw" ? pill("Already in rework", "warn") : t.risk ? pill(`${t.risk.level} · ${fmtNum(t.risk.p * 100, 0)}%`, RISK_KIND[t.risk.level]) : "–") },
+    { key: "why", label: "Why", wrap: true, sortable: false, render: (t) => (t.task === "rw" ? "" : smallNote(riskWhy(t.risk))) }
+    ].slice(1))
   ], rows);
 }
 $("otClose").addEventListener("click", () => { OT_OPEN = null; $("otDetail").hidden = true; });
@@ -4427,10 +4434,13 @@ function openTasks() {
     const task = inRework(r) ? "rw" : r.kaIn !== null && r.kaOut === null ? "rec" : back !== null && back !== undefined && (out8 === null || out8 === undefined) ? "mat" : null;
     if (!task) continue;
     const since = task === "rw" ? r.stageSince : task === "rec" ? r.kaIn : back;
-    out.push({ c, r, ka: c.ka, task, label: task === "rec" ? "Sequence 3" : task === "mat" ? "Sequence 8" : "Rework", since, age: D !== null && since !== null && since !== undefined ? D - since : null, risk: task === "rw" ? null : riskOf(r) });
+    out.push({ c, r, ka: c.ka, task, label: task === "rec" ? "Sequence 3" : task === "mat" ? "Sequence 8" : "Rework", since, age: D !== null && since !== null && since !== undefined ? D - since : null, risk: task === "rw" || !TL_ON.risk ? null : riskOf(r) });
   }
   return out;
 }
+// Current task load is being reworked step by step: until each step is agreed, only plain counts are shown
+// (no weights, no "open > 7 days", no rework risk). Turn a step back on by setting it to true.
+const TL_ON = { weights: false, age: false, risk: false };
 function renderTaskLoad() {
   const card = $("cardTask"); if (!SIM || SIM.actual) { card.hidden = true; return; } card.hidden = false;
   const D = dataDate(), per = {};
@@ -4445,23 +4455,24 @@ function renderTaskLoad() {
   }
   const ot = openTasks(), old = {}, high = {};
   for (const t of ot) { if (t.age !== null && t.age > 7) old[t.ka] = (old[t.ka] || 0) + 1; if (t.risk && t.risk.level === "High") high[t.ka] = (high[t.ka] || 0) + 1; }
-  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw, n: per[ka].rec + per[ka].mat + per[ka].rw })).sort((a, b) => b.total - a.total);
-  $("subTask").textContent = `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Sequence 3 ×${fmtNum(TASK_W.rec, 1)}, Sequence 8 ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Sequence 8 of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed below the table.`;
+  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw, n: per[ka].rec + per[ka].mat + per[ka].rw })).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.n - a.n));
+  $("subTask").textContent = !TL_ON.weights ? `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), read from the current step in CPRHistory: Sequence 3 = waiting for the KA (Key Account HO), Sequence 8 = waiting for the KA (Purchasing HO), Rework = sent back by Purchasing Head HO / Director and not yet approved again. Counted as is, without weights.` : `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Sequence 3 ×${fmtNum(TASK_W.rec, 1)}, Sequence 8 ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Sequence 8 of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed below the table.`;
   $("lgTask").innerHTML = [["Sequence 3", "var(--s1)"], ["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
+  const W = TL_ON.weights;
   barChartH($("chTask"), kas.map((k) => `${k.name} (${k.n} CPRs)`), [
-    { name: "Sequence 3", color: "var(--s1)", values: kas.map((k) => k.wRec) },
-    { name: "Sequence 8", color: "var(--s2)", values: kas.map((k) => k.wMat) },
-    { name: "Rework", color: "var(--s3, #8e5bd8)", values: kas.map((k) => k.wRw) }
-  ], { stacked: true, dec: 1, label: "Weighted task load per KA", onClick: (i) => showOpenTasks(kas[i].ka), tipRows: () => [{ value: "", label: "click to see the open CPRs" }] });
+    { name: "Sequence 3", color: "var(--s1)", values: kas.map((k) => (W ? k.wRec : k.rec)) },
+    { name: "Sequence 8", color: "var(--s2)", values: kas.map((k) => (W ? k.wMat : k.mat)) },
+    { name: "Rework", color: "var(--s3, #8e5bd8)", values: kas.map((k) => (W ? k.wRw : k.rw)) }
+  ], { stacked: true, dec: W ? 1 : 0, label: W ? "Weighted task load per KA" : "Open tasks per KA", onClick: (i) => showOpenTasks(kas[i].ka), tipRows: () => [{ value: "", label: "click to see the open CPRs" }] });
   renderTable($("tblTask"), [
     { key: "name", label: "Key Account", render: (r) => Object.assign(el("button", { class: "linkbtn", type: "button", title: "Show the open CPRs of this KA" }, r.name), { onclick: () => showOpenTasks(r.ka) }) },
     { key: "rec", label: "Sequence 3", num: true, render: (r) => fmtInt(r.rec) },
-    { key: "mat", label: "Sequence 8", num: true, render: (r) => fmtInt(r.mat) + (r.big ? ` (${r.big} > Rp1 M)` : "") },
+    { key: "mat", label: "Sequence 8", num: true, render: (r) => fmtInt(r.mat) + (TL_ON.weights && r.big ? ` (${r.big} > Rp1 M)` : "") },
     { key: "rw", label: "Rework", num: true, render: (r) => fmtInt(r.rw) },
     { key: "n", label: "CPRs held", num: true, render: (r) => fmtInt(r.n) },
-    { key: "total", label: "Weighted load", num: true, render: (r) => fmtNum(r.total, 1) },
-    { key: "old", label: "Open > 7 days", num: true, render: (r) => fmtInt(r.old) },
-    { key: "high", label: "High rework risk", num: true, render: (r) => (RISK ? fmtInt(r.high) : "–") },
+    ...(TL_ON.weights ? [{ key: "total", label: "Weighted load", num: true, render: (r) => fmtNum(r.total, 1) }] : []),
+    ...(TL_ON.age ? [{ key: "old", label: "Open > 7 days", num: true, render: (r) => fmtInt(r.old) }] : []),
+    ...(TL_ON.risk ? [{ key: "high", label: "High rework risk", num: true, render: (r) => (RISK ? fmtInt(r.high) : "–") }] : []),
     { key: "open", label: "", sortable: false, render: (r) => Object.assign(el("button", { class: "linkbtn", type: "button" }, "Show CPRs"), { onclick: () => showOpenTasks(r.ka) }) }
   ], kas);
   if (OT_OPEN) { if (kas.some((k) => k.ka === OT_OPEN)) showOpenTasks(OT_OPEN); else $("otDetail").hidden = true; }
