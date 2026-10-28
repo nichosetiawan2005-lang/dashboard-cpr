@@ -402,7 +402,8 @@ body.locked #loginForm .btn { width: 100%; }
         <div class="field"><label for="ioStep">Step</label><select id="ioStep"><option value="s8">Workload: Sequence 8 + rework</option><option value="s3">Sequence 3 (document check)</option></select></div>
         <div class="field"><label for="ioBy">Period</label><select id="ioBy"><option value="month">Month</option><option value="week">Week</option></select></div>
         <div class="field"><label for="ioPer">Which</label><select id="ioPer"></select></div>
-        <div class="field"><label for="ioKa">Key Account (chart)</label><select id="ioKa"></select></div>
+        <div class="field"><label for="ioKa">Key Account</label><select id="ioKa"></select></div>
+        <div class="field"><label for="ioView">Table</label><select id="ioView"><option value="day">Per date</option><option value="ka">Per Key Account</option></select></div>
         <button class="btn ghost" type="button" id="ioCopy">Copy daily table</button>
       </div>
       <div class="sub" id="ioSub"></div>
@@ -2285,15 +2286,17 @@ function realKa(r) {
 //   Sequence 3: in = arrival at the KA, out = the KA's Sequence 3 approval
 // the KA is the final KA of the CPR (the one who approved Sequence 3)
 function ioEvents(step) {
-  const ev = [];   // [day, ka, "in" | "out"]
+  // [day, ka, "in" | "out", exact, cpr]; exact = false when CPRHistory has no time stamp for the step and the date was taken
+  // from the CPR's last activity / CPRSummary (shown as "date estimated")
+  const ev = [];
   for (const r of RECS) {
     if (!r.hstatus) continue;
     const ka = dataKa(r); if (!ka) continue;
-    if (step === "s3") { if (r.kaIn !== null) ev.push([r.kaIn, ka, "in"]); if (r.kaOut !== null) ev.push([r.kaOut, ka, "out"]); continue; }
+    if (step === "s3") { if (r.kaIn !== null) ev.push([r.kaIn, ka, "in", !!r.kaInAt, r.cpr]); if (r.kaOut !== null) ev.push([r.kaOut, ka, "out", !!r.kaOutAt, r.cpr]); continue; }
     const b8 = r.backFirst ?? r.back, o8 = r.backOutFirst ?? r.backOut;
-    if (b8 !== null && b8 !== undefined) ev.push([b8, ka, "in"]);
-    if (o8 !== null && o8 !== undefined) ev.push([o8, ka, "out"]);
-    for (const e of reworkList(r)) { ev.push([e.start, ka, "in"]); if (e.end !== null) ev.push([e.end, ka, "out"]); }
+    if (b8 !== null && b8 !== undefined) ev.push([b8, ka, "in", !!(r.backFirstAt ?? r.backAt), r.cpr]);
+    if (o8 !== null && o8 !== undefined) ev.push([o8, ka, "out", !!(r.backOutFirstAt ?? r.backOutAt), r.cpr]);
+    for (const e of reworkList(r)) { ev.push([e.start, ka, "in", true, r.cpr]); if (e.end !== null) ev.push([e.end, ka, "out", true, r.cpr]); }
   }
   return ev;
 }
@@ -2339,6 +2342,25 @@ function renderIo() {
   lineChart($("chIo"), days, [{ name: "In", color: "var(--s1)", values: ins }, { name: "Out", color: "var(--s3)", values: outs }],
     { tickLabel: fmtShort, tipLabel: (d) => fmtDay(d) + " · CPRs", label: "CPRs in and out per working day" });
   const f1 = (x) => fmtNum(x, 1);
+  const estIn = inP.filter((e) => e[2] === "in" && !e[3] && (ksel.value ? e[1] === ksel.value : kas.includes(e[1]))).length;
+  if ($("ioView").value === "day") {
+    // one row per calendar date of the period that has a working day or any movement (weekends shown when something happened)
+    const kk = ksel.value ? [ksel.value] : kas, D2 = to;
+    const dates = []; for (let d = from; d <= D2; d++) if (weekday(d) < 5 || inP.some((e) => e[0] === d && kk.includes(e[1]))) dates.push(d);
+    const cntOf = (d, t, ka, exactOnly) => inP.filter((e) => e[0] === d && e[2] === t && (ka ? e[1] === ka : kk.includes(e[1])) && (exactOnly === undefined || e[3] === exactOnly)).length;
+    let run = kk.reduce((a, k) => a + Math.max(0, openBefore(k)), 0);
+    const drows = dates.map((d) => { const i = cntOf(d, "in"), o = cntOf(d, "out"); run += i - o; return { d, i, o, est: cntOf(d, "in", null, false), open: Math.max(0, run), wk: weekday(d) >= 5 }; });
+    const avgRow = { avg: true, i: mean(drows.filter((r) => !r.wk).map((r) => r.i)) ?? 0, o: mean(drows.filter((r) => !r.wk).map((r) => r.o)) ?? 0 };
+    renderTable($("tblIo"), [
+      { key: "d", label: "Date", sortable: false, render: (r) => (r.avg ? el("b", {}, "Average per working day") : el("span", { style: r.wk ? "color:var(--muted)" : "" }, `${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][weekday(r.d)]} ${fmtDay(r.d)}`)) },
+      { key: "i", label: "In", num: true, sortable: false, render: (r) => (r.avg ? el("b", {}, fmtNum(r.i, 1)) : fmtInt(r.i)) },
+      { key: "est", label: "of which date estimated", num: true, sortable: false, render: (r) => (r.avg ? "" : r.est ? pill(fmtInt(r.est), "warn") : "–") },
+      { key: "o", label: "Out", num: true, sortable: false, render: (r) => (r.avg ? el("b", {}, fmtNum(r.o, 1)) : fmtInt(r.o)) },
+      { key: "net", label: "In − out", num: true, sortable: false, render: (r) => { const n = r.i - r.o; return el("span", { style: `color:${n > 0 ? "var(--warn)" : n < 0 ? "var(--good)" : "var(--muted)"}` }, (n > 0 ? "+" : "") + (r.avg ? fmtNum(n, 1) : fmtInt(n))); } },
+      { key: "open", label: "Open at end of day", num: true, sortable: false, render: (r) => (r.avg ? "" : fmtInt(r.open)) },
+      ...(ksel.value ? [] : kas.map((k) => ({ key: "k" + k, label: kaLabel(k) + " in / out", num: true, sortable: false, render: (r) => (r.avg ? "" : (() => { const a = cntOf(r.d, "in", k), b = cntOf(r.d, "out", k); return a || b ? `${a} / ${b}` : "–"; })()) })))
+    ], [avgRow, ...drows]);
+  } else
   renderTable($("tblIo"), [
     { key: "name", label: "Key Account", sortable: false, render: (r) => (r.all || r.avg ? el("b", {}, r.name) : Object.assign(el("button", { class: "linkbtn", type: "button" }, r.name), { onclick: () => { $("ioKa").value = r.ka; renderIo(); } })) },
     { key: "open0", label: "Open at start", num: true, sortable: false, render: (r) => (r.avg ? f1(r.open0) : fmtInt(r.open0)) },
@@ -2351,12 +2373,13 @@ function renderIo() {
     { key: "best", label: "Most out in one day", num: true, sortable: false, render: (r) => (r.best === null ? "–" : fmtInt(r.best)) },
     { key: "clear", label: "Out ÷ in", num: true, sortable: false, render: (r) => (r.clear === null ? "–" : fmtNum(r.clear * 100, 0) + "%") }
   ], [team, ...(perKaAvg ? [perKaAvg] : []), ...rows]);
-  $("ioNote").textContent = "Averages are per working day (Monday–Friday) of the period; a CPR received or approved on a weekend is counted on the next working day. In − out above 0 = the KA received more than finished, so the queue grew; out ÷ in below 100% means the same. Open at start / end = CPRs received but not finished yet at the start / end of the period. Click a Key Account to show it in the chart.";
+  $("ioNote").textContent = (estIn ? `${fmtInt(estIn)} "in" in this period have no time stamp in CPRHistory (the step is known only from CPRSummary), so their date is estimated from the CPR's last activity and marked in the "of which date estimated" column. ` : "All dates in this period come from the time stamps in CPRHistory. ")
+    + "Averages are per working day (Monday–Friday) of the period; in the chart and the per-KA table a CPR received or approved on a weekend is counted on the next working day; the per-date table shows the real date. In − out above 0 = the KA received more than finished, so the queue grew; out ÷ in below 100% means the same. Open at start / end = CPRs received but not finished yet at the start / end of the period. Click a Key Account to show it in the chart.";
   IO_ROWS = { days, kas, inP, label: k0, wd };
 }
 let IO_ROWS = null;
 for (const id of ["ioStep", "ioBy"]) $(id).addEventListener("change", () => { $("ioPer").value = ""; renderIo(); });
-for (const id of ["ioPer", "ioKa"]) $(id).addEventListener("change", renderIo);
+for (const id of ["ioPer", "ioKa", "ioView"]) $(id).addEventListener("change", renderIo);
 $("ioCopy").addEventListener("click", async () => {
   if (!IO_ROWS) return;
   const lines = [["Date", "Key Account", "In", "Out"].join("\t")];
