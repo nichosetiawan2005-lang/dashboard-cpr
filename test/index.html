@@ -318,7 +318,7 @@ body.locked #loginForm .btn { width: 100%; }
 
   <!-- PEMBAGIAN CPR -->
   <section class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
-    <div class="section-title" style="margin-top:16px"><h2>All CPRs</h2><p id="ovNote">Every CPR in the uploaded CPRHistory / CPRSummary, whatever its status. Select a box to list its CPRs; select a CPR number to see its approval steps.</p></div>
+    <div class="section-title" style="margin-top:16px"><h2>All CPRs</h2><p id="ovNote"></p></div>
     <div class="alertbar" id="ovAlert" hidden></div>
     <div class="tiles ovtiles" id="ovTiles"></div>
     <div class="card" style="margin-top:12px"><h3 id="ovTitle">All CPRs</h3>
@@ -343,7 +343,7 @@ body.locked #loginForm .btn { width: 100%; }
         <button class="btn" id="sRun" type="button">Run allocation</button>
         <button class="btn ghost" id="sReset" type="button" hidden>Reallocate all</button>
       </div>
-      <details class="capbox" id="capBox"><summary>KA capacity for CPR review (%)</summary><div class="sub">Lower it for a KA with other work that is not in the system (e.g. creating POs, pipeline work). 50% = about half the CPRs of a KA at 100%, and half the daily limit; 0% = no new CPRs. Applies to CPRs allocated from now on.</div><div class="capgrid" id="capGrid"></div></details>
+      <details class="capbox" id="capBox"><summary>KA capacity for CPR review (%)</summary><div class="sub">Lower it for a KA with other work. 0% = no new CPRs.</div><div class="capgrid" id="capGrid"></div></details>
       <p class="note" id="runInfo" style="font-weight:500;color:var(--fg)"></p>
       <p class="note" id="simNote"></p>
     </div>
@@ -351,8 +351,8 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="tiles" id="simTiles"></div>
     <p class="note" id="simCompare"></p>
     <div id="simResults"><div class="card" style="margin-top:12px"><h3 id="hKaCount">Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
-    <div class="card" style="margin-top:12px" id="cardKaDone" hidden><h3>Completed CPRs per KA</h3><div class="sub">History only: CPRs the KA has finished (PR / PO created, fully approved or Sequence 8 approved). Not counted as workload.</div><div class="chart" id="chKaDone"></div></div>
-    <div class="section-title"><h2>CPR assignment list</h2><p>Rule order: same vendor → KA with the lowest workload. Status is read from CPRHistory (every approval step); details and follow-up actions are available in Supervisor Control.</p></div>
+    <div class="card" style="margin-top:12px" id="cardKaDone" hidden><h3>Completed CPRs per KA</h3><div class="chart" id="chKaDone"></div></div>
+    <div class="section-title"><h2>CPR assignment list</h2></div>
     <div class="fcflow" aria-label="The four forecasts of a CPR">
       <div class="st"><b>CPR created</b>by the hospital</div><span class="fc">Forecast 1 →</span>
       <div class="st"><b>① Arrives at KA</b>Sequence 3</div><span class="fc ka">Forecast 3 →</span>
@@ -360,7 +360,6 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="st"><b>③ Returns to KA</b>Sequence 8</div><span class="fc ka">Forecast 4 →</span>
       <div class="st"><b>④ KA approves Seq 8</b>CPR leaves the KA</div>
     </div>
-    <p class="note" style="margin:-4px 0 10px">Blue = time with other approvers (not the KA's workload). Orange = time the KA holds the CPR (the KA's workload, used to balance the allocation). Each date shows the actual date once it happened, otherwise the estimate and its likely range; "late" means the data date is already past that range.</p>
     <div class="filters" id="incFilters" style="margin:0 0 10px">
       <div class="field"><label for="incStatus">Status</label><select id="incStatus"></select></div>
       <div class="field"><label for="incKa">Key Account</label><select id="incKa"></select></div>
@@ -382,7 +381,7 @@ body.locked #loginForm .btn { width: 100%; }
   <section class="panel" id="panel-ka" role="tabpanel" aria-labelledby="tab-ka">
     <div class="card" style="margin-top:16px">
       <h3>KA performance from CPRHistory</h3>
-      <div class="sub">Calculated directly from the uploaded CPRHistory: the KA is the user who approved the step, Sequence 3 = arrival at KA until the KA's approval, Sequence 8 = return to KA until the KA's approval (first round), rework = returned by Purchasing Head HO / Director. No extra upload is needed.</div>
+      
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
         <div class="field"><label for="poFrom">KA step approved from</label><input type="date" id="poFrom"></div>
         <div class="field"><label for="poTo">to</label><input type="date" id="poTo"></div>
@@ -390,14 +389,14 @@ body.locked #loginForm .btn { width: 100%; }
       <p class="note" id="poInfo"></p>
     </div>
     <p class="note" id="kaNote"></p>
-    <div class="section-title"><h2>Average KA processing time per CPR</h2><p>Sequence 3 = from receipt by the KA until approval. Sequence 8 = from the CPR's return to the KA until approval. Time spent waiting for other approvers is excluded.</p></div>
+    <div class="section-title"><h2>Average KA processing time per CPR</h2></div>
     <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Sequence 3</span><span><i style="background:var(--s2)"></i>Sequence 8</span></div><div class="chart" id="chKa"></div></div>
-    <div class="section-title"><h2>Current task load</h2><p>The KA's real workload is Sequence 8 and rework; Sequence 3 is only a document check.</p></div>    <div class="card" id="cardTask" hidden><h3>Open tasks and workload per KA</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div><p class="note">Open task = a CPR that is still the KA's responsibility. Workload counts Sequence 8 and rework; Sequence 3 and CPRs waiting at Purchasing Head HO / Director are shown for information. Rework rate = share of the KA's CPRs approved at Sequence 8 14–104 days ago that were sent back because of a KA error, adjusted towards the team rate when the KA has few CPRs. Rework reserve = CPRs waiting × rework rate; it is kept free in the KA's daily limit when new CPRs are allocated. Sequence 8 TAT = from the return to KA until the KA approves it, in calendar days ("so far" = not approved yet, counted until the data date): up to 5 days green, 6–14 days yellow, more than 14 days red. Click a Key Account, a bar or "Show CPRs" to list them.</p>
+    <div class="section-title"><h2>Current task load</h2></div>    <div class="card" id="cardTask" hidden><h3>Open tasks and workload per KA</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div><p class="note">Click a Key Account to see its CPRs.</p>
       <div id="otDetail" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="otTitle"></h3><div class="sub" id="otSub"></div></div><button class="btn ghost" type="button" id="otClose">Close</button></div>
         <div class="tbl-wrap" style="max-height:520px;overflow:auto"><table id="tblOt"></table></div></div>
       <details class="capbox" id="twBox" hidden><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Sequence 8 about 2.4–3× Sequence 3, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
         <div class="capgrid"><label>Sequence 3<input type="number" id="twRec" min="0" step="0.1"></label><label>Sequence 8<input type="number" id="twMat" min="0" step="0.1"></label><label>Rework<input type="number" id="twRw" min="0" step="0.1"></label><label>× CPR &gt; Rp1 M<input type="number" id="twBig" min="1" step="0.1"></label></div></details></div>
-    <div class="section-title"><h2>CPRs in and out per KA</h2><p>How many CPRs each KA received and finished per day (whole CPR, from receipt until the KA's last approval), to see the KA's pace over a week or a month.</p></div>
+    <div class="section-title"><h2>CPRs in and out per KA</h2></div>
     <div class="card" id="ioCard"><div class="filters" style="border:0;padding:0;margin:0 0 8px">
         <div class="field"><label for="ioBy">Period</label><select id="ioBy"><option value="month">Month</option><option value="week">Week</option></select></div>
         <div class="field"><label for="ioPer">Which</label><select id="ioPer"></select></div>
@@ -410,15 +409,14 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblIo"></table></div>
       <p class="note" id="ioNote"></p>
     </div>
-    <div class="section-title"><h2>Rework per KA</h2><p>Rework = a CPR sent back to the KA for correction (by Purchasing Head HO or Purchasing Director). Lower is better.</p></div>
+    <div class="section-title"><h2>Rework per KA</h2></div>
     <div class="tiles" id="rwTiles"></div>
-    <div class="card" style="margin-top:12px"><h3>Rework rate per KA (%)</h3><div class="sub">Only reworks caused by a KA error count. In brackets: CPRs with a KA-error rework / CPRs completed by the KA.</div><div class="chart" id="chRw"></div></div>
+    <div class="card" style="margin-top:12px"><h3>Rework rate per KA (%)</h3><div class="sub">In brackets: reworked CPRs / CPRs completed.</div><div class="chart" id="chRw"></div></div>
     <div class="tbl-wrap" style="margin-top:12px"><table id="tblRw"></table></div>
     <p class="note" id="rwCauseNote"></p>
-    <p class="note">Hover over a bar to see the reworked CPR numbers; click a bar or a Key Account name to list them all.</p>
     <div class="card" id="rwDetail" style="margin-top:12px" hidden><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="rwDetTitle"></h3><div class="sub" id="rwDetSub"></div></div><button class="btn ghost" type="button" id="rwDetClose">Close</button></div>
       <div class="tbl-wrap" style="max-height:480px;overflow:auto"><table id="tblRwDet"></table></div></div>
-    <div class="section-title"><h2>By KA</h2><p>Workload = number of CPRs under review on a given working day.</p></div>
+    <div class="section-title"><h2>By KA</h2></div>
     <div class="tbl-wrap"><table id="tblKa"></table></div>
     <details class="more">
       <summary>View daily workload</summary>
@@ -446,8 +444,6 @@ body.locked #loginForm .btn { width: 100%; }
       <button class="btn ghost" id="actIgnoreAll" type="button" hidden>Dismiss all shown</button>
     </div>
     <div class="tbl-wrap" style="max-height:460px;overflow:auto"><table id="tblAct"></table></div>
-    <p class="note">"Auto-rejected" = a CPR still in progress, at any sequence, that shows no activity (no approval step in CPRHistory) for more than 30 days: the approval system rejects such CPRs automatically. It is marked automatically, is not counted as KA workload, is counted under "Rejected" in the Overview, and its data is kept; it becomes active again as soon as a new upload shows activity. Auto-rejected CPRs are excluded from "All active items". Select "Dismiss" to remove any CPR from this list and from the KA workload by hand; it can be restored at any time.</p>
-    <p class="note">Rule: a CPR can be reassigned at any stage. The reassignment form shows the CPR's current stage: after Sequence 3 is completed, the new KA handles Sequence 8. Automatic reassignments (absence, workload limit) still apply only to CPRs on which work has not started.</p>
 
     <div class="card" id="trCard" hidden style="margin-top:12px;border-color:var(--accent)">
       <h3>Reassign CPR</h3>
@@ -465,7 +461,7 @@ body.locked #loginForm .btn { width: 100%; }
     </div>
     <div style="margin-top:10px"><button class="btn ghost" type="button" id="trOpen">Reassign another CPR (enter number)</button></div>
 
-    <div class="section-title"><h2>KA absences</h2><p>An absent KA receives no new CPRs, and that KA's CPRs on which work has not started are reassigned automatically.</p></div>
+    <div class="section-title"><h2>KA absences</h2></div>
     <div class="card">
       <div class="filters" style="border:0;padding:0;margin:0" id="absForm">
         <div class="field"><label for="absKa">KA</label><select id="absKa"></select></div>
@@ -477,7 +473,7 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblAbs"></table></div>
     </div>
 
-    <div class="section-title"><h2>KA replaced (left the team)</h2><p>When a KA leaves, the CPRs still in progress under that KA go to the replacement and are fixed there; completed work stays under the former KA's name in KA Performance.</p></div>
+    <div class="section-title"><h2>KA replaced (left the team)</h2></div>
     <div class="card">
       <div class="filters" style="border:0;padding:0;margin:0" id="chgForm">
         <div class="field"><label for="chgUser">Former KA (username)</label><input type="text" id="chgUser" list="chgUsers" placeholder="e.g. maria.nugraheni"><datalist id="chgUsers"></datalist></div>
@@ -488,17 +484,17 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblChg"></table></div>
     </div>
 
-    <div class="section-title"><h2>Reassignment log</h2><p>Every reassignment is recorded: when, which CPR, from whom, to whom, the reason, and by whom.</p></div>
+    <div class="section-title"><h2>Reassignment log</h2></div>
     <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="tblTr"></table></div>
   </section>
 
   <!-- BUKTI -->
   <section class="panel" id="panel-bukti" role="tabpanel" aria-labelledby="tab-bukti">
     <p class="note" id="bkNote"></p>
-    <div class="section-title"><h2>1. Is the forecast accurate?</h2><p>Same test as the analysis notebook: the model learns only from history before the last 3 months, then forecasts the CPRs of those 3 months (2026 process). These CPRs were never used to choose or train the tested model, so this is an out-of-sample test.</p></div>
+    <div class="section-title"><h2>1. Is the forecast accurate?</h2></div>
     <div id="bkFcTiles"></div><p class="note" id="bkFcNote"></p>
     <div class="card" id="chkCard" style="margin-top:12px"><h3>Check the forecast CPR by CPR (test months)</h3>
-      <div class="sub">Every CPR below was forecast by a model that had never seen it (it learned only from older CPRs), so this is how the forecast really performs. Use the groups to find where it misses most: a positive average difference = the forecast was too long, negative = too short.</div>
+      <div class="sub">Each test CPR, forecast by a model that had not seen it.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0">
         <div class="field"><label for="chkFc">Forecast</label><select id="chkFc"><option value="f1">Forecast 1 · created → arrives at KA</option><option value="f3">Forecast 3 · KA holds it at Sequence 3</option><option value="f2">Forecast 2 · Seq 3 approval → returns to KA</option><option value="f4" selected>Forecast 4 · KA holds it at Sequence 8</option></select></div>
         <div class="field"><label for="chkBy">Group by</label><select id="chkBy"><option value="ka">Key Account</option><option value="unit">Hospital</option><option value="week">Week</option><option value="size">Actual duration</option></select></div>
@@ -511,7 +507,7 @@ body.locked #loginForm .btn { width: 100%; }
       <p class="note" id="chkNote"></p>
     </div>
     <div class="card" id="lcCard" style="margin-top:12px"><h3>KA workload per day: forecast vs actual (test months)</h3>
-      <div class="sub">For every CPR created in the test months, the four forecasts are chained when the CPR is created (arrival at KA → Sequence 3 approval → return → Sequence 8 approval), using models that learned only from older CPRs. Forecast workload = CPRs the KA would hold on that day according to these dates; actual workload = CPRs the KA really held (Sequence 3 + Sequence 8, first round; rework is not forecast and not counted). Same CPRs and the same KA on both sides, so only the timing is compared.</div>
+      <div class="sub">CPRs held per day: forecast made when the CPR was created vs actual.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0">
         <div class="field"><label for="lcKa">Key Account</label><select id="lcKa"></select></div>
         <button class="btn ghost" type="button" id="lcCopy">Copy daily table</button>
@@ -520,7 +516,8 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblLc"></table></div>
       <p class="note" id="lcNote"></p>
     </div>
-    <div class="card" id="fcSetCard" style="margin-top:12px"><h3>Forecast settings</h3><div class="sub">Choose which history the forecast learns from. Default = the analysis notebook. "Apply and retrain" tests the new setting on the latest months and shows its test MAE next to the default, so the effect is visible before it is relied on. Only CPRs allocated after the change use the new forecast; saved Key Account assignments do not change.</div>
+    <details class="capbox" id="fcMore" style="margin-top:12px"><summary>Model details and settings</summary>
+    <div class="card" id="fcSetCard" style="margin-top:12px"><h3>Forecast settings</h3>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
         <div class="field"><label for="fcFrom">Learn from CPRs created from</label><input type="date" id="fcFrom"></div>
         <label class="check" title="Only CPRs that went through Key Account HO (Username Key Account Ho filled)"><input type="checkbox" id="fcOnlyNew"> Only 2026-process CPRs</label>
@@ -535,16 +532,17 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblFcCompare"></table></div>
       <p class="note" id="fcSetNote"></p>
     </div>
-    <div class="card" style="margin-top:12px"><h3>Model selection in the dashboard (automatic)</h3><div class="sub">Same procedure as the analysis notebook: each candidate learns from older history and is checked on a 3-month validation window (2026-process CPRs); the lowest validation MAE is chosen, tested on the latest 3 months, then retrained on all history to forecast the queue.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
+    <div class="card" style="margin-top:12px"><h3>Model selection in the dashboard (automatic)</h3><div class="sub">The model with the lowest validation MAE is used.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
     <div class="card" id="riskCard" style="margin-top:12px" hidden><h3>Rework risk: does the warning work?</h3><div class="sub">The risk model learns from older CPRs whose Sequence 8 is finished, then is checked on the CPRs of the latest months it has not seen. A useful warning sends back clearly more "High" CPRs than "Low" ones. AUC: 0.5 = no better than chance, 1.0 = perfect.</div><div class="tbl-wrap"><table id="tblRiskChk"></table></div><p class="note" id="riskNote"></p></div>
-    <div class="card" style="margin-top:12px"><h3>Comparison of the four models (analysis notebook)</h3><div class="sub">Study in the Python notebook on CPR_Cleaned 2023–2026: each forecast is learned by Linear Regression, Random Forest, XGBoost and a Neural Network (MLP), plus an Ensemble of the best two. The model with the lowest validation MAE (Apr–Jun 2026) is chosen and then tested once on Jul–Sep 2026; "p" is the Wilcoxon test against the simple guess; the test MAE of the chosen model uses whole-day forecasts, as shown in the dashboard. The dashboard itself keeps choosing automatically between Linear Regression and XGBoost (the table above), retrained on the uploaded CPRHistory + CPRSummary.</div><div class="tbl-wrap"><table id="tblStudy"></table></div></div>
-    <div class="card" style="margin-top:12px"><h3>Forecast 1: mean absolute error per week (test months)</h3><div class="sub">Lower values indicate higher accuracy. Compared against a simple baseline (median per hospital, 2026 process).</div><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
+    <div class="card" style="margin-top:12px"><h3>Comparison of the four models (analysis notebook)</h3><div class="sub">Python study on CPR_Cleaned 2023–2026 (validation Apr–Jun, test Jul–Sep 2026).</div><div class="tbl-wrap"><table id="tblStudy"></table></div></div>
+    <div class="card" style="margin-top:12px"><h3>Forecast 1: mean absolute error per week (test months)</h3><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
+    </details>
     <div class="section-title"><h2>2. Is the KA workload more evenly distributed?</h2><p id="bkLoadDesc"></p></div>
     <div class="tbl-wrap"><table id="tblBkLoad"></table></div>
     <div class="section-title"><h2>3. Are CPRs converted into POs more quickly?</h2><p id="bkPoDesc"></p></div>
     <div class="tiles" id="bkPoTiles"></div>
-    <div class="card" style="margin-top:12px"><h3>Median days by PO creation month</h3><div class="sub" id="bkPoSub"></div><div class="legend" id="lgPo"></div><div class="chart" id="chPo"></div></div>
-    <div class="section-title"><h2>4. Is the supervisor's workload reduced?</h2><p>The number of CPRs allocated automatically compared with those still requiring manual handling.</p></div>
+    <div class="card" id="poCard" style="margin-top:12px"><h3>Median days by PO creation month</h3><div class="sub" id="bkPoSub"></div><div class="legend" id="lgPo"></div><div class="chart" id="chPo"></div></div>
+    <div class="section-title"><h2>4. Is the supervisor's workload reduced?</h2></div>
     <div class="tiles" id="bkSpvTiles"></div>
   </section>
 
@@ -557,11 +555,11 @@ body.locked #loginForm .btn { width: 100%; }
         <button class="btn ghost" type="button" id="btnClearSaved" title="The activity log and reassignment log are kept">Delete all stored data</button>
       </div>
     </div>
-    <div class="section-title"><h2>Activity log</h2><p>Every upload and allocation run is recorded here, with the most recent first. The log is kept even when all stored data is deleted.</p></div>
+    <div class="section-title"><h2>Activity log</h2></div>
     <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="tblLog"></table></div>
     <div class="tiles" id="dqTiles"></div>
     <div id="histCard" hidden>
-      <div class="section-title"><h2>CPR queue file (CPRHistory)</h2><p>Used only as the queue into Key Account HO: the CPR, its hospital, its creation date, and the date it is sent to KA (Approval Date).</p></div>
+      <div class="section-title"><h2>CPR queue file (CPRHistory)</h2></div>
       <div class="card">
         <div class="filters" hidden style="margin:0 0 10px;border:0;padding:0">
           <div class="field"><label for="roleKa">Role for Key Account HO (Sequence 3)</label><select id="roleKa"></select></div>
@@ -589,7 +587,7 @@ body.locked #loginForm .btn { width: 100%; }
 </dialog>
 <dialog id="upDlg" aria-labelledby="upTitle" class="updlg">
   <h3 id="upTitle" style="margin:0 0 4px">Upload CPR data</h3>
-  <p class="note" style="margin:0 0 14px">Add the files to the right box. Nothing is processed until you select <b>Process files</b>; remove a wrong file with ✕.</p>
+  <p class="note" style="margin:0 0 14px">Add the files, then select <b>Process files</b>.</p>
   <div class="upgrid">
     <div class="upbox" id="upBoxH" data-kind="h"><div class="uphead"><b>1. CPRHistory</b><span class="note" style="margin:0">every approval step · one or more files</span></div>
       <label class="btn ghost upadd">+ Add CPRHistory file(s)<input type="file" id="upFileH" accept=".xlsx,.xls,.csv" multiple hidden></label>
@@ -2322,7 +2320,7 @@ function renderIo() {
   const tot = rows.reduce((a, r) => ({ in: a.in + r.in, out: a.out + r.out, open0: a.open0 + r.open0, open1: a.open1 + r.open1 }), { in: 0, out: 0, open0: 0, open1: 0 });
   const team = { ka: "", name: "All Key Accounts", in: tot.in, out: tot.out, net: tot.in - tot.out, avgIn: tot.in / nW, avgOut: tot.out / nW, open0: tot.open0, open1: tot.open1, best: null, clear: tot.in ? tot.out / tot.in : null, all: true };
   const perKaAvg = kas.length ? { ka: "*", name: "Average per KA", in: tot.in / kas.length, out: tot.out / kas.length, net: (tot.in - tot.out) / kas.length, avgIn: tot.in / nW / kas.length, avgOut: tot.out / nW / kas.length, open0: tot.open0 / kas.length, open1: tot.open1 / kas.length, best: null, clear: team.clear, avg: true } : null;
-  $("ioSub").textContent = `${by === "month" ? monthText(k0) : `Week of ${fmtDay(from)}`}: ${fmtDay(from)} – ${fmtDay(to)}, ${fmtInt(days.length)} working days${to === D ? " (until the data date)" : ""}. ` + "In = the KA received the CPR; out = the KA finished it (last approval at Purchasing HO, after any rework).";
+  $("ioSub").textContent = `${fmtDay(from)} – ${fmtDay(to)} · ${fmtInt(days.length)} working days`;
   // chart: one KA or all, per working day
   const ksel = $("ioKa"), kcur = ksel.value;
   ksel.replaceChildren(el("option", { value: "" }, "All Key Accounts"), ...kas.map((k) => el("option", { value: k }, kaLabel(k))));
@@ -2366,7 +2364,7 @@ function renderIo() {
     { key: "best", label: "Most out in one day", num: true, sortable: false, render: (r) => (r.best === null ? "–" : fmtInt(r.best)) },
     { key: "clear", label: "Out ÷ in", num: true, sortable: false, render: (r) => (r.clear === null ? "–" : fmtNum(r.clear * 100, 0) + "%") }
   ], [team, ...(perKaAvg ? [perKaAvg] : []), ...rows]);
-  $("ioNote").textContent = "Averages are per working day (Monday–Friday) of the period; in the chart and the per-KA table a CPR received or approved on a weekend is counted on the next working day; the per-date table shows the real date. Out ÷ in below 100% = the KA received more than finished, so the queue grew. Open = CPRs received but not finished yet; a CPR rejected, inactive for more than 30 days or dismissed leaves the open CPRs on its last activity but is not counted as \"out\". Click a Key Account to show it in the chart.";
+  $("ioNote").textContent = "Averages are per working day (Mon–Fri).";
   IO_ROWS = { days, kas, inP, label: k0, wd };
 }
 let IO_ROWS = null;
@@ -2484,7 +2482,7 @@ function renderKaFromHistory(view) {
       x.rework++; x.rwCpr.add(r.cpr); if (e.who === "Purchasing Director") x.byD++; else x.byH++; if (e.end !== null) x.fix.push(e.end - e.start); else x.open++; }
   }
   if (view) for (const ka of currentKas(SIM.kaList)) get(ka);
-  $("poInfo").textContent = `${fmtInt(n3)} Sequence 3 approvals and ${fmtInt(n8)} Sequence 8 approvals between ${$("poFrom").value ? fmtDay(from) : "–"} and ${$("poTo").value ? fmtDay(to) : "–"}.` + (unknown ? ` ${fmtInt(unknown)} steps without a recognised KA user are excluded.` : "");
+  $("poInfo").textContent = `${fmtInt(n3)} Sequence 3 approvals and ${fmtInt(n8)} Sequence 8 approvals between ${$("poFrom").value ? fmtDay(from) : "–"} and ${$("poTo").value ? fmtDay(to) : "–"}.` ;
   $("kaNote").textContent = "";
   const rows = [...g.entries()].filter(([ka]) => isCurrentKa(ka)).map(([ka, x]) => {
     const r1 = mean(x.s3.map((y) => y.d)), r2 = mean(x.s8.map((y) => y.d));
@@ -2529,8 +2527,7 @@ function renderRework(rows) {
     tile("Renego (not counted)", fmtInt(list.reduce((a, r) => a + r.nc.E, 0)), "times", "sent back for renegotiation: shown in the approval steps but not counted against the KA")
   );
   const unread = list.reduce((a, r) => a + r.rwEvents.filter((e) => e.cause === "?").length, 0);
-  $("rwCauseNote").textContent = (unread ? `${fmtInt(unread)} reworks were uploaded before the causes were read and are still counted; upload CPRHistory again to classify them. ` : "")
-    + "Every rework counts as a KA error except renegotiation (\"renego\" / \"nego\" in the approver's note when the CPR is sent back), which is an exception and does not lower the KA's performance.";
+  $("rwCauseNote").textContent = unread ? `${fmtInt(unread)} reworks are not classified yet: upload CPRHistory again.` : "Every rework counts except renego.";
   const cprsOf = (r) => [...new Set(r.rwEvents.filter((e) => e.cause === "K" || e.cause === "?").map((e) => e.r.cpr))];
   barChartH($("chRw"), list.map((r) => `${r.name} (${r.rwCprs}/${r.n8})`), [{ name: "Rework rate (%)", color: "var(--s2)", values: list.map((r) => r.reworkRate ?? 0) }], { dec: 1, label: "Rework rate per KA (%)",
     tipRows: (i) => { const c = cprsOf(list[i]); return [...c.slice(0, 8).map((cpr) => ({ value: cpr, label: "" })), ...(c.length ? [{ value: "", label: c.length > 8 ? `+${c.length - 8} more · click to see all` : "click to see the details" }] : [])]; },
@@ -2628,10 +2625,7 @@ function renderLoadTable(view) {
   const table = $("tblHeat");
   $("loadSrcWrap").hidden = !META.hasKa;
   if (!view) { $("loadDesc").textContent = "Daily workload is calculated from the DSS allocation. Please upload the data and the Hospital PIC List first."; table.replaceChildren(); $("overLegend").textContent = ""; return; }
-  $("loadDesc").textContent = (view.useActual
-    ? "Actual allocation: the actual KA and actual dates. Used for validation only, since operational data will not contain a KA column. "
-    : "DSS allocation: each CPR is assigned to a KA when created; forecast dates are replaced with actual dates once the CPR arrives or returns. ")
-    + `Value = number of CPRs under KA review on that working day (Sequence 3 = ${SIM.w1} day${SIM.w1 === 1 ? "" : "s"}, Sequence 8 = ${SIM.w2} day${SIM.w2 === 1 ? "" : "s"}); a CPR sharing a vendor is counted as ${fmtNum(SIM.vf)}.`;
+  $("loadDesc").textContent = "CPRs under KA review per working day.";
   $("overLegend").textContent = `Red outline = above the limit of ${fmtNum(SIM.maxPerDay)} CPRs per day`;
   const kas = SIM.kaList.map((ka, k) => ({ ka, k })).filter((x) => isCurrentKa(x.ka)).sort((a, b) => kaLabel(a.ka).localeCompare(kaLabel(b.ka)));
   if (!view.days.length) { table.replaceChildren(el("tbody")); return; }
@@ -3053,9 +3047,7 @@ async function loadModelChoice() { if (!DB) return; try { const d = await DB.doc
   if (MODEL_CHOICE && MODEL_CHOICE.results) FC_RESULTS = MODEL_CHOICE.results; }
 // Forecast settings card (Evaluation tab)
 function renderFcSettings() {
-  $("fcHistInfo").textContent = TRAIN.size
-    ? `Forecast history in use: ${TRAIN_META && TRAIN_META.fileName ? TRAIN_META.fileName : "stored history"} · ${fmtInt(TRAIN.size)} CPRs${TRAIN_META && TRAIN_META.savedAt ? " · built " + fmtStamp(TRAIN_META.savedAt) : ""}. It is rebuilt from CPRHistory + CPRSummary at every CPR Queue upload.`
-    : "No forecast history yet: it is built automatically from the CPR Queue (CPRHistory + CPRSummary).";
+  $("fcHistInfo").textContent = TRAIN.size ? `Forecast history: ${fmtInt(TRAIN.size)} CPRs (CPRHistory + CPRSummary).` : "No forecast history yet.";
   if (!$("fcModel").options.length) { $("fcModel").append(el("option", { value: "auto" }, "Automatic (lowest validation MAE)")); for (const c of CANDIDATES) $("fcModel").append(el("option", { value: `${c.family}|${c.setting}` }, `${c.family} (${c.setting})`)); }
   $("fcFrom").value = FC_SET.from || ""; $("fcOnlyNew").checked = !!FC_SET.onlyNew; $("fcMonths").value = String(FC_SET.months || 3);
   $("fcMax").value = FC_SET.maxDays ? String(FC_SET.maxDays) : ""; $("fcModel").value = FC_SET.model || "auto";
@@ -3077,8 +3069,7 @@ function renderFcSettings() {
     { key: "f4", label: "Forecast 4 test MAE (days)", num: true, sortable: false, render: (r) => (r.f4 === null || r.f4 === undefined ? "–" : fmtNum(r.f4, 2) + (fair(r) && r.f4 === best("f4") && rows.length > 1 ? " ★" : "")) },
     { key: "cur", label: "", sortable: false, render: (r) => (r.cur ? pill("In use", "good") : "") }
   ], rows);
-  $("fcSetNote").textContent = "Lower MAE = more accurate. ★ = best among settings tested on the same CPRs as the default; settings with a different test window are tested on other months and cannot be compared directly. "
-    + "CPRs left out by \"Ignore CPRs longer than\" are still counted in the test, so the MAE is not flattered.";
+  $("fcSetNote").textContent = "Lower MAE = more accurate.";
 }
 async function applyFcSettings(set) {
   FC_SET = { ...FC_DEFAULT, ...set }; MODELS = null;
@@ -3154,8 +3145,7 @@ function showRunInfo() {
   if (!SIM) { info.textContent = ""; return; }
   const now = new Date(), t = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
   const locked = SIM.assigned.filter((c) => c.locked && !c.isNewAssign).length;
-  info.textContent = `Allocation run at ${t}: ${fmtInt(SIM.n)} CPRs, workload limit of ${fmtNum(SIM.maxPerDay)} CPRs per KA per day.`
-    + (useLocks() && locked ? ` ${fmtInt(locked)} CPRs already have a fixed KA from previous allocations, so new settings apply only to new CPRs. Select "Reallocate all" to apply them to every CPR.` : "");
+  info.textContent = `Allocation run at ${t}: ${fmtInt(SIM.n)} CPRs, limit ${fmtNum(SIM.maxPerDay)} CPRs per KA per day.`;
   const tiles = $("simTiles"); tiles.classList.remove("flash"); void tiles.offsetWidth; tiles.classList.add("flash");
 }
 $("sReset").addEventListener("click", async () => {
@@ -3512,7 +3502,7 @@ function renderSim() {
   for (const c of s.assigned) { const r = c.r; if (r.done) doneCount[c.ka] = (doneCount[c.ka] || 0) + 1; else if (!IGNORED[r.cpr] && !isInactive(r)) activeCount[c.ka] = (activeCount[c.ka] || 0) + 1; }
   const kas = (s.actual ? s.kaList.slice() : s.kaList.filter((k) => isCurrentKa(k))).sort((a, b) => (s.actual ? (s.dssCount[b] || 0) - (s.dssCount[a] || 0) : (activeCount[b] || 0) - (activeCount[a] || 0)));
   $("hKaCount").textContent = s.actual ? "Number of CPRs per KA" : "Active CPRs per KA (workload)";
-  $("subKaCount").textContent = s.actual ? "DSS allocation compared with the actual allocation" : "CPRs not completed yet, so still the KA's workload. A CPR leaves this chart (and the daily workload) as soon as the data shows it completed, rejected or inactive for more than 30 days.";
+  $("subKaCount").textContent = s.actual ? "DSS allocation vs actual allocation." : "";
   $("lgKaCount").innerHTML = s.actual ? lg([["DSS", "var(--s1)"], ["Actual", "var(--s2)"]]) : "";
   $("cardKaDone").hidden = !!s.actual;
   if (!s.actual) { const kd = s.kaList.filter((k) => doneCount[k] && isCurrentKa(k)).sort((a, b) => (doneCount[b] || 0) - (doneCount[a] || 0)); barChartH($("chKaDone"), kd.map(kaLabel), [{ name: "Completed", color: "var(--s2)", values: kd.map((k) => doneCount[k] || 0) }], { dec: 0, label: "Completed CPRs per KA" }); }
@@ -3521,7 +3511,7 @@ function renderSim() {
     { name: "Actual", color: "var(--s2)", values: kas.map((k) => s.actualCount[k] || 0) }
   ] : [{ name: "Active", color: "var(--s1)", values: kas.map((k) => activeCount[k] || 0) }], { dec: 0, label: "Active CPRs per KA" });
   const mtxt = (m, what) => (m ? `${m.chosen.family} (${m.chosen.setting})${m.chosen.valMae !== null && m.chosen.valMae !== undefined ? `, chosen by the lowest validation MAE (${fmtNum(m.chosen.valMae, 2)} days)` : ""}, trained on ${fmtInt(m.n)} CPRs from CPRHistory + CPRSummary` : `median per hospital, because fewer than 100 CPRs with ${what} are available in CPRHistory`);
-  $("simNote").textContent = `Arrival at KA (Forecast 1): ${mtxt(s.models && s.models.f1, "an arrival date")}. KA approves Sequence 3 (Forecast 3): ${mtxt(s.models && s.models.f3, "a Sequence 3 approval")}. Return to KA (Forecast 2): ${mtxt(s.models && s.models.f2, "a return date")}. KA approves Sequence 8 (Forecast 4): ${mtxt(s.models && s.models.f4, "a Sequence 8 approval")}.${s.models && s.models.f3 ? "" : ` Without Forecast 3 / 4 the usual review duration is used: ${s.w1} day${s.w1 === 1 ? "" : "s"} (Sequence 3) and ${s.w2} day${s.w2 === 1 ? "" : "s"} (Sequence 8).`} Workload limit: ${fmtNum(s.maxPerDay)} CPRs per KA per day${s.userMax ? " (set manually)" : " (automatic)"}.`;
+  $("simNote").textContent = "";
   incState.page = 0; renderIncoming();
 }
 const assignLabel = (c) => (c.isNewAssign ? "New" : c.locked ? "Fixed" : "Not saved");
@@ -3972,9 +3962,7 @@ function renderSpv() {
   { const t = dayToIso(toDay(new Date())); $("absFrom").min = t; $("absTo").min = t; }
   const today = toDay(new Date()), D = dataDate();
   $("spvNote").textContent = SIM ? "" : "Please run the allocation in the CPR Allocation tab first so that the action list can be calculated.";
-  $("asOfNote").textContent = progressDate() !== null
-    ? `Based on CPRHistory and CPRSummary, data as of ${fmtDay(dataDate())}. Upload the latest exports to keep this list current.`
-    : `Based on CPRHistory, data as of ${dataDate() !== null ? fmtDay(dataDate()) : "–"}. Upload the latest CPRHistory to keep this list current.`;
+  $("asOfNote").textContent = `Data as of ${dataDate() !== null ? fmtDay(dataDate()) : "–"}.`;
   const items = actionItems();
   const week = Date.now() - 7 * 864e5;
   $("spvTiles").replaceChildren(
@@ -4209,7 +4197,7 @@ function renderCheck() {
     { key: "diff", label: "Difference", num: true, sortable: false, render: (r) => pill(r.diff === 0 ? "exact" : `${r.diff > 0 ? "+" : ""}${r.diff} day${Math.abs(r.diff) === 1 ? "" : "s"}`, r.diff === 0 ? "good" : Math.abs(r.diff) <= 2 ? "info" : Math.abs(r.diff) <= 5 ? "warn" : "bad") },
     { key: "inRange", label: "Inside range", sortable: false, render: (r) => (r.inRange === 1 ? "yes" : "no") }
   ], list.slice(0, 300));
-  $("chkNote").textContent = `${fmtInt(list.length)} CPRs${list.length > 300 ? " (first 300 shown; Copy CPR list copies all)" : ""}. Difference = forecast − actual: + means the forecast was too long (the CPR moved faster), − means too short (the CPR was late). ▲ = the group with the largest error (10+ CPRs).`;
+  $("chkNote").textContent = `${fmtInt(list.length)} CPRs${list.length > 300 ? " (first 300 shown)" : ""}. Difference: + = forecast too long, − = too short.`;
   CHK_LIST = list;
 }
 let CHK_LIST = [];
@@ -4296,7 +4284,7 @@ function renderLoadCheck() {
     { key: "w2", label: "Days within ±2 CPRs", num: true, sortable: false, render: (r) => fmtNum(r.w2 * 100, 0) + "%" },
     { key: "pk", label: "Busiest day: actual / forecast", num: true, sortable: false, render: (r) => `${fmtInt(r.pkA)} / ${fmtInt(r.pkF)}` }
   ], rows);
-  $("lcNote").textContent = `Forecast accuracy = 1 − Σ|forecast − actual| ÷ Σ actual over the working days (100% = perfect; also called 1 − WAPE). Forecast bias = Σ(forecast − actual) ÷ Σ actual: negative = the forecast expected less workload than there was (under-forecast), positive = more (over-forecast); within ±10% is shown in green. ` + `${fmtInt(lc.n)} CPRs created ${fmtDay(lc.from)} – ${fmtDay(lc.to)}, ${fmtInt(lc.days.length)} working days. Difference = forecast − actual: + means the forecast expected more CPRs at the KA that day than there really were. Early days in the window are low on both sides because only CPRs created in the window are counted.`;
+  $("lcNote").textContent = "Accuracy: 100% = perfect. Bias below 0 = less workload forecast than actual.";
 }
 $("lcKa").addEventListener("change", renderLoadCheck);
 $("lcCopy").addEventListener("click", async () => {
@@ -4351,7 +4339,7 @@ function renderBukti() {
   ], accRows);
   const t0 = accRows.find((r) => r.n !== null);
   renderCheck();
-  $("bkFcNote").textContent = t0 ? `Test months: ${fmtDay(t0.from)} – ${fmtDay(t0.to)}. Simple guess = the median per hospital of the 2026 process. "Inside the likely range" = share of test CPRs whose actual date fell inside the range shown in the dashboard (P20–P80 of the model errors).` : "";
+  $("bkFcNote").textContent = t0 ? `Test months: ${fmtDay(t0.from)} – ${fmtDay(t0.to)}.` : "";
   const t1 = SIM.models && SIM.models.f1 && SIM.models.f1.test;
   const byWeek = new Map();
   for (const x of t1 ? t1.rows : []) { const wk = x[0] - weekday(x[0]); if (!byWeek.has(wk)) byWeek.set(wk, [[], []]); byWeek.get(wk)[0].push(Math.abs(x[1])); byWeek.get(wk)[1].push(Math.abs(x[2])); }
@@ -4365,10 +4353,7 @@ function renderBukti() {
   const a = SIM.actual || actualFromPo(), d = SIM.dss, pct = (x, y) => (x ? fmtNum(((x - y) / x) * 100, 0) + "% better" : "–");
   const share = (arr) => { const t = arr.reduce((x, y) => x + y, 0) || 1; return `${fmtNum((Math.min(...arr) / t) * 100, 0)}% – ${fmtNum((Math.max(...arr) / t) * 100, 0)}%`; };
   const counts = Object.values(SIM.dssCount), countsA = a ? Object.values(a.counts || SIM.actualCount) : [];
-  $("bkLoadDesc").textContent = SIM.actual ? "Before = the actual allocation (actual KA in the file). After = the dashboard allocation for the same CPRs."
-    : a && a.sameCprs ? `Before = the KAs who actually processed the same ${fmtInt(a.n)} CPRs (actual KA from the uploaded data). After = the dashboard allocation for those CPRs. This is a like-for-like comparison because the CPRs are identical.`
-    : a ? `Before = the actual allocation of ${fmtInt(a.n)} CPRs created ${fmtDay(a.from)} – ${fmtDay(a.to)} (actual KA from the uploaded data). After = the dashboard allocation for this period. Because the CPRs differ, refer to the average workload row: if volumes differ substantially, interpret the comparison with caution.`
-    : "Available once the dashboard has been used for a period: the KA load before go-live (actual KAs in CPRHistory) is then compared with the period allocated by the dashboard.";
+  $("bkLoadDesc").textContent = a ? "Before = actual KA allocation · After = dashboard allocation." : "Available after the dashboard has been used for a period.";
   const rowsL = [
     ["Average workload per KA per day (volume)", a && (a.avg ?? null), mean(SIM.load.flatMap((arr) => SIM.workDays.map((dd) => arr[dd - SIM.minDay] || 0)))],
     ["Gap between busiest and least busy KA (CPRs/day)", a && a.gap, d.gap],
@@ -4387,11 +4372,11 @@ function renderBukti() {
   const live = UPLOAD_LOG.filter((x) => logType(x.type) === "Allocation").map((x) => toDay(x.at.slice(0, 10))).sort((x, y) => x - y)[0] ?? null;
   const po = PO_RECS.filter((r) => r.po !== null);
   if (!po.length) {
-    $("bkPoDesc").textContent = "Not available yet: the CPRHistory / CPRSummary exports do not contain the PO date. This indicator can be measured once the PO date from the ERP is connected.";
+    $("bkPoDesc").textContent = "Not available yet: the exports have no PO date."; $("poCard").hidden = true;
   } else {
     const before = live !== null ? po.filter((r) => r.create < live) : po, after = live !== null ? po.filter((r) => r.create >= live) : [];
     const med = (l, k) => median(l.map((r) => r[k]));
-    $("bkPoDesc").textContent = live !== null ? `The dashboard was first used on ${fmtDay(live)} (first allocation). Before = CPRs created before that date; after = CPRs created on or after that date.` : "No allocation has been saved yet, so all data is treated as the pre-dashboard baseline.";
+    $("bkPoDesc").textContent = live !== null ? `Dashboard first used on ${fmtDay(live)}.` : ""; $("poCard").hidden = false;
     $("bkPoTiles").replaceChildren(
       tile("CPR created → PO, before", fmtNum(med(before, "toPo")), "days", `median of ${fmtInt(before.length)} CPRs`),
       tile("CPR created → PO, after", after.length >= 20 ? fmtNum(med(after, "toPo")) : "–", after.length >= 20 ? "days" : "", after.length >= 20 ? `median of ${fmtInt(after.length)} CPRs` : `only ${fmtInt(after.length)} CPRs converted into POs since adoption; at least 20 required`),
@@ -4656,7 +4641,7 @@ function renderTaskLoad() {
   for (const t of ot) { if (t.task === "rec" && t.tat3) (run3[t.ka] = run3[t.ka] || []).push(t.tat3.d); if (t.task === "mat" && t.tat8) (run8[t.ka] = run8[t.ka] || []).push(t.tat8.d); }
   for (const t of ot) { if (t.age !== null && t.age > 7) old[t.ka] = (old[t.ka] || 0) + 1; if (t.risk && t.risk.level === "High") high[t.ka] = (high[t.ka] || 0) + 1; }
   const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin, work: per[ka].mat + per[ka].rw, res: SIM.reserve && SIM.reserve[ka] ? SIM.reserve[ka] : null, lv3: lvCount(run3[ka], 3), lv8: lvCount(run8[ka], 8), tat3: mean(run3[ka] || []), tat8: mean(run8[ka] || []), max3: run3[ka] ? Math.max(...run3[ka]) : null, max8: run8[ka] ? Math.max(...run8[ka]) : null })).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.work - a.work || b.n - a.n));
-  $("subTask").textContent = !TL_ON.weights ? `Workload on ${D !== null ? fmtDay(D) : "–"} (data date) = Sequence 8 (waiting for the KA at Purchasing HO) + Rework (sent back by Purchasing Head HO / Director, not yet approved again). Not counted as workload: Sequence 3 (only a check that the documents are complete) and CPRs already approved at Sequence 8 that are waiting at Purchasing Head HO / Director; for these a rework reserve is kept free in the KA's daily limit (CPRs waiting × the KA's rework rate).` : `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Sequence 3 ×${fmtNum(TASK_W.rec, 1)}, Sequence 8 ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Sequence 8 of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed below the table.`;
+  $("subTask").textContent = `Data as of ${D !== null ? fmtDay(D) : "–"}. Workload = Sequence 8 + rework.`;
   $("lgTask").innerHTML = [["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"], ["Rework reserve", "var(--line-strong)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
   const W = TL_ON.weights;
   barChartH($("chTask"), kas.map((k) => `${k.name} (${k.work} CPRs)`), [
