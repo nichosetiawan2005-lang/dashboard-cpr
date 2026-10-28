@@ -397,6 +397,19 @@ body.locked #loginForm .btn { width: 100%; }
         <div class="tbl-wrap" style="max-height:520px;overflow:auto"><table id="tblOt"></table></div></div>
       <details class="capbox" id="twBox" hidden><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Sequence 8 about 2.4–3× Sequence 3, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
         <div class="capgrid"><label>Sequence 3<input type="number" id="twRec" min="0" step="0.1"></label><label>Sequence 8<input type="number" id="twMat" min="0" step="0.1"></label><label>Rework<input type="number" id="twRw" min="0" step="0.1"></label><label>× CPR &gt; Rp1 M<input type="number" id="twBig" min="1" step="0.1"></label></div></details></div>
+    <div class="section-title"><h2>CPRs in and out per KA</h2><p>How many CPRs each KA received and finished per day, to see the KA's pace over a week or a month.</p></div>
+    <div class="card" id="ioCard"><div class="filters" style="border:0;padding:0;margin:0 0 8px">
+        <div class="field"><label for="ioStep">Step</label><select id="ioStep"><option value="s8">Workload: Sequence 8 + rework</option><option value="s3">Sequence 3 (document check)</option></select></div>
+        <div class="field"><label for="ioBy">Period</label><select id="ioBy"><option value="month">Month</option><option value="week">Week</option></select></div>
+        <div class="field"><label for="ioPer">Which</label><select id="ioPer"></select></div>
+        <div class="field"><label for="ioKa">Key Account (chart)</label><select id="ioKa"></select></div>
+        <button class="btn ghost" type="button" id="ioCopy">Copy daily table</button>
+      </div>
+      <div class="sub" id="ioSub"></div>
+      <div class="legend" id="lgIo"></div><div class="chart" id="chIo"></div>
+      <div class="tbl-wrap" style="margin-top:10px"><table id="tblIo"></table></div>
+      <p class="note" id="ioNote"></p>
+    </div>
     <div class="section-title"><h2>Rework per KA</h2><p>Rework = a CPR sent back to the KA for correction (by Purchasing Head HO or Purchasing Director). Lower is better.</p></div>
     <div class="tiles" id="rwTiles"></div>
     <div class="card" style="margin-top:12px"><h3>Rework rate per KA (%)</h3><div class="sub">Only reworks caused by a KA error count. In brackets: CPRs with a KA-error rework / CPRs completed by the KA.</div><div class="chart" id="chRw"></div></div>
@@ -2266,8 +2279,93 @@ function realKa(r) {
   const u = r.ka.toLowerCase();
   return (META.kaList || []).find((n) => u.includes(n.toLowerCase())) || r.ka;
 }
+// ---- CPRs in and out per KA per day ----
+//   Workload (Sequence 8 + rework): in = the CPR returns to the KA at Sequence 8 (first round) or is sent back for rework;
+//                                    out = the KA approves Sequence 8 or approves the rework again
+//   Sequence 3: in = arrival at the KA, out = the KA's Sequence 3 approval
+// the KA is the final KA of the CPR (the one who approved Sequence 3)
+function ioEvents(step) {
+  const ev = [];   // [day, ka, "in" | "out"]
+  for (const r of RECS) {
+    if (!r.hstatus) continue;
+    const ka = dataKa(r); if (!ka) continue;
+    if (step === "s3") { if (r.kaIn !== null) ev.push([r.kaIn, ka, "in"]); if (r.kaOut !== null) ev.push([r.kaOut, ka, "out"]); continue; }
+    const b8 = r.backFirst ?? r.back, o8 = r.backOutFirst ?? r.backOut;
+    if (b8 !== null && b8 !== undefined) ev.push([b8, ka, "in"]);
+    if (o8 !== null && o8 !== undefined) ev.push([o8, ka, "out"]);
+    for (const e of reworkList(r)) { ev.push([e.start, ka, "in"]); if (e.end !== null) ev.push([e.end, ka, "out"]); }
+  }
+  return ev;
+}
+const weekStart = (d) => d - weekday(d);
+function renderIo() {
+  const D = dataDate(); if (D === null || !RECS.some((r) => r.hstatus)) { $("ioCard").hidden = true; return; } $("ioCard").hidden = false;
+  const step = $("ioStep").value, by = $("ioBy").value, ev = ioEvents(step).filter((e) => e[0] <= D);
+  const keyOf = (d) => (by === "month" ? monthKey(d) : String(weekStart(d)));
+  const keys = [...new Set(ev.map((e) => keyOf(e[0])))].sort((a, b) => (by === "month" ? (a < b ? -1 : 1) : Number(a) - Number(b))).reverse().slice(0, by === "month" ? 12 : 26);
+  const sel = $("ioPer"), cur = sel.value;
+  sel.replaceChildren(...keys.map((k) => el("option", { value: k }, by === "month" ? monthText(k) : `Week of ${fmtDay(Number(k))}`)));
+  sel.value = keys.includes(cur) ? cur : keys[0] || "";
+  const k0 = sel.value; if (!k0) return;
+  // days of the period (working days only), up to the data date
+  let from, to;
+  if (by === "week") { from = Number(k0); to = from + 6; }
+  else { const y = Number(k0.slice(0, 4)), m = Number(k0.slice(5, 7)) - 1; from = toDay(new Date(Date.UTC(y, m, 1)).toISOString()); to = toDay(new Date(Date.UTC(y, m + 1, 0)).toISOString()); }
+  to = Math.min(to, D);
+  const days = []; for (let d = from; d <= to; d++) if (weekday(d) < 5) days.push(d);
+  const inP = ev.filter((e) => e[0] >= from && e[0] <= to);
+  const kas = [...new Set(inP.map((e) => e[1]))].filter(isCurrentKa).sort((a, b) => kaLabel(a).localeCompare(kaLabel(b)));
+  const nW = Math.max(1, days.length);
+  // open at the start of the period = in before it minus out before it (from the same events)
+  const openBefore = (ka) => ev.reduce((a, e) => a + (e[1] === ka && e[0] < from ? (e[2] === "in" ? 1 : -1) : 0), 0);
+  const rows = kas.map((ka) => { const i = inP.filter((e) => e[1] === ka && e[2] === "in").length, o = inP.filter((e) => e[1] === ka && e[2] === "out").length, ob = Math.max(0, openBefore(ka));
+    const outDays = days.map((d) => inP.filter((e) => e[1] === ka && e[2] === "out" && (weekday(e[0]) < 5 ? e[0] : e[0] + (7 - weekday(e[0]))) === d).length);
+    return { ka, name: kaLabel(ka), in: i, out: o, net: i - o, avgIn: i / nW, avgOut: o / nW, open0: ob, open1: Math.max(0, ob + i - o), best: Math.max(0, ...outDays), clear: i ? o / i : null }; })
+    .sort((a, b) => b.out - a.out);
+  const tot = rows.reduce((a, r) => ({ in: a.in + r.in, out: a.out + r.out, open0: a.open0 + r.open0, open1: a.open1 + r.open1 }), { in: 0, out: 0, open0: 0, open1: 0 });
+  const team = { ka: "", name: "All Key Accounts", in: tot.in, out: tot.out, net: tot.in - tot.out, avgIn: tot.in / nW, avgOut: tot.out / nW, open0: tot.open0, open1: tot.open1, best: null, clear: tot.in ? tot.out / tot.in : null, all: true };
+  const perKaAvg = kas.length ? { ka: "*", name: "Average per KA", in: tot.in / kas.length, out: tot.out / kas.length, net: (tot.in - tot.out) / kas.length, avgIn: tot.in / nW / kas.length, avgOut: tot.out / nW / kas.length, open0: tot.open0 / kas.length, open1: tot.open1 / kas.length, best: null, clear: team.clear, avg: true } : null;
+  $("ioSub").textContent = `${by === "month" ? monthText(k0) : `Week of ${fmtDay(from)}`}: ${fmtDay(from)} – ${fmtDay(to)}, ${fmtInt(days.length)} working days${to === D ? " (until the data date)" : ""}. ` + (step === "s8" ? "In = CPR returned to the KA at Sequence 8 or sent back for rework; out = approved by the KA." : "In = CPR arrived at the KA at Sequence 3; out = approved by the KA at Sequence 3.");
+  // chart: one KA or all, per working day
+  const ksel = $("ioKa"), kcur = ksel.value;
+  ksel.replaceChildren(el("option", { value: "" }, "All Key Accounts"), ...kas.map((k) => el("option", { value: k }, kaLabel(k))));
+  ksel.value = kas.includes(kcur) ? kcur : "";
+  // a Saturday / Sunday event is shown on the next working day (or the last one of the period), so the chart adds up to the table
+  const wd = (d) => { if (weekday(d) < 5) return d; const n = d + (7 - weekday(d)); return n <= to ? n : d - (weekday(d) - 4); };
+  const pick = (d, t) => inP.filter((e) => wd(e[0]) === d && e[2] === t && (ksel.value ? e[1] === ksel.value : kas.includes(e[1]))).length;
+  const ins = days.map((d) => pick(d, "in")), outs = days.map((d) => pick(d, "out"));
+  const aIn = mean(ins) ?? 0, aOut = mean(outs) ?? 0;
+  $("lgIo").innerHTML = `<span><i class="line" style="background:var(--s1)"></i>In (avg ${fmtNum(aIn, 1)}/day)</span><span><i class="line" style="background:var(--s3)"></i>Out (avg ${fmtNum(aOut, 1)}/day)</span>`;
+  lineChart($("chIo"), days, [{ name: "In", color: "var(--s1)", values: ins }, { name: "Out", color: "var(--s3)", values: outs }],
+    { tickLabel: fmtShort, tipLabel: (d) => fmtDay(d) + " · CPRs", label: "CPRs in and out per working day" });
+  const f1 = (x) => fmtNum(x, 1);
+  renderTable($("tblIo"), [
+    { key: "name", label: "Key Account", sortable: false, render: (r) => (r.all || r.avg ? el("b", {}, r.name) : Object.assign(el("button", { class: "linkbtn", type: "button" }, r.name), { onclick: () => { $("ioKa").value = r.ka; renderIo(); } })) },
+    { key: "open0", label: "Open at start", num: true, sortable: false, render: (r) => (r.avg ? f1(r.open0) : fmtInt(r.open0)) },
+    { key: "in", label: "In", num: true, sortable: false, render: (r) => (r.avg ? f1(r.in) : fmtInt(r.in)) },
+    { key: "out", label: "Out", num: true, sortable: false, render: (r) => (r.avg ? f1(r.out) : fmtInt(r.out)) },
+    { key: "net", label: "In − out", num: true, sortable: false, render: (r) => el("span", { style: `color:${r.net > 0 ? "var(--warn)" : "var(--good)"}` }, (r.net > 0 ? "+" : "") + (r.avg ? f1(r.net) : fmtInt(r.net))) },
+    { key: "open1", label: "Open at end", num: true, sortable: false, render: (r) => (r.avg ? f1(r.open1) : fmtInt(r.open1)) },
+    { key: "avgIn", label: "Avg in / day", num: true, sortable: false, render: (r) => f1(r.avgIn) },
+    { key: "avgOut", label: "Avg out / day", num: true, sortable: false, render: (r) => el("b", {}, f1(r.avgOut)) },
+    { key: "best", label: "Most out in one day", num: true, sortable: false, render: (r) => (r.best === null ? "–" : fmtInt(r.best)) },
+    { key: "clear", label: "Out ÷ in", num: true, sortable: false, render: (r) => (r.clear === null ? "–" : fmtNum(r.clear * 100, 0) + "%") }
+  ], [team, ...(perKaAvg ? [perKaAvg] : []), ...rows]);
+  $("ioNote").textContent = "Averages are per working day (Monday–Friday) of the period; a CPR received or approved on a weekend is counted on the next working day. In − out above 0 = the KA received more than finished, so the queue grew; out ÷ in below 100% means the same. Open at start / end = CPRs received but not finished yet at the start / end of the period. Click a Key Account to show it in the chart.";
+  IO_ROWS = { days, kas, inP, label: k0, wd };
+}
+let IO_ROWS = null;
+for (const id of ["ioStep", "ioBy"]) $(id).addEventListener("change", () => { $("ioPer").value = ""; renderIo(); });
+for (const id of ["ioPer", "ioKa"]) $(id).addEventListener("change", renderIo);
+$("ioCopy").addEventListener("click", async () => {
+  if (!IO_ROWS) return;
+  const lines = [["Date", "Key Account", "In", "Out"].join("\t")];
+  for (const ka of IO_ROWS.kas) for (const d of IO_ROWS.days) lines.push([dayToIso(d), kaLabel(ka), IO_ROWS.inP.filter((e) => IO_ROWS.wd(e[0]) === d && e[1] === ka && e[2] === "in").length, IO_ROWS.inP.filter((e) => IO_ROWS.wd(e[0]) === d && e[1] === ka && e[2] === "out").length].join("\t"));
+  try { await navigator.clipboard.writeText(lines.join("\n")); setStatus(`${fmtInt(lines.length - 1)} rows copied (one per KA per working day). Paste into Excel with Ctrl+V.`); } catch { setStatus("The browser blocked copying."); }
+});
 function renderKa() {
   try { syncTw(); renderTaskLoad(); } catch (e) {}
+  try { renderIo(); } catch (e) { $("ioNote").textContent = "In/out could not be calculated: " + (e.message || e); }
   const view = loadView();
   $("lblPo").hidden = SB && !IS_ADMIN;
   if (RECS.some((r) => r.hstatus)) return renderKaFromHistory(view);
