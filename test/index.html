@@ -392,7 +392,7 @@ body.locked #loginForm .btn { width: 100%; }
     <p class="note" id="kaNote"></p>
     <div class="section-title"><h2>Average KA processing time per CPR</h2><p>Sequence 3 = from receipt by the KA until approval. Sequence 8 = from the CPR's return to the KA until approval. Time spent waiting for other approvers is excluded.</p></div>
     <div class="card"><div class="legend"><span><i style="background:var(--s1)"></i>Sequence 3</span><span><i style="background:var(--s2)"></i>Sequence 8</span></div><div class="chart" id="chKa"></div></div>
-    <div class="section-title"><h2>Current task load</h2><p>CPRs each KA is holding right now (Sequence 3, Sequence 8, Rework).</p></div>    <div class="card" id="cardTask" hidden><h3>Open tasks per KA</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div><p class="note">Open task = a CPR that is still the KA's responsibility: waiting for the KA at Sequence 3 or 8, in rework, or approved by the KA at Sequence 8 but still with Purchasing Head HO / Director. TAT (turnaround time) is counted per KA step in calendar days: Sequence 3 = arrival at KA until the KA approves it; Sequence 8 = return to KA until the KA approves it. "So far" = not approved yet, counted until the data date. Targets: Sequence 3 at most 1 day (green), more = red; Sequence 8 up to 5 days green, 6–14 days yellow, more than 14 days red. The coloured counts are the open CPRs at that step. Click a Key Account, a bar or "Show CPRs" to list them.</p>
+    <div class="section-title"><h2>Current task load</h2><p>The KA's real workload is Sequence 8 and rework; Sequence 3 is only a document check.</p></div>    <div class="card" id="cardTask" hidden><h3>Open tasks and workload per KA</h3><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div><p class="note">Open task = a CPR that is still the KA's responsibility. Workload counts Sequence 8 and rework; Sequence 3 and CPRs waiting at Purchasing Head HO / Director are shown for information. Rework rate = share of the KA's CPRs approved at Sequence 8 14–104 days ago that were sent back because of a KA error, adjusted towards the team rate when the KA has few CPRs. Rework reserve = CPRs waiting × rework rate; it is kept free in the KA's daily limit when new CPRs are allocated. Sequence 8 TAT = from the return to KA until the KA approves it, in calendar days ("so far" = not approved yet, counted until the data date): up to 5 days green, 6–14 days yellow, more than 14 days red. Click a Key Account, a bar or "Show CPRs" to list them.</p>
       <div id="otDetail" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="otTitle"></h3><div class="sub" id="otSub"></div></div><button class="btn ghost" type="button" id="otClose">Close</button></div>
         <div class="tbl-wrap" style="max-height:520px;overflow:auto"><table id="tblOt"></table></div></div>
       <details class="capbox" id="twBox" hidden><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Sequence 8 about 2.4–3× Sequence 3, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
@@ -3160,7 +3160,8 @@ function simulate() {
     // finished CPR (PR/PO created, fully approved, Sequence 8 approved): nothing counts after its last activity
     if (r.done && !inRework(r)) { const fin = Math.max(...[r.kaOut, r.backOut, out8, r.lastAct].filter((x) => x !== null && x !== undefined), c.s1); c.e1 = Math.min(c.e1, fin); c.e2 = Math.min(c.e2, fin); }
   };
-  const activeDays = (c) => { const out = new Set(); if (c.e1 === undefined) setEnds(c); for (let d = c.s1; d <= c.e1; d++) out.add(off(d)); for (let d = c.s2; d <= c.e2; d++) out.add(off(d)); for (const e of c.rw || []) for (let d = e.start; d <= reworkEnd(c.r, e); d++) out.add(off(d)); return [...out].filter((x) => x >= 0 && x < nDays); };
+  // the KA's real workload is Sequence 8 (and rework); Sequence 3 is only a check that the documents are complete, so it is not counted
+  const activeDays = (c) => { const out = new Set(); if (c.e1 === undefined) setEnds(c); for (let d = c.s2; d <= c.e2; d++) out.add(off(d)); for (const e of c.rw || []) for (let d = e.start; d <= reworkEnd(c.r, e); d++) out.add(off(d)); return [...out].filter((x) => x >= 0 && x < nDays); };
   const add = (L, c, sign) => { if (c.r && (IGNORED[c.r.cpr] || isInactive(c.r))) return; // dismissed by SPV or inactive: no load for the KA
     const a = L[kaIdx.get(c.ka)]; for (const d of activeDays(c)) a[d] += sign * c.weight; };
   const lastDay = (c) => (c.e2 !== undefined ? Math.max(c.e2, c.s2) : c.s2 + c.w2 - 1);
@@ -3192,8 +3193,8 @@ function simulate() {
     // no real load to learn from: twice the average load per KA per working day
     // days a KA holds one CPR = Sequence 3 (received -> approved) + Sequence 8 (returned -> approved), from the history
     const nWork = workDaysUntil(end).length || 1;
-    const holds = (hist.length ? hist : test).map((r) => (r.kaIn !== null && r.kaOut !== null ? r.kaOut - r.kaIn + 1 : w1) + ((r.backFirst ?? r.back) != null && (r.backOutFirst ?? r.backOut) != null ? (r.backOutFirst ?? r.backOut) - (r.backFirst ?? r.back) + 1 : w2)).filter((x) => x > 0 && x < 60);
-    const holdDays = mean(holds) ?? (w1 + w2);
+    const holds = (hist.length ? hist : test).map((r) => ((r.backFirst ?? r.back) != null && (r.backOutFirst ?? r.backOut) != null ? (r.backOutFirst ?? r.backOut) - (r.backFirst ?? r.back) + 1 : w2)).filter((x) => x > 0 && x < 60);
+    const holdDays = mean(holds) ?? w2;
     autoMax = Math.max(2, Math.ceil(((test.length * holdDays) / (nWork * kaList.length)) * 2));
   }
   const maxPerDay = userMax > 0 ? userMax : autoMax;
@@ -3204,9 +3205,15 @@ function simulate() {
   const review1Offs = (c) => { const out = []; for (let i = 0; i < c.w1; i++) out.push(off(c.s1 + i)); return out; };
   const notStarted = (c) => c.r.kaOut === null && c.r.back === null; // Sequence 3 not done and not in Sequence 8
   // best KA for a CPR: lowest peak load among KAs that are present on its review days
+  // rework reserve: CPRs the KA approved at Sequence 8 that are still waiting at Purchasing Head HO / Director may come back as
+  // rework, so part of the KA's daily limit is kept free: reserve = CPRs waiting × the KA's rework rate (KA errors only)
+  const RW = reworkRates(), waiting = {};
+  for (const r of RECS) if (taskOf(r) === "fin") { const k = dataKa(r); if (k) waiting[k] = (waiting[k] || 0) + 1; }
+  const reserveOf = (k) => (waiting[k] || 0) * (RW.rate[k] ?? RW.team);
+  const reserve = Object.fromEntries(kaList.map((k) => [k, { waiting: waiting[k] || 0, rate: RW.rate[k] ?? RW.team, n: RW.n[k] || 0, reserve: reserveOf(k) }]));
   const bestKa = (c, days, exclude) => {
     let best = null, bestPeak = Infinity;
-    for (const k of allocKas) { if (k === exclude || absent(k, days) || capOf(k) <= 0) continue; const pk = peak(L, k, days, c.weight || 1) / capOf(k); if (pk < bestPeak) { bestPeak = pk; best = k; } }   // workload relative to the KA's capacity
+    for (const k of allocKas) { if (k === exclude || absent(k, days) || capOf(k) <= 0) continue; const pk = (peak(L, k, days, c.weight || 1) + reserveOf(k)) / capOf(k); if (pk < bestPeak) { bestPeak = pk; best = k; } }   // workload relative to the KA's capacity
     return { best, bestPeak };
   };
   const moveTo = (c, to, reason) => {
@@ -3290,15 +3297,15 @@ function simulate() {
         continue;
       }
       const hv = vendorHolder(c.vendor, c.s1);
-      if (hv && !absent(hv, days) && capOf(hv) > 0 && peak(L, hv, days, vf) <= maxPerDay * capOf(hv)) { ka = hv; weight = vf; rule = "Vendor sama"; }
+      if (hv && !absent(hv, days) && capOf(hv) > 0 && peak(L, hv, days, vf) + reserveOf(hv) <= maxPerDay * capOf(hv)) { ka = hv; weight = vf; rule = "Vendor sama"; }
       if (!ka && usePic) {
         const p = pic[c.unit];
         const fair = assigned.length / kaList.length + 1; // fair share so far (average per KA)
-        if (p && kaIdx.has(p) && !absent(p, days) && capOf(p) > 0 && (cnt[p] || 0) <= fair * capOf(p) && peak(L, p, days, 1) <= maxPerDay * capOf(p)) { ka = p; rule = "PIC unit"; }
+        if (p && kaIdx.has(p) && !absent(p, days) && capOf(p) > 0 && (cnt[p] || 0) <= fair * capOf(p) && peak(L, p, days, 1) + reserveOf(p) <= maxPerDay * capOf(p)) { ka = p; rule = "PIC unit"; }
       }
       if (!ka) {
         let { best, bestPeak } = bestKa({ weight: 1 }, days, null);
-        if (!best) { for (const k of allocKas) { if (capOf(k) <= 0) continue; const pk = peak(L, k, days, 1) / capOf(k); if (pk < bestPeak) { bestPeak = pk; best = k; } } } // everyone absent
+        if (!best) { for (const k of allocKas) { if (capOf(k) <= 0) continue; const pk = (peak(L, k, days, 1) + reserveOf(k)) / capOf(k); if (pk < bestPeak) { bestPeak = pk; best = k; } } } // everyone absent
         ka = best; rule = bestPeak <= maxPerDay ? "Beban terendah" : "Exception";
       }
       c.ka = ka; c.weight = weight; c.rule = rule; rules[rule]++; planHold(c);
@@ -3310,7 +3317,7 @@ function simulate() {
       checkAbsence(c);
       // automatic rule 2: on arrival (before work starts) the KA is over the limit and another present KA still has room
       // only for CPRs given a KA in this run: a KA saved in an earlier allocation never moves because of workload
-      if (!c.locked && !(c.transfer && c.transfer.by === "SPV") && notStarted(c) && peak(L, c.ka, review1Offs(c), 0) > maxPerDay * capOf(c.ka)) {
+      if (!c.locked && !(c.transfer && c.transfer.by === "SPV") && notStarted(c) && peak(L, c.ka, activeDays(c), 0) + reserveOf(c.ka) > maxPerDay * capOf(c.ka)) {
         const { best, bestPeak } = bestKa(c, activeDays(c), c.ka);
         if (best && bestPeak <= maxPerDay) moveTo(c, best, `${kaLabel(c.ka)} exceeded the limit of ${fmtNum(maxPerDay)} CPRs/day when the CPR arrived`);
       }
@@ -3333,7 +3340,7 @@ function simulate() {
   for (const c of assigned) rules[c.rule] = (rules[c.rule] || 0) + 1;
   SIM_KA = new Map(assigned.map((c) => [c.r.cpr, c.ka]));
   return {
-    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All,
+    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, reserve, teamRate: RW.team,
     histCount: useModels && MODELS.f1 ? MODELS.f1.n : 0, models: useModels ? MODELS : null,
     f1Method: useModels && MODELS.f1 ? `${MODELS.f1.chosen.family} (${MODELS.f1.chosen.setting})` : "median per hospital",
     f2Method: useModels && MODELS.f2 ? `${MODELS.f2.chosen.family} (${MODELS.f2.chosen.setting})` : "median per hospital",
@@ -4458,6 +4465,22 @@ function showOpenTasks(ka) {
   ], rows);
 }
 $("otClose").addEventListener("click", () => { OT_OPEN = null; $("otDetail").hidden = true; });
+// rework rate per KA for the reserve: CPRs whose Sequence 8 was approved 14–104 days before the data date (the last 14 days are
+// left out: the final approvers may not have checked them yet); rework = KA error only (renego, discount / new price and unclear
+// are not counted); smoothed towards the team rate with 20 CPRs, so a KA with few CPRs is not trusted at 0%
+const RW_WINDOW = 90, RW_WAIT = 14;
+function reworkRates() {
+  const D = dataDate(), cnt = {}, n = {};
+  if (D === null) return { rate: {}, n: {}, team: 0 };
+  for (const r of RECS) {
+    const s8 = r.backOutFirst ?? r.backOut; if (s8 === null || s8 === undefined || s8 > D - RW_WAIT || s8 < D - RW_WAIT - RW_WINDOW) continue;
+    const k = userKa(r.ka8User || r.kaUser); if (!k) continue;
+    n[k] = (n[k] || 0) + 1; if (reworkList(r).some((e) => e.cause === "K" || e.cause === "?")) cnt[k] = (cnt[k] || 0) + 1;
+  }
+  const N = Object.values(n).reduce((a, c) => a + c, 0), C = Object.values(cnt).reduce((a, c) => a + c, 0), team = N ? C / N : 0;
+  const rate = {}; for (const k of Object.keys(n)) rate[k] = ((cnt[k] || 0) + 20 * team) / (n[k] + 20);
+  return { rate, n, team, raw: cnt };
+}
 // open task of a CPR for its KA (the KA who approved Sequence 3 keeps the CPR until the end):
 //   rec = Sequence 3 waiting for the KA, mat = Sequence 8 waiting for the KA, rw = sent back (rework), not approved again,
 //   fin = Sequence 8 approved, now with Purchasing Head HO / Purchasing Director: still the KA's responsibility,
@@ -4521,27 +4544,27 @@ function renderTaskLoad() {
   const lvCell = (c, seq) => { const box = el("div", { style: "display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap" }); for (const k of seq === 3 ? ["good", "bad"] : ["good", "warn", "bad"]) if (c[k]) box.append(pill(fmtInt(c[k]), k)); return box.childNodes.length ? box : "–"; };
   for (const t of ot) { if (t.task === "rec" && t.tat3) (run3[t.ka] = run3[t.ka] || []).push(t.tat3.d); if (t.task === "mat" && t.tat8) (run8[t.ka] = run8[t.ka] || []).push(t.tat8.d); }
   for (const t of ot) { if (t.age !== null && t.age > 7) old[t.ka] = (old[t.ka] || 0) + 1; if (t.risk && t.risk.level === "High") high[t.ka] = (high[t.ka] || 0) + 1; }
-  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin, lv3: lvCount(run3[ka], 3), lv8: lvCount(run8[ka], 8), tat3: mean(run3[ka] || []), tat8: mean(run8[ka] || []), max3: run3[ka] ? Math.max(...run3[ka]) : null, max8: run8[ka] ? Math.max(...run8[ka]) : null })).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.n - a.n));
-  $("subTask").textContent = !TL_ON.weights ? `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), read from the current step in CPRHistory: Sequence 3 = waiting for the KA (Key Account HO), Sequence 8 = waiting for the KA (Purchasing HO), Rework = sent back by Purchasing Head HO / Director and not yet approved again; With Purchasing Head HO / Director = Sequence 8 approved by the KA but still waiting for the final approvals, so it can still come back as rework. Counted as is, without weights.` : `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Sequence 3 ×${fmtNum(TASK_W.rec, 1)}, Sequence 8 ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Sequence 8 of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed below the table.`;
-  $("lgTask").innerHTML = [["Sequence 3", "var(--s1)"], ["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"], ["With Purchasing Head HO / Director", "var(--line-strong)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
+  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin, work: per[ka].mat + per[ka].rw, res: SIM.reserve && SIM.reserve[ka] ? SIM.reserve[ka] : null, lv3: lvCount(run3[ka], 3), lv8: lvCount(run8[ka], 8), tat3: mean(run3[ka] || []), tat8: mean(run8[ka] || []), max3: run3[ka] ? Math.max(...run3[ka]) : null, max8: run8[ka] ? Math.max(...run8[ka]) : null })).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.work - a.work || b.n - a.n));
+  $("subTask").textContent = !TL_ON.weights ? `Workload on ${D !== null ? fmtDay(D) : "–"} (data date) = Sequence 8 (waiting for the KA at Purchasing HO) + Rework (sent back by Purchasing Head HO / Director, not yet approved again). Not counted as workload: Sequence 3 (only a check that the documents are complete) and CPRs already approved at Sequence 8 that are waiting at Purchasing Head HO / Director; for these a rework reserve is kept free in the KA's daily limit (CPRs waiting × the KA's rework rate).` : `CPRs each KA is holding on ${D !== null ? fmtDay(D) : "–"} (data date), weighted by task: Sequence 3 ×${fmtNum(TASK_W.rec, 1)}, Sequence 8 ×${fmtNum(TASK_W.mat, 1)}, Rework ×${fmtNum(TASK_W.rw, 1)}; Sequence 8 of a CPR above Rp1 M ×${fmtNum(TASK_W.big, 1)} more. Weights can be changed below the table.`;
+  $("lgTask").innerHTML = [["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"], ["Rework reserve", "var(--line-strong)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
   const W = TL_ON.weights;
-  barChartH($("chTask"), kas.map((k) => `${k.name} (${k.n} CPRs)`), [
-    { name: "Sequence 3", color: "var(--s1)", values: kas.map((k) => (W ? k.wRec : k.rec)) },
+  barChartH($("chTask"), kas.map((k) => `${k.name} (${k.work} CPRs)`), [
     { name: "Sequence 8", color: "var(--s2)", values: kas.map((k) => (W ? k.wMat : k.mat)) },
     { name: "Rework", color: "var(--s3, #8e5bd8)", values: kas.map((k) => (W ? k.wRw : k.rw)) },
-    { name: "With Purchasing Head HO / Director", color: "var(--line-strong)", values: kas.map((k) => (W ? k.wFin : k.fin)) }
-  ], { stacked: true, dec: W ? 1 : 0, label: W ? "Weighted task load per KA" : "Open tasks per KA", onClick: (i) => showOpenTasks(kas[i].ka), tipRows: () => [{ value: "", label: "click to see the open CPRs" }] });
+    { name: "Rework reserve", color: "var(--line-strong)", values: kas.map((k) => (k.res ? k.res.reserve : 0)) }
+  ], { stacked: true, dec: 1, label: "KA workload (Sequence 8 + rework) and rework reserve", onClick: (i) => showOpenTasks(kas[i].ka), tipRows: () => [{ value: "", label: "click to see the open CPRs" }] });
   renderTable($("tblTask"), [
     { key: "name", label: "Key Account", render: (r) => Object.assign(el("button", { class: "linkbtn", type: "button", title: "Show the open CPRs of this KA" }, r.name), { onclick: () => showOpenTasks(r.ka) }) },
-    { key: "rec", label: "Sequence 3", num: true, render: (r) => fmtInt(r.rec) },
     { key: "mat", label: "Sequence 8", num: true, render: (r) => fmtInt(r.mat) + (TL_ON.weights && r.big ? ` (${r.big} > Rp1 M)` : "") },
     { key: "rw", label: "Rework", num: true, render: (r) => fmtInt(r.rw) },
-    { key: "fin", label: "With PH HO / Director", num: true, render: (r) => fmtInt(r.fin) },
-    { key: "n", label: "CPRs held", num: true, render: (r) => fmtInt(r.n) },
-    { key: "lv3", label: "Seq 3 TAT (≤1 day / over)", num: true, sortable: false, render: (r) => lvCell(r.lv3, 3) },
+    { key: "work", label: "Workload", num: true, render: (r) => el("b", {}, fmtInt(r.work)) },
     { key: "lv8", label: "Seq 8 TAT (≤5 / 6–14 / >14 days)", num: true, sortable: false, render: (r) => lvCell(r.lv8, 8) },
-    { key: "tat3", label: "Seq 3 TAT so far, days (avg / max)", num: true, render: (r) => (r.tat3 === null ? "–" : `${fmtNum(r.tat3, 1)} / ${fmtInt(r.max3)}`) },
     { key: "tat8", label: "Seq 8 TAT so far, days (avg / max)", num: true, render: (r) => (r.tat8 === null ? "–" : `${fmtNum(r.tat8, 1)} / ${fmtInt(r.max8)}`) },
+    { key: "fin", label: "Waiting at PH HO / Director", num: true, render: (r) => fmtInt(r.fin) },
+    { key: "rate", label: "Rework rate (KA error)", num: true, render: (r) => (r.res ? fmtNum(r.res.rate * 100, 1) + "%" : "–") },
+    { key: "resv", label: "Rework reserve (CPRs/day)", num: true, render: (r) => (r.res ? fmtNum(r.res.reserve, 1) : "–") },
+    { key: "lim", label: "Daily limit after reserve", num: true, render: (r) => (r.res ? fmtNum(SIM.maxPerDay * capOf(r.ka) - r.res.reserve, 1) : "–") },
+    { key: "rec", label: "Seq 3 (document check)", num: true, render: (r) => el("span", { style: "color:var(--muted)" }, fmtInt(r.rec)) },
     ...(TL_ON.weights ? [{ key: "total", label: "Weighted load", num: true, render: (r) => fmtNum(r.total, 1) }] : []),
     ...(TL_ON.age ? [{ key: "old", label: "Open > 7 days", num: true, render: (r) => fmtInt(r.old) }] : []),
     ...(TL_ON.risk ? [{ key: "high", label: "High rework risk", num: true, render: (r) => (RISK ? fmtInt(r.high) : "–") }] : []),
