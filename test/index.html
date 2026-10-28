@@ -97,6 +97,15 @@ button, input, select { font: inherit; color: inherit; }
 .tip .t { color: var(--muted); margin-bottom: 4px; }
 .tip .r { display: flex; align-items: center; gap: 7px; }
 .tip .r b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.info-src { display: none !important; }
+.ibtn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: 8px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%; background: var(--panel); color: var(--accent-ink); font: italic 600 11px/1 Georgia, serif; cursor: pointer; vertical-align: middle; position: relative; top: -1px; }
+.ibtn:hover, .ibtn[aria-expanded="true"] { background: var(--info-bg); border-color: var(--accent); }
+.ibtn::before { content: ""; position: absolute; inset: -8px; }
+.ipop { position: fixed; z-index: 60; width: min(420px, calc(100vw - 32px)); max-height: 60vh; overflow: auto; background: var(--panel); color: var(--fg); border: 1px solid var(--line-strong); border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; box-shadow: 0 8px 28px rgba(0,0,0,.16); }
+.ipop h4 { margin: 0 0 6px; font-size: 13px; }
+.ipop p { margin: 0 0 8px; color: var(--fg); }
+.ipop .ilabel { display: block; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 8px 0 2px; }
+.ipop .idata { margin: 0; padding: 8px 10px; background: var(--info-bg); border-radius: 6px; }
 .tip .r i { width: 12px; height: 2px; border-radius: 1px; display: inline-block; }
 
 .tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
@@ -3605,7 +3614,7 @@ function renderSim() {
   const activeCount = {}, doneCount = {};
   for (const c of s.assigned) { const r = c.r; if (r.done) doneCount[c.ka] = (doneCount[c.ka] || 0) + 1; else if (!IGNORED[r.cpr] && !isInactive(r)) activeCount[c.ka] = (activeCount[c.ka] || 0) + 1; }
   const kas = (s.actual ? s.kaList.slice() : s.kaList.filter((k) => isCurrentKa(k))).sort((a, b) => (s.actual ? (s.dssCount[b] || 0) - (s.dssCount[a] || 0) : (activeCount[b] || 0) - (activeCount[a] || 0)));
-  $("hKaCount").textContent = s.actual ? "Number of CPRs per KA" : "Active CPRs per KA (workload)";
+  $("hKaCount").firstChild.textContent = s.actual ? "Number of CPRs per KA" : "Active CPRs per KA (workload)";
   $("subKaCount").textContent = s.actual ? "DSS allocation vs actual allocation." : "";
   $("lgKaCount").innerHTML = s.actual ? lg([["DSS", "var(--s1)"], ["Actual", "var(--s2)"]]) : "";
   $("cardKaDone").hidden = !!s.actual;
@@ -4527,6 +4536,65 @@ function showTab(name) {
   try { localStorage.setItem("cprTab", name); } catch {}
 }
 document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+// ---------- "i" buttons: explanations are hidden behind an info icon next to each heading ----------
+// [tab panel, heading text, elements whose text moves into the popup, what data the section uses]
+const INFO = [
+  ["panel-overview", "All CPRs", ["#ovNote"], "CPRHistory (every approval step) + CPRSummary (current holder, PR / PO number) from the latest upload."],
+  ["panel-distribusi", "Allocation settings", ["#simNote"], "CPRHistory + CPRSummary, Hospital PIC List, KA absences and KA capacity, and the forecast models (Forecast 1–4) trained on CPRHistory."],
+  ["panel-distribusi", "#hKaCount", ["#subKaCount", "#simCompare"], "The allocation result for the selected creation period (DSS), compared with the actual KA in CPRHistory."],
+  ["panel-distribusi", "Completed CPRs per KA", [], "CPRHistory: CPRs approved by each KA at Sequence 8."],
+  ["panel-distribusi", "CPR assignment list", [], "One row per CPR: the KA chosen by the DSS and why, forecast dates (Forecast 1–4) and actual dates from CPRHistory."],
+  ["panel-ka", "Open tasks now", ["#subTask", "#cardTask > p.note"], "CPRHistory (approval steps) + CPRSummary (current position, PR / PO), as of the latest data date. Daily limit uses the automatic limit and each KA's rework rate."],
+  ["panel-ka", "Performance per KA", ["#poInfo", "#rwCauseNote"], "CPRHistory: arrival and approval dates of Sequence 3 and Sequence 8 per KA; rework from Revise To and the approver's note (Purchasing Head HO / Director)."],
+  ["panel-ka", "CPRs in and out per KA", ["#ioNote"], "CPRHistory: in = the CPR arrives at the KA (Sequence 3, or back at Sequence 8); out = the KA approves Sequence 8 or the CPR is closed. Working days exclude weekends and holidays."],
+  ["panel-spv", "CPRs requiring action", ["#spvNote", "#asOfNote"], "CPRHistory + CPRSummary: where each CPR is on the data date. Only Sequence 3, Sequence 8 and rework; days are working days."],
+  ["panel-spv", "KA absences", [], "Absences entered here by the supervisor. The allocation does not give new CPRs to an absent KA."],
+  ["panel-spv", "KA replaced (left the team)", ["#chgForm ~ p.sub"], "Hospital PIC List + this table. The CPRs come from CPRHistory."],
+  ["panel-spv", "Reassignment log", [], "Reassignments saved by the supervisor and the automatic ones (absence, KA left)."],
+  ["panel-bukti", "1. Is the forecast accurate?", ["#bkNote", "#bkFcNote"], "The test months of CPRHistory: what each forecast said vs what happened."],
+  ["panel-bukti", "Check the forecast CPR by CPR (test months)", ["#chkCard > .sub", "#chkNote"], "CPRHistory test months; every CPR is forecast by a model that had not seen it."],
+  ["panel-bukti", "KA workload per day: forecast vs actual (test months)", ["#lcCard > .sub", "#lcNote"], "CPRHistory test months: CPRs held at Sequence 8 per KA per day, forecast vs actual."],
+  ["panel-bukti", "Forecast settings", ["#fcSetNote"], "CPRHistory, split by date into training, validation and test months."],
+  ["panel-bukti", "Model selection in the dashboard (automatic)", ["h3 + .sub"], "Validation months of CPRHistory."],
+  ["panel-bukti", "Comparison of the four models (analysis notebook)", ["h3 + .sub"], "Python notebook on CPR_Cleaned 2023–2026."],
+  ["panel-bukti", "2. Is the KA workload more evenly distributed?", ["#bkLoadDesc"], "DSS allocation vs the actual KA in CPRHistory, same CPRs and days."],
+  ["panel-bukti", "3. Are CPRs converted into POs more quickly?", ["#bkPoDesc", "#bkPoSub"], "CPRSummary (PR / PO number and dates) + CPRHistory."],
+  ["panel-bukti", "4. Is the supervisor's workload reduced?", [], "Activity log and reassignment log of this dashboard."]
+];
+let INFO_OPEN = null;
+function setupInfo() {
+  for (const [panel, text, srcSel, data] of INFO) {
+    const root = $(panel); if (!root) continue;
+    const h = text.startsWith("#") ? $(text.slice(1)) : [...root.querySelectorAll("h2, h3")].find((x) => x.firstChild && x.firstChild.textContent.trim() === text);
+    if (!h || h.querySelector(".ibtn")) continue;
+    const box = h.closest(".card") || h.closest(".section-title") || root;
+    const srcs = srcSel.flatMap((sel) => [...(sel.startsWith("#") ? document : box).querySelectorAll(sel)]);
+    for (const e of srcs) e.classList.add("info-src");
+    const b = el("button", { class: "ibtn", type: "button", "aria-label": "About: " + text, "aria-expanded": "false" }, "i");
+    b.addEventListener("click", (ev) => { ev.stopPropagation(); if (INFO_OPEN && INFO_OPEN.btn === b) return closeInfo(); openInfo(b, h.firstChild.textContent.trim(), srcs, data); });
+    h.append(b);
+  }
+}
+function openInfo(btn, title, srcs, data) {
+  closeInfo();
+  const pop = el("div", { class: "ipop", role: "dialog", "aria-label": title });
+  pop.append(el("h4", {}, title));
+  const parts = srcs.filter((e) => e.textContent.trim());
+  if (parts.length) { pop.append(el("span", { class: "ilabel" }, "What this shows")); for (const e of parts) { const p = el("p"); p.innerHTML = e.innerHTML; pop.append(p); } }
+  pop.append(el("span", { class: "ilabel" }, "Data used"), el("p", { class: "idata" }, data));
+  document.body.append(pop);
+  const r = btn.getBoundingClientRect(), w = pop.offsetWidth, hh = pop.offsetHeight;
+  let left = Math.min(Math.max(16, r.left - 12), window.innerWidth - w - 16), top = r.bottom + 8;
+  if (top + hh > window.innerHeight - 8) top = Math.max(8, r.top - hh - 8);
+  pop.style.left = left + "px"; pop.style.top = top + "px";
+  btn.setAttribute("aria-expanded", "true"); INFO_OPEN = { btn, pop };
+}
+function closeInfo() { if (!INFO_OPEN) return; INFO_OPEN.pop.remove(); INFO_OPEN.btn.setAttribute("aria-expanded", "false"); INFO_OPEN = null; }
+document.addEventListener("click", (e) => { if (INFO_OPEN && !INFO_OPEN.pop.contains(e.target)) closeInfo(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeInfo(); });
+window.addEventListener("scroll", closeInfo, { passive: true });
+window.addEventListener("resize", closeInfo);
+setupInfo();
 function renderAll() { renderEmptyState(); renderOverview(); renderKaChanges(); renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
 // before the CPR queue is uploaded: no sample data on screen, only what to upload
 function renderEmptyState() {
