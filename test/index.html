@@ -479,9 +479,10 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="filters" style="border:0;padding:0;margin:0" id="chgForm">
         <div class="field"><label for="chgUser">Former KA (username)</label><input type="text" id="chgUser" list="chgUsers" placeholder="e.g. maria.nugraheni"><datalist id="chgUsers"></datalist></div>
         <div class="field"><label for="chgName">Name</label><input type="text" id="chgName" placeholder="e.g. Puspa"></div>
-        <div class="field"><label for="chgTo">Replaced by</label><select id="chgTo"></select></div>
+        <div class="field"><label for="chgTo">Replaced by (if the unit has no PIC)</label><select id="chgTo"></select></div>
         <button class="btn" type="button" id="chgAdd">Save</button>
       </div>
+      <p class="sub" style="margin:8px 0 0">Open CPRs of a KA who left (Sequence 3, Sequence 8, rework, or waiting at Purchasing Head HO / Director) move to the Hospital PIC of each unit. A KA who is no longer in the Hospital PIC List is treated the same way.</p>
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblChg"></table></div>
     </div>
 
@@ -1253,7 +1254,25 @@ function dataKaUser(r) {
   for (const u of [r.ka3User, r.ka8User]) if (u) return u;
   return null;
 }
-const dataKa = (r) => { const u = dataKaUser(r); if (!u) return null; const ch = kaChange(u); if (ch && !r.done) return ch.to; return poKa({ ka: u, kaName: null }).ka; };
+// a KA who left: listed in "KA replaced", or a KA user who is no longer in the Hospital PIC List
+function kaLeft(u) {
+  if (!u) return null;
+  const ch = kaChange(u); if (ch) return ch;
+  const own = poKa({ ka: u, kaName: null }).ka;
+  if (PIC_LIST && (META.kaList || []).length && !isCurrentKa(own) && HIST_KA_USERS.has(String(u).toLowerCase())) return { user: String(u).toLowerCase(), name: own, to: null, auto: true };
+  return null;
+}
+// the CPR is still open for the KA: not finished, or waiting at Purchasing Head HO / Director after Sequence 8
+const kaStillOpen = (r) => !r.done || taskOf(r) === "fin";
+// open CPRs of a KA who left go to the Hospital PIC of the unit (fallback: the replacement in "KA replaced")
+const dataKa = (r) => {
+  const u = dataKaUser(r); if (!u) return null;
+  const own = poKa({ ka: u, kaName: null }).ka;
+  const left = kaStillOpen(r) ? kaLeft(u) : null;
+  if (!left) return own;
+  const p = picNameFor(r.unit), heir = p && (META.kaList || []).find((k) => k.toLowerCase() === String(p).toLowerCase());
+  return heir || left.to || own;
+};
 // ---------- Overview tab: totals per status, the CPRs behind each box, and tracking for any CPR ----------
 const OV_GROUPS = [
   { key: "all", label: "Total CPR", desc: "every CPR in the data", test: () => true },
@@ -2062,7 +2081,7 @@ function renderKaChanges() {
   $("chgUsers").replaceChildren(...[...HIST_KA_USERS].sort().map((u) => el("option", { value: u })));
   renderTable($("tblChg"), [
     { key: "name", label: "Former KA", sortable: false, render: (x) => `${x.name || x.user} (${x.user})` },
-    { key: "to", label: "Replaced by", sortable: false, render: (x) => kaLabel(x.to) },
+    { key: "to", label: "Replaced by", sortable: false, render: (x) => `Hospital PIC of each unit (otherwise ${kaLabel(x.to)})` },
     { key: "open", label: "CPRs in progress moved", num: true, sortable: false, render: (x) => fmtInt(SIM ? SIM.assigned.filter((c) => c.replacedFrom === x.user).length : 0) },
     { key: "act", label: "", sortable: false, render: (x) => (editable ? Object.assign(el("button", { class: "btn ghost", type: "button" }, "Remove"), { onclick: async () => { KA_CHANGES = KA_CHANGES.filter((y) => y !== x); await saveKaChanges(); await logEvent({ type: "KA replaced", note: `removed: ${x.user} → ${x.to}` }); await runSimulation(); } }) : "") }
   ], KA_CHANGES);
@@ -3424,7 +3443,7 @@ function simulate() {
     const presumed = !fromData && !META.hasKa && r.kaIn !== null && !r.done && pic[r.unit] && kaList.includes(pic[r.unit]) ? pic[r.unit] : null;
     const lock = fromData ? { ka: fromData, rule: "Diproses KA", weight: 1, fixed: true } : tr ? { ka: tr.to, rule: "Dialihkan", weight: 1 } : saved && !(presumed && saved.rule !== "Sudah di KA" && saved.on > r.kaIn) ? saved : presumed ? { ka: presumed, rule: "Sudah di KA", weight: 1 } : saved;
     // (a KA saved by the DSS only counts if it was chosen before the CPR reached KA; chosen afterwards it was only a guess)
-    const replacedFrom = fromData && !r.done && kaChange(dataKaUser(r)) ? String(dataKaUser(r)).toLowerCase() : null;
+    const replacedFrom = fromData && kaStillOpen(r) && kaLeft(dataKaUser(r)) && fromData !== poKa({ ka: dataKaUser(r), kaName: null }).ka ? String(dataKaUser(r)).toLowerCase() : null;
     const [lo, hi] = f1Range(r);
     const c = {
       r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2, transfer: tr || null, rw: reworkList(r), replacedFrom,
