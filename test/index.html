@@ -384,6 +384,8 @@ body.locked #loginForm .btn { width: 100%; }
         <div class="tbl-wrap" style="max-height:520px;overflow:auto"><table id="tblOt"></table></div></div>
       <details class="capbox" id="twBox" hidden><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Sequence 8 about 2.4–3× Sequence 3, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
         <div class="capgrid"><label>Sequence 3<input type="number" id="twRec" min="0" step="0.1"></label><label>Sequence 8<input type="number" id="twMat" min="0" step="0.1"></label><label>Rework<input type="number" id="twRw" min="0" step="0.1"></label><label>× CPR &gt; Rp1 M<input type="number" id="twBig" min="1" step="0.1"></label></div></details></div>
+    <div class="card" id="rwDetail" style="margin-top:12px" hidden><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="rwDetTitle"></h3><div class="sub" id="rwDetSub"></div></div><button class="btn ghost" type="button" id="rwDetClose">Close</button></div>
+      <div class="tbl-wrap" style="max-height:480px;overflow:auto"><table id="tblRwDet"></table></div></div>
     <div class="section-title"><h2>Performance per KA</h2></div>
     <div class="card">
       
@@ -395,8 +397,6 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblKa"></table></div>
       <p class="note" id="rwCauseNote"></p>
     </div>
-    <div class="card" id="rwDetail" style="margin-top:12px" hidden><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="rwDetTitle"></h3><div class="sub" id="rwDetSub"></div></div><button class="btn ghost" type="button" id="rwDetClose">Close</button></div>
-      <div class="tbl-wrap" style="max-height:480px;overflow:auto"><table id="tblRwDet"></table></div></div>
     <div class="section-title"><h2>CPRs in and out per KA</h2></div>
     <div class="card" id="ioCard"><div class="filters" style="border:0;padding:0;margin:0 0 8px">
         <div class="field"><label for="ioBy">Period</label><select id="ioBy"><option value="month">Month</option><option value="week">Week</option></select></div>
@@ -2587,8 +2587,6 @@ function renderKaFromHistory(view) {
     { key: "n8", label: "Seq 8 done", num: true, render: (r) => fmtInt(r.n8) },
     { key: "w8", label: "Seq 8 avg days", num: true, render: (r) => fmtNum(r.w8, 1) },
     { key: "lv8", label: "Seq 8 days", num: true, sortable: false, render: (r) => lv8Cell(r.lv8) },
-    { key: "reworkRate", label: "Rework", num: true, render: (r) => { const t = (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 1) + "%") + ` (${fmtInt(r.rwCprs)}/${fmtInt(r.n8)})`; return r.rwEvents.length ? Object.assign(el("button", { class: "linkbtn", type: "button", title: "Show the reworked CPRs" }, t), { onclick: () => showReworkList(r) }) : t; } },
-    { key: "fixAvg", label: "Fix days", num: true, render: (r) => fmtNum(r.fixAvg, 1) }
   ], perf, perfSort);
   renderRework(rows);
   renderLoadTable(view);
@@ -2607,7 +2605,7 @@ function renderRework(rows) {
   );
   const unread = list.reduce((a, r) => a + r.rwEvents.filter((e) => e.cause === "?").length, 0);
   const renego = list.reduce((a, r) => a + r.nc.E, 0);
-  $("rwCauseNote").textContent = "Days = working days (weekends and holidays not counted). Seq 3 target ≤ 1 day; Seq 8 ≤ 5 green, 6–14 yellow, > 14 red. Fix days = average days to fix a rework. Rework = sent back by Purchasing Head HO / Director, every cause except renego / nego ulang" + (renego ? ` (${fmtInt(renego)} renego not counted)` : "") + ". Click a rework number to see the CPRs." + (unread ? ` ${fmtInt(unread)} reworks are not classified yet: upload CPRHistory again.` : "");
+  $("rwCauseNote").textContent = "Days = working days (weekends and holidays not counted). Seq 3 target ≤ 1 day; Seq 8 ≤ 5 green, 6–14 yellow, > 14 red." + (unread ? ` ${fmtInt(unread)} reworks are not classified yet: upload CPRHistory again.` : "");
   const cprsOf = (r) => [...new Set(r.rwEvents.filter((e) => e.cause === "K" || e.cause === "?").map((e) => e.r.cpr))];
   barChartH($("chRw"), list.map((r) => `${r.name} (${r.rwCprs}/${r.n8})`), [{ name: "Rework rate (%)", color: "var(--s2)", values: list.map((r) => r.reworkRate ?? 0) }], { dec: 1, label: "Rework rate per KA (%)",
     tipRows: (i) => { const c = cprsOf(list[i]); return [...c.slice(0, 8).map((cpr) => ({ value: cpr, label: "" })), ...(c.length ? [{ value: "", label: c.length > 8 ? `+${c.length - 8} more · click to see all` : "click to see the details" }] : [])]; },
@@ -2621,7 +2619,6 @@ function renderRework(rows) {
     { key: "ncE", label: "Renego (exception, not counted)", num: true, render: (r) => fmtInt(r.nc.E) }
   ], list);
   RW_ROWS = list;
-  if (RW_OPEN) { const again = list.find((r) => r.ka === RW_OPEN); if (again) showReworkList(again, true); else $("rwDetail").hidden = true; }
 }
 // list of the reworked CPRs of one KA (click a bar or a KA name)
 let RW_ROWS = [], RW_OPEN = null;
@@ -2631,7 +2628,7 @@ function showReworkList(row, keepScroll) {
   $("rwDetTitle").textContent = `Reworks of ${row.name}`;
   const counted = (e) => e.cause === "K" || e.cause === "?";
   const ev = row.rwEvents.slice().sort((a, b) => counted(b) - counted(a) || b.start - a.start);
-  $("rwDetSub").textContent = `${fmtInt(ev.length)} times sent back in the selected period: ${fmtInt(ev.filter(counted).length)} counted as KA error, ${fmtInt(ev.length - ev.filter(counted).length)} not counted. Click a CPR number to see its approval steps and the approver's note.`;
+  $("rwDetSub").textContent = `${fmtInt(ev.length)} times sent back (${row.period || "selected period"}): ${fmtInt(ev.filter(counted).length)} counted as KA error, ${fmtInt(ev.length - ev.filter(counted).length)} not counted. Click a CPR number to see its approval steps and the approver's note.`;
   renderTable($("tblRwDet"), [
     { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (e) => cprLink(e.r.cpr) },
     { key: "unit", label: "Hospital", sortable: false, render: (e) => e.r.unit || "–" },
@@ -4681,16 +4678,17 @@ const RW_WINDOW = 90, RW_WAIT = 14;
 const RW_REFRESH = 14, RW_ANCHOR = isoToDay("2026-01-05");
 const rwRefreshDay = (D) => (D === null ? null : RW_ANCHOR + Math.floor((D - RW_ANCHOR) / RW_REFRESH) * RW_REFRESH);
 function reworkRates() {
-  const D = rwRefreshDay(dataDate()), cnt = {}, n = {};
+  const D = rwRefreshDay(dataDate()), cnt = {}, n = {}, ev = {};
   if (D === null) return { rate: {}, n: {}, team: 0 };
   for (const r of RECS) {
     const s8 = r.backOutFirst ?? r.backOut; if (s8 === null || s8 === undefined || s8 > D - RW_WAIT || s8 < D - RW_WAIT - RW_WINDOW) continue;
     const k = userKa(r.ka8User || r.kaUser); if (!k) continue;
-    n[k] = (n[k] || 0) + 1; if (reworkList(r).some((e) => e.cause === "K" || e.cause === "?")) cnt[k] = (cnt[k] || 0) + 1;
+    n[k] = (n[k] || 0) + 1; const rl = reworkList(r); if (rl.some((e) => e.cause === "K" || e.cause === "?")) cnt[k] = (cnt[k] || 0) + 1;
+    for (const e of rl) (ev[k] = ev[k] || []).push({ r, ...e });
   }
   const N = Object.values(n).reduce((a, c) => a + c, 0), C = Object.values(cnt).reduce((a, c) => a + c, 0), team = N ? C / N : 0;
   const rate = {}; for (const k of Object.keys(n)) rate[k] = ((cnt[k] || 0) + 20 * team) / (n[k] + 20);
-  return { rate, n, team, raw: cnt, asOf: D, next: D + RW_REFRESH };
+  return { rate, n, team, raw: cnt, ev, from: D - RW_WAIT - RW_WINDOW, to: D - RW_WAIT, asOf: D, next: D + RW_REFRESH };
 }
 // open task of a CPR for its KA (the KA who approved Sequence 3 keeps the CPR until the end):
 //   rec = Sequence 3 waiting for the KA, mat = Sequence 8 waiting for the KA, rw = sent back (rework), not approved again,
@@ -4763,7 +4761,7 @@ function renderTaskLoad() {
   for (const t of ot) { if (t.age !== null && t.age > 7) old[t.ka] = (old[t.ka] || 0) + 1; if (t.risk && t.risk.level === "High") high[t.ka] = (high[t.ka] || 0) + 1; }
   const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin, work: per[ka].mat + per[ka].rw, open: per[ka].mat + per[ka].rw + per[ka].fin, res: SIM.reserve && SIM.reserve[ka] ? SIM.reserve[ka] : null, lv3: lvCount(run3[ka], 3), lv8: lvCount(run8[ka], 8), tat3: mean(run3[ka] || []), tat8: mean(run8[ka] || []), max3: run3[ka] ? Math.max(...run3[ka]) : null, max8: run8[ka] ? Math.max(...run8[ka]) : null })).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.open - a.open || b.work - a.work));
   const rr = reworkRates();
-  $("subTask").textContent = `Data as of ${D !== null ? fmtDay(D) : "–"}. Open tasks = Sequence 8 not done + rework + waiting at Purchasing Head HO / Director (may still come back as rework). Seq 8 days so far: ≤ 5 green, 6–14 yellow, > 14 red (working days). Daily limit = limit − rework reserve (hover a number). Rework rate (used for the daily limit) as of ${rr.asOf !== undefined ? fmtDay(rr.asOf) : "–"}, next refresh ${rr.next !== undefined ? fmtDay(rr.next) : "–"}.`;
+  $("subTask").textContent = `Data as of ${D !== null ? fmtDay(D) : "–"}. Open tasks = Sequence 8 not done + rework + waiting at Purchasing Head HO / Director (may still come back as rework). Seq 8 days so far: ≤ 5 green, 6–14 yellow, > 14 red (working days). Daily limit = limit − rework reserve (hover a number). Rework rate = CPRs sent back by Purchasing Head HO / Director for a KA error (all causes except renego / nego ulang) ÷ CPRs approved at Seq 8 from ${rr.from !== undefined ? fmtDay(rr.from) : "–"} to ${rr.to !== undefined ? fmtDay(rr.to) : "–"}; the % is smoothed toward the team rate and used for the daily limit. Click it to see the CPRs. Rate as of ${rr.asOf !== undefined ? fmtDay(rr.asOf) : "–"}, next refresh ${rr.next !== undefined ? fmtDay(rr.next) : "–"}.`;
   $("lgTask").innerHTML = [["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"], ["Waiting at PH HO / Director", "var(--line-strong)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
   const W = TL_ON.weights;
   barChartH($("chTask"), kas.map((k) => `${k.name} (${k.open})`), [
@@ -4778,12 +4776,14 @@ function renderTaskLoad() {
     { key: "fin", label: "Waiting PH HO / Dir.", num: true, render: (r) => fmtInt(r.fin) },
     { key: "open", label: "Open tasks", num: true, render: (r) => el("b", {}, fmtInt(r.open)) },
     { key: "lv8", label: "Seq 8 days so far", num: true, sortable: false, render: (r) => lvCell(r.lv8, 8) },
-    { key: "rate", label: "Rework rate", num: true, render: (r) => (r.res ? fmtNum(r.res.rate * 100, 1) + "%" : "–") },
+    { key: "rate", label: "Rework rate", num: true, render: (r) => { if (!r.res) return "–"; const raw = rr.raw[r.ka] || 0, n = rr.n[r.ka] || 0, t = `${fmtNum(r.res.rate * 100, 1)}% (${fmtInt(raw)}/${fmtInt(n)})`;
+      return (rr.ev[r.ka] || []).length ? Object.assign(el("button", { class: "linkbtn", type: "button", title: "Show the reworked CPRs behind this rate" }, t), { onclick: () => showReworkList({ ka: r.ka, name: r.name, rwEvents: rr.ev[r.ka], period: `Sequence 8 approved ${fmtDay(rr.from)} – ${fmtDay(rr.to)}` }) }) : t; } },
     { key: "lim", label: "Daily limit", num: true, render: (r) => (r.res ? el("span", { title: `Limit ${fmtNum(SIM.maxPerDay * capOf(r.ka), 0)} − rework reserve ${fmtNum(r.res.reserve, 1)} (${fmtInt(r.res.waiting)} waiting × ${fmtNum(r.res.rate * 100, 1)}%)` }, fmtNum(SIM.maxPerDay * capOf(r.ka) - r.res.reserve, 1)) : "–") },
     ...(TL_ON.weights ? [{ key: "total", label: "Weighted load", num: true, render: (r) => fmtNum(r.total, 1) }] : []),
     ...(TL_ON.age ? [{ key: "old", label: "Open > 7 days", num: true, render: (r) => fmtInt(r.old) }] : []),
     ...(TL_ON.risk ? [{ key: "high", label: "High rework risk", num: true, render: (r) => (RISK ? fmtInt(r.high) : "–") }] : []),
   ], kas);
+  if (RW_OPEN) { const k = kas.find((x) => x.ka === RW_OPEN); if (k && (rr.ev[k.ka] || []).length) showReworkList({ ka: k.ka, name: k.name, rwEvents: rr.ev[k.ka], period: `Sequence 8 approved ${fmtDay(rr.from)} – ${fmtDay(rr.to)}` }, true); else $("rwDetail").hidden = true; }
   if (OT_OPEN) { if (kas.some((k) => k.ka === OT_OPEN)) showOpenTasks(OT_OPEN); else $("otDetail").hidden = true; }
 }
 // ---------- capacity per KA (% of a full CPR-review load) ----------
