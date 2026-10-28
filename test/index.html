@@ -1343,24 +1343,17 @@ async function loadCatalog() {
   } catch {}
 }
 // rework episodes stored as "start:end:who;..." (who: D = Purchasing Director, H = Purchasing Head HO; end empty = still open)
-// cause of a rework, read from the approver's note when the CPR is sent back (supervisor's rules):
-//   K = KA error, counted in KA performance: difference in the TRF (also "revisi TRF" without a reason), PPN missing / double,
-//       wrong or missing attachment, price in the portal different from the TRF
-//   E = exception, not counted: renegotiation ("renego" / "nego" in the note)
-//   P = not decided yet (additional discount, new / final / latest price): not counted for now
-//   U = unclear (vendor change, spec, hold, TOP, other or no note): not counted for now
-const RW_CAUSE = { K: "KA error", E: "Exception · renego", P: "Discount / new price (not decided)", U: "Unclear" };
-const RW_CAUSE_KIND = { K: "bad", E: "muted", P: "info", U: "warn" };
+// cause of a rework, read from the approver's note when the CPR is sent back (supervisor's rule):
+//   E = exception, not counted in KA performance: renegotiation ("renego" / "nego" in the note)
+//   K = KA error, counted: every other reason (TRF difference, PPN, attachment, price, discount, vendor, no note, ...)
+const RW_CAUSE = { K: "KA error", E: "Exception · renego" };
+const RW_CAUSE_KIND = { K: "bad", E: "muted" };
 function reworkCause(note) {
   const t = String(note || "").toLowerCase();
   if (/reneg|re-neg|\bnego/.test(t)) return { code: "E", why: "renegotiation" };
-  if (/ppn|pajak/.test(t)) return { code: "K", why: "PPN" };
-  if (/selisih|salah|tidak sesuai|tdk sesuai|tidak sama|tdk sama|berbeda|\bbeda\b|keliru|portal|lampir|attach|lengkapi/.test(t)) return { code: "K", why: "difference / attachment" };
-  if (/disk|disc|harga (baru|final|terakhir|terbaru)|hrg (baru|final|terakhir)|penawaran (final|terakhir|terbaru)|harga finalnya/.test(t)) return { code: "P", why: "discount / new price" };
-  if (/\btr[fv]\b/.test(t)) return { code: "K", why: "TRF revision" };
-  return { code: "U", why: t.trim() ? "other" : "no note" };
+  return { code: "K", why: "other than renego" };
 }
-const reworkList = (r) => (r.rwk ? String(r.rwk).split(";").map((x) => { const [a, b, w, c] = x.split(":"); return { start: Number(a), end: b === "" ? null : Number(b), who: w === "D" ? "Purchasing Director" : "Purchasing Head HO", cause: c || "?" }; }) : []);
+const reworkList = (r) => (r.rwk ? String(r.rwk).split(";").map((x) => { const [a, b, w, c] = x.split(":"); return { start: Number(a), end: b === "" ? null : Number(b), who: w === "D" ? "Purchasing Director" : "Purchasing Head HO", cause: c === "E" ? "E" : c ? "K" : "?" }; }) : []);
 // reworks that count against the KA (KA error only); the others stay visible but do not lower the KA's performance
 const kaReworks = (r) => reworkList(r).filter((e) => e.cause === "K");
 const inRework = (r) => !!(r.stage && String(r.stage).startsWith("At Key Account – Rework"));
@@ -2533,11 +2526,11 @@ function renderRework(rows) {
     tile("Sent back by", "", "", `Purchasing Head HO ${fmtInt(list.reduce((a, r) => a + r.byH, 0))}× · Purchasing Director ${fmtInt(list.reduce((a, r) => a + r.byD, 0))}×`),
     tile("Still in rework", fmtInt(list.reduce((a, r) => a + r.rwOpen, 0)), "CPRs", "sent back and not yet approved again by the KA"),
     tile("Days to fix (avg)", allFix.length ? fmtNum(mean(allFix)) : "–", "days", "until the KA approves it again"),
-    tile("Not counted against the KA", fmtInt(list.reduce((a, r) => a + r.nc.E + r.nc.P + r.nc.U, 0)), "times", `renego ${fmtInt(list.reduce((a, r) => a + r.nc.E, 0))} · discount / new price (not decided) ${fmtInt(list.reduce((a, r) => a + r.nc.P, 0))} · unclear ${fmtInt(list.reduce((a, r) => a + r.nc.U, 0))}`)
+    tile("Renego (not counted)", fmtInt(list.reduce((a, r) => a + r.nc.E, 0)), "times", "sent back for renegotiation: shown in the approval steps but not counted against the KA")
   );
   const unread = list.reduce((a, r) => a + r.rwEvents.filter((e) => e.cause === "?").length, 0);
   $("rwCauseNote").textContent = (unread ? `${fmtInt(unread)} reworks were uploaded before the causes were read and are still counted; upload CPRHistory again to classify them. ` : "")
-    + "Counted as KA rework (KA error): a difference in the TRF (also \"revisi TRF\" without a reason), PPN missing or double, a wrong or missing attachment, or a price in the portal different from the TRF. Not counted: renegotiation (exception); additional discount or new / final price (not decided yet); other or unclear notes. Read from the approver's note when the CPR is sent back.";
+    + "Every rework counts as a KA error except renegotiation (\"renego\" / \"nego\" in the approver's note when the CPR is sent back), which is an exception and does not lower the KA's performance.";
   const cprsOf = (r) => [...new Set(r.rwEvents.filter((e) => e.cause === "K" || e.cause === "?").map((e) => e.r.cpr))];
   barChartH($("chRw"), list.map((r) => `${r.name} (${r.rwCprs}/${r.n8})`), [{ name: "Rework rate (%)", color: "var(--s2)", values: list.map((r) => r.reworkRate ?? 0) }], { dec: 1, label: "Rework rate per KA (%)",
     tipRows: (i) => { const c = cprsOf(list[i]); return [...c.slice(0, 8).map((cpr) => ({ value: cpr, label: "" })), ...(c.length ? [{ value: "", label: c.length > 8 ? `+${c.length - 8} more · click to see all` : "click to see the details" }] : [])]; },
@@ -2548,9 +2541,7 @@ function renderRework(rows) {
     { key: "reworkRate", label: "Rework rate", num: true, render: (r) => (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 1) + "%") },
     { key: "fixAvg", label: "Days to fix (avg)", num: true, render: (r) => fmtNum(r.fixAvg) },
     { key: "rwOpen", label: "Still in rework", num: true, render: (r) => fmtInt(r.rwOpen) },
-    { key: "ncE", label: "Renego (exception)", num: true, render: (r) => fmtInt(r.nc.E) },
-    { key: "ncP", label: "Discount / new price", num: true, render: (r) => fmtInt(r.nc.P) },
-    { key: "ncU", label: "Unclear", num: true, render: (r) => fmtInt(r.nc.U) }
+    { key: "ncE", label: "Renego (exception, not counted)", num: true, render: (r) => fmtInt(r.nc.E) }
   ], list);
   RW_ROWS = list;
   if (RW_OPEN) { const again = list.find((r) => r.ka === RW_OPEN); if (again) showReworkList(again, true); else $("rwDetail").hidden = true; }
