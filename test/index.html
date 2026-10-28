@@ -2339,8 +2339,8 @@ function renderIo() {
   const pick = (d, t) => inP.filter((e) => wd(e[0]) === d && e[2] === t && (ksel.value ? e[1] === ksel.value : kas.includes(e[1]))).length;
   const ins = days.map((d) => pick(d, "in")), outs = days.map((d) => pick(d, "out"));
   const aIn = mean(ins) ?? 0, aOut = mean(outs) ?? 0;
-  $("lgIo").innerHTML = `<span><i class="line" style="background:var(--s1)"></i>In (avg ${fmtNum(aIn, 1)}/day)</span><span><i class="line" style="background:var(--s3)"></i>Out (avg ${fmtNum(aOut, 1)}/day)</span>`;
-  lineChart($("chIo"), days, [{ name: "In", color: "var(--s1)", values: ins }, { name: "Out", color: "var(--s3)", values: outs }],
+  $("lgIo").innerHTML = `<span><i class="line" style="background:var(--s1)"></i>In (avg ${fmtNum(aIn, 1)}/day)</span><span><i class="line" style="background:var(--s2)"></i>Out (avg ${fmtNum(aOut, 1)}/day)</span>`;
+  lineChart($("chIo"), days, [{ name: "In", color: "var(--s1)", values: ins }, { name: "Out", color: "var(--s2)", values: outs }],
     { tickLabel: fmtShort, tipLabel: (d) => fmtDay(d) + " · CPRs", label: "CPRs in and out per working day" });
   const f1 = (x) => fmtNum(x, 1);
   const estIn = inP.filter((e) => e[2] === "in" && !e[3] && (ksel.value ? e[1] === ksel.value : kas.includes(e[1]))).length;
@@ -2351,13 +2351,13 @@ function renderIo() {
     const cntOf = (d, t, ka, exactOnly) => inP.filter((e) => e[0] === d && e[2] === t && (ka ? e[1] === ka : kk.includes(e[1])) && (exactOnly === undefined || e[3] === exactOnly)).length;
     let run = kk.reduce((a, k) => a + Math.max(0, openBefore(k)), 0);
     const drows = dates.map((d) => { const i = cntOf(d, "in"), o = cntOf(d, "out"); run += i - o - cntOf(d, "close"); return { d, i, o, est: cntOf(d, "in", null, false), open: Math.max(0, run), wk: weekday(d) >= 5 }; });
-    const avgRow = { avg: true, i: mean(drows.filter((r) => !r.wk).map((r) => r.i)) ?? 0, o: mean(drows.filter((r) => !r.wk).map((r) => r.o)) ?? 0 };
+    // weekend movements are included, spread over the working days (same as the chart)
+    const nWd = Math.max(1, drows.filter((r) => !r.wk).length);
+    const avgRow = { avg: true, i: drows.reduce((a, r) => a + r.i, 0) / nWd, o: drows.reduce((a, r) => a + r.o, 0) / nWd };
     renderTable($("tblIo"), [
       { key: "d", label: "Date", sortable: false, render: (r) => (r.avg ? el("b", {}, "Average per working day") : el("span", { style: r.wk ? "color:var(--muted)" : "" }, `${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][weekday(r.d)]} ${fmtDay(r.d)}`)) },
       { key: "i", label: "In", num: true, sortable: false, render: (r) => (r.avg ? el("b", {}, fmtNum(r.i, 1)) : fmtInt(r.i)) },
-      { key: "est", label: "of which date estimated", num: true, sortable: false, render: (r) => (r.avg ? "" : r.est ? pill(fmtInt(r.est), "warn") : "–") },
       { key: "o", label: "Out", num: true, sortable: false, render: (r) => (r.avg ? el("b", {}, fmtNum(r.o, 1)) : fmtInt(r.o)) },
-      { key: "net", label: "In − out", num: true, sortable: false, render: (r) => { const n = r.i - r.o; return el("span", { style: `color:${n > 0 ? "var(--warn)" : n < 0 ? "var(--good)" : "var(--muted)"}` }, (n > 0 ? "+" : "") + (r.avg ? fmtNum(n, 1) : fmtInt(n))); } },
       { key: "open", label: "Open at end of day", num: true, sortable: false, render: (r) => (r.avg ? "" : fmtInt(r.open)) },
       ...(ksel.value ? [] : kas.map((k) => ({ key: "k" + k, label: kaLabel(k) + " in / out", num: true, sortable: false, render: (r) => (r.avg ? "" : (() => { const a = cntOf(r.d, "in", k), b = cntOf(r.d, "out", k); return a || b ? `${a} / ${b}` : "–"; })()) })))
     ], [avgRow, ...drows]);
@@ -2367,15 +2367,13 @@ function renderIo() {
     { key: "open0", label: "Open at start", num: true, sortable: false, render: (r) => (r.avg ? f1(r.open0) : fmtInt(r.open0)) },
     { key: "in", label: "In", num: true, sortable: false, render: (r) => (r.avg ? f1(r.in) : fmtInt(r.in)) },
     { key: "out", label: "Out", num: true, sortable: false, render: (r) => (r.avg ? f1(r.out) : fmtInt(r.out)) },
-    { key: "net", label: "In − out", num: true, sortable: false, render: (r) => el("span", { style: `color:${r.net > 0 ? "var(--warn)" : "var(--good)"}` }, (r.net > 0 ? "+" : "") + (r.avg ? f1(r.net) : fmtInt(r.net))) },
     { key: "open1", label: "Open at end", num: true, sortable: false, render: (r) => (r.avg ? f1(r.open1) : fmtInt(r.open1)) },
     { key: "avgIn", label: "Avg in / day", num: true, sortable: false, render: (r) => f1(r.avgIn) },
     { key: "avgOut", label: "Avg out / day", num: true, sortable: false, render: (r) => el("b", {}, f1(r.avgOut)) },
     { key: "best", label: "Most out in one day", num: true, sortable: false, render: (r) => (r.best === null ? "–" : fmtInt(r.best)) },
     { key: "clear", label: "Out ÷ in", num: true, sortable: false, render: (r) => (r.clear === null ? "–" : fmtNum(r.clear * 100, 0) + "%") }
   ], [team, ...(perKaAvg ? [perKaAvg] : []), ...rows]);
-  $("ioNote").textContent = (estIn ? `${fmtInt(estIn)} "in" in this period have no time stamp in CPRHistory (the step is known only from CPRSummary), so their date is estimated from the CPR's last activity and marked in the "of which date estimated" column. ` : "All dates in this period come from the time stamps in CPRHistory. ")
-    + "Averages are per working day (Monday–Friday) of the period; in the chart and the per-KA table a CPR received or approved on a weekend is counted on the next working day; the per-date table shows the real date. In − out above 0 = the KA received more than finished, so the queue grew; out ÷ in below 100% means the same. Open = CPRs received but not finished yet; a CPR rejected, inactive for more than 30 days or dismissed leaves the open CPRs on its last activity but is not counted as \"out\". Click a Key Account to show it in the chart.";
+  $("ioNote").textContent = "Averages are per working day (Monday–Friday) of the period; in the chart and the per-KA table a CPR received or approved on a weekend is counted on the next working day; the per-date table shows the real date. Out ÷ in below 100% = the KA received more than finished, so the queue grew. Open = CPRs received but not finished yet; a CPR rejected, inactive for more than 30 days or dismissed leaves the open CPRs on its last activity but is not counted as \"out\". Click a Key Account to show it in the chart.";
   IO_ROWS = { days, kas, inP, label: k0, wd };
 }
 let IO_ROWS = null;
