@@ -440,7 +440,7 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="section-title"><h2>CPRs requiring action</h2><p id="asOfNote"></p></div>
     <div class="filters" style="margin-top:0">
       <div class="field"><label for="actFilter">Show</label><select id="actFilter">
-        <option value="">All active items</option><option value="late">Overdue in KA Sequence 3</option><option value="post">Pending with approver (after KA)</option><option value="stale">Auto-rejected (no progress &gt; 30 days)</option><option value="ignored">Dismissed</option></select></div>
+        <option value="">All active items</option><option value="late">Sequence 3 overdue (&gt; 1 working day)</option><option value="late8">Sequence 8 overdue (&gt; 14 working days)</option><option value="warn8">Sequence 8 warning (6–14 working days)</option><option value="rework">In rework</option><option value="stale">Auto-rejected (no progress &gt; 30 days)</option><option value="ignored">Dismissed</option></select></div>
       <div class="field"><label for="actKa">KA</label><select id="actKa"></select></div>
       <button class="btn ghost" id="actIgnoreAll" type="button" hidden>Dismiss all shown</button>
     </div>
@@ -1271,13 +1271,14 @@ function ovRows() {
     return { ...x, status: auto ? "Rejected (auto, no progress > 30 days)" : x.status, stage: (r && r.stage) || x.stage, pos: (r && posLabel(r)) || x.pos || null, erp: x.erp || (r && r.erp) || null, ka: c ? c.ka : null, inQueue: !!r }; });
 }
 function renderLateAlert() {
-  const items = SIM ? actionItems().filter((x) => x.type === "late" || x.type === "pre" || x.type === "post") : [];
-  const tab = $("tab-spv"); tab.replaceChildren("Supervisor Control"); if (items.length) tab.append(el("span", { class: "cnt", title: "CPRs that need attention" }, fmtInt(items.length)));
+  const items = SIM ? actionItems().filter((x) => ["late", "late8", "warn8", "rework"].includes(x.type)) : [];
+  const urgent = items.filter((x) => x.type !== "warn8").length;   // the tab badge counts overdue + rework only
+  const tab = $("tab-spv"); tab.replaceChildren("Supervisor Control"); if (urgent) tab.append(el("span", { class: "cnt", title: "Overdue or in rework" }, fmtInt(urgent)));
   const bar = $("ovAlert"); bar.hidden = !items.length; if (!items.length) return;
   const n = (t) => items.filter((x) => x.type === t).length;
   const go = (f) => { showTab("spv"); $("actFilter").value = f; renderSpv(); };
   const link = (t, f) => { const a = el("a", { role: "button", tabIndex: 0 }, t); a.onclick = () => go(f); a.onkeydown = (e) => { if (e.key === "Enter") go(f); }; return a; };
-  bar.replaceChildren(el("b", {}, `${fmtInt(items.length)} CPRs are late`), ...[["late", "Sequence 3 overdue"], ["pre", "delayed before KA"], ["post", "pending with approver"]].filter(([t]) => n(t)).map(([t, l]) => link(`${n(t)} ${l}`, t)),
+  bar.replaceChildren(el("b", {}, `${fmtInt(items.length)} CPRs need attention`), ...[["late", "Sequence 3 overdue"], ["late8", "Sequence 8 overdue"], ["warn8", "Sequence 8 warning"], ["rework", "in rework"]].filter(([t]) => n(t)).map(([t, l]) => link(`${n(t)} ${l}`, t)),
     el("span", { class: "grow" }), el("span", { class: "note", style: "margin:0" }, `data as of ${fmtDay(dataDate())}`));
 }
 function renderOverview() {
@@ -4007,34 +4008,40 @@ function dataDate() { // the latest date seen in the data (CPRHistory or PO Data
   for (const r of RECS) for (const k of ["create", "kaIn", "kaOut", "back", "backOut", "lastAct"]) if (r[k] !== null && r[k] !== undefined && (m === null || r[k] > m)) m = r[k];
   return m;
 }
-// Supervisor Control only follows CPRs that reached Sequence 3 (arrived at the KA) or later; Sequence 0–2 is ignored there
+// Supervisor Control follows only what the KA holds: Sequence 3, Sequence 8 and rework (TAT in working days)
+//   Sequence 3: target 1 working day   ·   Sequence 8: 6–14 working days = warning, more than 14 = overdue
+//   Rework: every CPR sent back and not approved again   ·   Auto-rejected: no progress > 30 days while at one of these steps
 const reachedKa = (r) => (r.kaIn !== null && r.kaIn !== undefined) || ((r.backFirst ?? r.back) !== null && (r.backFirst ?? r.back) !== undefined) || (r.kaOut !== null && r.kaOut !== undefined);
+const atKaStep = (r) => inRework(r) || /Key Account|Purchasing HO/i.test((posLabel(r) || fallbackPos(r) || "").replace(/Purchasing Head HO/i, ""));
 function actionItems() {
   if (!SIM) return [];
   const D = dataDate(), out = [];
   for (const c of SIM.assigned) {
-    const r = c.r; if (r.backOut !== null || r.done || !reachedKa(r)) continue;
-    if (!IGNORED[r.cpr] && isInactive(r)) { const AD = activityDate(), last = lastActivity(r); out.push({ c, type: "stale", days: AD - last, status: `No progress for ${AD - last} days (last activity ${fmtDay(last)}); rejected automatically. Not counted as KA workload.`, where: posLabel(r) || fallbackPos(r), canMove: false }); continue; }
-    // without a progress update after the CPR entered KA, its status is unknown: not a problem yet
-    if (!r.prog || D === null || D < (r.kaIn ?? r.create)) continue;
-    if (IGNORED[r.cpr]) { out.push({ c, type: "ignored", days: 0, status: `Dismissed ${fmtStamp(IGNORED[r.cpr].at)}`, where: "–", canMove: false }); continue; }
+    const r = c.r; if (r.backOut !== null && !inRework(r) || D === null) continue;
     const where = `${posLabel(r) || fallbackPos(r)}${r.stageSince !== null && r.stageSince !== undefined ? " since " + fmtShort(r.stageSince) : ""}`;
-    if (r.kaIn !== null && r.kaOut === null) {
-      const d = D - r.kaIn; if (d > 3) out.push({ c, type: "late", days: d, status: `Sequence 3 not completed after ${d} days`, where: "Key Account HO", canMove: true });
-    } else if (r.kaIn === null) {
-      // with the requester (returned for revision): the delay is not the approvers', so no alert
-      if (/^Sequence 0 : Requester/.test(posLabel(r) || "")) continue;
-      const due = (c.base1 ?? r.create) + (c.f1Hi ?? c.f1); const d = D - due;
-      if (d > 0) out.push({ c, type: "pre", days: d, status: `Not yet at KA, ${d} days past the end of the forecast range (${fmtDay(due)})`, where, canMove: true });
-    } else if (r.kaOut !== null && r.back === null) {
-      const lim = c.f2Hi ?? c.f2P80, d = D - r.kaOut;
-      if (d > lim) out.push({ c, type: "post", days: d - lim, status: `Awaiting approver for ${d} days; expected back at KA by ${fmtDay(r.kaOut + lim)} (end of the forecast range)`, where, canMove: true });
+    if (!IGNORED[r.cpr] && isInactive(r)) {
+      if (!reachedKa(r) || !atKaStep(r)) continue;
+      const AD = activityDate(), last = lastActivity(r);
+      out.push({ c, type: "stale", days: AD - last, status: `No progress for ${AD - last} days (last activity ${fmtDay(last)}); rejected automatically. Not counted as KA workload.`, where, canMove: false }); continue;
+    }
+    const task = taskOf(r); if (!task || task === "fin") continue;
+    if (IGNORED[r.cpr]) { out.push({ c, type: "ignored", days: 0, status: `Dismissed ${fmtStamp(IGNORED[r.cpr].at)}`, where, canMove: false }); continue; }
+    if (task === "rec") {
+      const d = workDaysBetween(r.kaIn, D);
+      if (d > TAT_LIMIT.s3) out.push({ c, type: "late", days: d, status: `At Sequence 3 for ${d} working days (target ${TAT_LIMIT.s3})`, where, canMove: true });
+    } else if (task === "mat") {
+      const b8 = r.backFirst ?? r.back, d = workDaysBetween(b8, D);
+      if (d > TAT_LIMIT.s8bad) out.push({ c, type: "late8", days: d, status: `At Sequence 8 for ${d} working days (more than ${TAT_LIMIT.s8bad})`, where, canMove: false });
+      else if (d > TAT_LIMIT.s8warn) out.push({ c, type: "warn8", days: d, status: `At Sequence 8 for ${d} working days (more than ${TAT_LIMIT.s8warn})`, where, canMove: false });
+    } else if (task === "rw") {
+      const e = reworkList(r).filter((x) => x.end === null).slice(-1)[0], st = e ? e.start : r.stageSince, d = st !== null && st !== undefined ? workDaysBetween(st, D) : 0;
+      out.push({ c, type: "rework", days: d, status: `Sent back${e ? " by " + e.who : ""}${st !== null && st !== undefined ? " on " + fmtDay(st) : ""}; ${d} working days in rework${e && e.cause === "E" ? " (renego, not counted)" : ""}`, where, canMove: false });
     }
   }
   return out.sort((a, b) => b.days - a.days);
 }
-const actKind = { late: "bad", pre: "warn", post: "serious", stale: "muted", ignored: "muted" };
-const actLabel = { late: "Sequence 3 overdue", pre: "Delayed before KA", post: "Pending with approver", stale: "Auto-rejected", ignored: "Dismissed" };
+const actKind = { late: "bad", late8: "bad", warn8: "warn", rework: "serious", stale: "muted", ignored: "muted" };
+const actLabel = { late: "Sequence 3 overdue", late8: "Sequence 8 overdue", warn8: "Sequence 8 warning", rework: "In rework", stale: "Auto-rejected", ignored: "Dismissed" };
 function kaLoadOn(ka, day) { if (!SIM) return null; const k = SIM.kaList.indexOf(ka); return k < 0 ? null : SIM.load[k][day - SIM.minDay] || 0; }
 function renderSpv() {
   const editable = canSave() && !IS_SAMPLE;
@@ -4049,11 +4056,12 @@ function renderSpv() {
   const items = actionItems();
   const week = Date.now() - 7 * 864e5;
   $("spvTiles").replaceChildren(
-    tile("CPRs in progress", fmtInt(SIM ? SIM.assigned.filter((c) => reachedKa(c.r) && c.r.backOut === null && !c.r.done && !IGNORED[c.r.cpr]).length : 0), "", "from Sequence 3; Sequence 8 not yet completed"),
-    tile("Completed", fmtInt(SIM ? SIM.assigned.filter((c) => reachedKa(c.r) && c.r.done).length : 0), "CPRs", "converted into PO, Sequence 8 completed, or rejected"),
-    tile("Sequence 3 overdue", fmtInt(items.filter((x) => x.type === "late").length), "CPRs", "more than 3 days at KA"),
-    tile("Pending with approver", fmtInt(items.filter((x) => x.type === "post").length), "CPRs", "after KA Sequence 3, past the end of the return forecast range"),
-    tile("Auto-rejected", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `no progress > ${STALE_DAYS} days at any sequence; not counted as workload, data kept`),
+    tile("At KA now", fmtInt(SIM ? SIM.assigned.filter((c) => ["rec", "mat", "rw"].includes(taskOf(c.r))).length : 0), "CPRs", "Sequence 3, Sequence 8 or rework"),
+    tile("Sequence 3 overdue", fmtInt(items.filter((x) => x.type === "late").length), "CPRs", `more than ${TAT_LIMIT.s3} working day`),
+    tile("Sequence 8 warning", fmtInt(items.filter((x) => x.type === "warn8").length), "CPRs", `${TAT_LIMIT.s8warn + 1}–${TAT_LIMIT.s8bad} working days`),
+    tile("Sequence 8 overdue", fmtInt(items.filter((x) => x.type === "late8").length), "CPRs", `more than ${TAT_LIMIT.s8bad} working days`),
+    tile("In rework", fmtInt(items.filter((x) => x.type === "rework").length), "CPRs", "sent back, not approved again"),
+    tile("Auto-rejected", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `no progress > ${STALE_DAYS} days at Sequence 3, 8 or rework`),
     tile("KAs absent today", fmtInt(new Set(ABSENCES.filter((a) => today >= a.from && today <= a.to).map((a) => a.ka)).size), "people", ""),
     tile("Reassignments (last 7 days)", fmtInt(activeTransfers().filter((t) => Date.parse(t.at) >= week).length), "", `${fmtInt(activeTransfers().filter((t) => t.by === "SPV").length)} by supervisor in total`)
   );
