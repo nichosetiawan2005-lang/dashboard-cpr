@@ -403,6 +403,7 @@ body.locked #loginForm .btn { width: 100%; }
         <div class="field"><label for="ioKa">Key Account</label><select id="ioKa"></select></div>
         <div class="field"><label for="ioView">Table</label><select id="ioView"><option value="day">Per date</option><option value="ka">Per Key Account</option></select></div>
         <button class="btn ghost" type="button" id="ioCopy">Copy daily table</button>
+        <button class="btn" type="button" id="ioReport">Download monthly report (Excel)</button>
       </div>
       <div class="sub" id="ioSub"></div>
       <div class="legend" id="lgIo"></div><div class="chart" id="chIo"></div>
@@ -507,7 +508,7 @@ body.locked #loginForm .btn { width: 100%; }
       <p class="note" id="chkNote"></p>
     </div>
     <div class="card" id="lcCard" style="margin-top:12px"><h3>KA workload per day: forecast vs actual (test months)</h3>
-      <div class="sub">CPRs held per day: forecast made when the CPR was created vs actual.</div>
+      <div class="sub">CPRs held at Sequence 8 per day: forecast made when the CPR was created vs actual.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0">
         <div class="field"><label for="lcKa">Key Account</label><select id="lcKa"></select></div>
         <button class="btn ghost" type="button" id="lcCopy">Copy daily table</button>
@@ -533,7 +534,6 @@ body.locked #loginForm .btn { width: 100%; }
       <p class="note" id="fcSetNote"></p>
     </div>
     <div class="card" style="margin-top:12px"><h3>Model selection in the dashboard (automatic)</h3><div class="sub">The model with the lowest validation MAE is used.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
-    <div class="card" id="riskCard" style="margin-top:12px" hidden><h3>Rework risk: does the warning work?</h3><div class="sub">The risk model learns from older CPRs whose Sequence 8 is finished, then is checked on the CPRs of the latest months it has not seen. A useful warning sends back clearly more "High" CPRs than "Low" ones. AUC: 0.5 = no better than chance, 1.0 = perfect.</div><div class="tbl-wrap"><table id="tblRiskChk"></table></div><p class="note" id="riskNote"></p></div>
     <div class="card" style="margin-top:12px"><h3>Comparison of the four models (analysis notebook)</h3><div class="sub">Python study on CPR_Cleaned 2023–2026 (validation Apr–Jun, test Jul–Sep 2026).</div><div class="tbl-wrap"><table id="tblStudy"></table></div></div>
     <div class="card" style="margin-top:12px"><h3>Forecast 1: mean absolute error per week (test months)</h3><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
     </details>
@@ -1342,13 +1342,13 @@ async function loadCatalog() {
 }
 // rework episodes stored as "start:end:who;..." (who: D = Purchasing Director, H = Purchasing Head HO; end empty = still open)
 // cause of a rework, read from the approver's note when the CPR is sent back (supervisor's rule):
-//   E = exception, not counted in KA performance: renegotiation ("renego" / "nego" in the note)
+//   E = exception, not counted in KA performance: renegotiation ("renego" / "nego ulang" / "negosiasi ulang" in the note)
 //   K = KA error, counted: every other reason (TRF difference, PPN, attachment, price, discount, vendor, no note, ...)
 const RW_CAUSE = { K: "KA error", E: "Exception · renego" };
 const RW_CAUSE_KIND = { K: "bad", E: "muted" };
 function reworkCause(note) {
   const t = String(note || "").toLowerCase();
-  if (/reneg|re-neg|\bnego/.test(t)) return { code: "E", why: "renegotiation" };
+  if (/reneg|re-neg|nego ulang|negosiasi ulang/.test(t)) return { code: "E", why: "renegotiation" };
   return { code: "K", why: "other than renego" };
 }
 const reworkList = (r) => (r.rwk ? String(r.rwk).split(";").map((x) => { const [a, b, w, c] = x.split(":"); return { start: Number(a), end: b === "" ? null : Number(b), who: w === "D" ? "Purchasing Director" : "Purchasing Head HO", cause: c === "E" ? "E" : c ? "K" : "?" }; }) : []);
@@ -2306,15 +2306,16 @@ function renderIo() {
   if (by === "week") { from = Number(k0); to = from + 6; }
   else { const y = Number(k0.slice(0, 4)), m = Number(k0.slice(5, 7)) - 1; from = toDay(new Date(Date.UTC(y, m, 1)).toISOString()); to = toDay(new Date(Date.UTC(y, m + 1, 0)).toISOString()); }
   to = Math.min(to, D);
-  const days = []; for (let d = from; d <= to; d++) if (weekday(d) < 5) days.push(d);
+  const days = []; for (let d = from; d <= to; d++) if (isWorkDay(d)) days.push(d);
   const inP = ev.filter((e) => e[0] >= from && e[0] <= to);
   const kas = [...new Set(inP.map((e) => e[1]))].filter(isCurrentKa).sort((a, b) => kaLabel(a).localeCompare(kaLabel(b)));
   const nW = Math.max(1, days.length);
+  const wdAll = (d) => { if (isWorkDay(d)) return d; for (let n = d + 1; n <= to; n++) if (isWorkDay(n)) return n; for (let n = d - 1; n >= from; n--) if (isWorkDay(n)) return n; return d; };
   // open at the start of the period = in before it minus out before it (from the same events)
   const openBefore = (ka) => ev.reduce((a, e) => a + (e[1] === ka && e[0] < from ? (e[2] === "in" ? 1 : -1) : 0), 0);
   const closedIn = (ka) => inP.filter((e) => e[1] === ka && e[2] === "close").length;
   const rows = kas.map((ka) => { const i = inP.filter((e) => e[1] === ka && e[2] === "in").length, o = inP.filter((e) => e[1] === ka && e[2] === "out").length, ob = Math.max(0, openBefore(ka));
-    const outDays = days.map((d) => inP.filter((e) => e[1] === ka && e[2] === "out" && (weekday(e[0]) < 5 ? e[0] : e[0] + (7 - weekday(e[0]))) === d).length);
+    const outDays = days.map((d) => inP.filter((e) => e[1] === ka && e[2] === "out" && wdAll(e[0]) === d).length);
     return { ka, name: kaLabel(ka), in: i, out: o, net: i - o, avgIn: i / nW, avgOut: o / nW, open0: ob, open1: Math.max(0, ob + i - o - closedIn(ka)), closed: closedIn(ka), best: Math.max(0, ...outDays), clear: i ? o / i : null }; })
     .sort((a, b) => b.out - a.out);
   const tot = rows.reduce((a, r) => ({ in: a.in + r.in, out: a.out + r.out, open0: a.open0 + r.open0, open1: a.open1 + r.open1 }), { in: 0, out: 0, open0: 0, open1: 0 });
@@ -2326,7 +2327,7 @@ function renderIo() {
   ksel.replaceChildren(el("option", { value: "" }, "All Key Accounts"), ...kas.map((k) => el("option", { value: k }, kaLabel(k))));
   ksel.value = kas.includes(kcur) ? kcur : "";
   // a Saturday / Sunday event is shown on the next working day (or the last one of the period), so the chart adds up to the table
-  const wd = (d) => { if (weekday(d) < 5) return d; const n = d + (7 - weekday(d)); return n <= to ? n : d - (weekday(d) - 4); };
+  const wd = (d) => { if (isWorkDay(d)) return d; for (let n = d + 1; n <= to; n++) if (isWorkDay(n)) return n; for (let n = d - 1; n >= from; n--) if (isWorkDay(n)) return n; return d; };
   const pick = (d, t) => inP.filter((e) => wd(e[0]) === d && e[2] === t && (ksel.value ? e[1] === ksel.value : kas.includes(e[1]))).length;
   const ins = days.map((d) => pick(d, "in")), outs = days.map((d) => pick(d, "out"));
   const aIn = mean(ins) ?? 0, aOut = mean(outs) ?? 0;
@@ -2338,15 +2339,15 @@ function renderIo() {
   if ($("ioView").value === "day") {
     // one row per calendar date of the period that has a working day or any movement (weekends shown when something happened)
     const kk = ksel.value ? [ksel.value] : kas, D2 = to;
-    const dates = []; for (let d = from; d <= D2; d++) if (weekday(d) < 5 || inP.some((e) => e[0] === d && kk.includes(e[1]))) dates.push(d);
+    const dates = []; for (let d = from; d <= D2; d++) if (isWorkDay(d) || inP.some((e) => e[0] === d && kk.includes(e[1]))) dates.push(d);
     const cntOf = (d, t, ka, exactOnly) => inP.filter((e) => e[0] === d && e[2] === t && (ka ? e[1] === ka : kk.includes(e[1])) && (exactOnly === undefined || e[3] === exactOnly)).length;
     let run = kk.reduce((a, k) => a + Math.max(0, openBefore(k)), 0);
-    const drows = dates.map((d) => { const i = cntOf(d, "in"), o = cntOf(d, "out"); run += i - o - cntOf(d, "close"); return { d, i, o, est: cntOf(d, "in", null, false), open: Math.max(0, run), wk: weekday(d) >= 5 }; });
+    const drows = dates.map((d) => { const i = cntOf(d, "in"), o = cntOf(d, "out"); run += i - o - cntOf(d, "close"); return { d, i, o, est: cntOf(d, "in", null, false), open: Math.max(0, run), wk: !isWorkDay(d), hol: HOLIDAYS.has(dayToIso(d)) }; });
     // weekend movements are included, spread over the working days (same as the chart)
     const nWd = Math.max(1, drows.filter((r) => !r.wk).length);
     const avgRow = { avg: true, i: drows.reduce((a, r) => a + r.i, 0) / nWd, o: drows.reduce((a, r) => a + r.o, 0) / nWd };
     renderTable($("tblIo"), [
-      { key: "d", label: "Date", sortable: false, render: (r) => (r.avg ? el("b", {}, "Average per working day") : el("span", { style: r.wk ? "color:var(--muted)" : "" }, `${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][weekday(r.d)]} ${fmtDay(r.d)}`)) },
+      { key: "d", label: "Date", sortable: false, render: (r) => (r.avg ? el("b", {}, "Average per working day") : el("span", { style: r.wk ? "color:var(--muted)" : "" }, `${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][weekday(r.d)]} ${fmtDay(r.d)}${r.hol ? " · holiday" : ""}`)) },
       { key: "i", label: "In", num: true, sortable: false, render: (r) => (r.avg ? el("b", {}, fmtNum(r.i, 1)) : fmtInt(r.i)) },
       { key: "o", label: "Out", num: true, sortable: false, render: (r) => (r.avg ? el("b", {}, fmtNum(r.o, 1)) : fmtInt(r.o)) },
       { key: "open", label: "Open at end of day", num: true, sortable: false, render: (r) => (r.avg ? "" : fmtInt(r.open)) },
@@ -2364,12 +2365,68 @@ function renderIo() {
     { key: "best", label: "Most out in one day", num: true, sortable: false, render: (r) => (r.best === null ? "–" : fmtInt(r.best)) },
     { key: "clear", label: "Out ÷ in", num: true, sortable: false, render: (r) => (r.clear === null ? "–" : fmtNum(r.clear * 100, 0) + "%") }
   ], [team, ...(perKaAvg ? [perKaAvg] : []), ...rows]);
-  $("ioNote").textContent = "Averages are per working day (Mon–Fri).";
+  $("ioNote").textContent = "Averages are per working day (Mon–Fri, without public holidays and cuti bersama).";
   IO_ROWS = { days, kas, inP, label: k0, wd };
 }
 let IO_ROWS = null;
+// ---- monthly report per KA (Excel): summary, daily in/out, CPR list ----
+function monthlyReport(mk) {
+  const D = dataDate(); if (D === null) return;
+  const y = Number(mk.slice(0, 4)), mo = Number(mk.slice(5, 7)) - 1;
+  const from = toDay(new Date(Date.UTC(y, mo, 1)).toISOString()), to = Math.min(D, toDay(new Date(Date.UTC(y, mo + 1, 0)).toISOString()));
+  const inM = (d) => d !== null && d !== undefined && d >= from && d <= to;
+  const ev = ioEvents().filter((e) => e[0] <= D);
+  const days = []; for (let d = from; d <= to; d++) if (isWorkDay(d)) days.push(d);
+  const nW = Math.max(1, days.length);
+  const wdOf = (d) => { if (isWorkDay(d)) return d; for (let n = d + 1; n <= to; n++) if (isWorkDay(n)) return n; for (let n = d - 1; n >= from; n--) if (isWorkDay(n)) return n; return d; };
+  const kas = [...new Set(ev.filter((e) => inM(e[0])).map((e) => e[1]))].filter(isCurrentKa).sort((a, b) => kaLabel(a).localeCompare(kaLabel(b)));
+  const openAt = (ka, day) => Math.max(0, ev.reduce((a, e) => a + (e[1] === ka && e[0] < day ? (e[2] === "in" ? 1 : -1) : 0), 0));
+  // per CPR facts for the month
+  const cprRows = [], per = {}, amap = new Map(SIM ? SIM.assigned.map((c) => [c.r.cpr, c]) : []);
+  for (const r of RECS) {
+    if (!r.hstatus) continue; const ka = dataKa(r); if (!ka || !isCurrentKa(ka)) continue;
+    const b8 = r.backFirst ?? r.back, o8 = r.backOutFirst ?? r.backOut, rin = r.kaIn ?? b8;
+    const rw = reworkList(r).filter((e) => inM(e.start)), rwK = rw.filter((e) => e.cause !== "E").length, rwE = rw.length - rwK;
+    const tat = b8 !== null && b8 !== undefined ? (o8 !== null && o8 !== undefined ? workDaysBetween(b8, o8) : workDaysBetween(b8, Math.min(D, to))) : null;
+    const s8done = inM(o8), openEnd = rin !== null && rin <= to && !(r.backOut !== null && r.backOut <= to) && !((r.done || isInactive(r)) && (r.lastAct ?? D) <= to);
+    if (!(inM(rin) || inM(r.backOut) || s8done || rw.length || openEnd)) continue;
+    const x = per[ka] || (per[ka] = { tat: [], s8: 0, rwK: 0, rwE: 0 });
+    if (s8done) { x.s8++; x.tat.push(tat); } x.rwK += rwK; x.rwE += rwE;
+    const lv = tat === null ? "" : tat <= TAT_LIMIT.s8warn ? "Green" : tat <= TAT_LIMIT.s8bad ? "Yellow" : "Red";
+    cprRows.push([r.cpr, r.unit || "", String(r.vendorName || "").replace(/\s+/g, " ").trim(), kaLabel(ka), rin !== null && rin !== undefined ? dayToIso(rin) : "", b8 !== null && b8 !== undefined ? dayToIso(b8) : "",
+      o8 !== null && o8 !== undefined ? dayToIso(o8) : "", tat === null ? "" : tat, tat === null ? "" : (o8 !== null && o8 !== undefined ? lv : lv + " (so far)"), r.backOut !== null && r.backOut !== undefined && !inRework(r) ? dayToIso(r.backOut) : "", rwK, rwE, amap.has(r.cpr) ? progressStatus(amap.get(r.cpr))[0] : r.hstatus || ""]);
+  }
+  const summary = [["Key Account", "CPRs in", "CPRs out", "Avg out per working day", "Open at start", "Open at end", "Seq 8 approved", "Seq 8 TAT avg (working days)", "Seq 8 ≤5 days", "Seq 8 6–14 days", "Seq 8 >14 days", "Rework (KA error)", "Renego (not counted)", "Rework rate (KA error ÷ Seq 8 approved)"]];
+  for (const ka of kas) {
+    const i = ev.filter((e) => e[1] === ka && e[2] === "in" && inM(e[0])).length, o = ev.filter((e) => e[1] === ka && e[2] === "out" && inM(e[0])).length;
+    const x = per[ka] || { tat: [], s8: 0, rwK: 0, rwE: 0 }, t = x.tat, pct = (f) => (t.length ? Math.round((t.filter(f).length / t.length) * 1000) / 10 + "%" : "");
+    const ob = openAt(ka, from), oe = Math.max(0, ob + i - o - ev.filter((e) => e[1] === ka && e[2] === "close" && inM(e[0])).length);
+    summary.push([kaLabel(ka), i, o, Math.round((o / nW) * 10) / 10, ob, oe, x.s8, t.length ? Math.round(mean(t) * 10) / 10 : "", pct((d) => d <= TAT_LIMIT.s8warn), pct((d) => d > TAT_LIMIT.s8warn && d <= TAT_LIMIT.s8bad), pct((d) => d > TAT_LIMIT.s8bad), x.rwK, x.rwE, x.s8 ? Math.round((x.rwK / x.s8) * 1000) / 10 + "%" : ""]);
+  }
+  const tot = summary.slice(1).reduce((a, r) => a.map((v, k) => (typeof r[k] === "number" && k !== 3 && k !== 7 ? v + r[k] : v)), new Array(14).fill(0));
+  summary.push(["All Key Accounts", tot[1], tot[2], Math.round((tot[2] / nW) * 10) / 10, tot[4], tot[5], tot[6], "", "", "", "", tot[11], tot[12], tot[6] ? Math.round((tot[11] / tot[6]) * 1000) / 10 + "%" : ""]);
+  const daily = [["Date", "Key Account", "In", "Out"]];
+  for (const ka of kas) for (const d of days) daily.push([dayToIso(d), kaLabel(ka), ev.filter((e) => e[1] === ka && e[2] === "in" && inM(e[0]) && wdOf(e[0]) === d).length, ev.filter((e) => e[1] === ka && e[2] === "out" && inM(e[0]) && wdOf(e[0]) === d).length]);
+  const list = [["CPR Number", "Hospital", "Description", "Key Account", "Received by KA", "Returned to KA (Seq 8)", "Seq 8 approved", "Seq 8 TAT (working days)", "Seq 8 TAT status", "Finished by KA", "Rework (KA error)", "Renego", "Current status"], ...cprRows];
+  const info = [["CPR monthly report per Key Account"], ["Month", monthText(mk)], ["Period", `${dayToIso(from)} to ${dayToIso(to)}`], ["Working days", nW], ["Data as of", dayToIso(D)],
+    ["In", "the KA received the CPR"], ["Out", "the KA finished the CPR (last approval at Purchasing HO)"], ["Seq 8 TAT", "working days from the return to KA until the KA's approval (weekends, holidays and cuti bersama not counted); green ≤5, yellow 6–14, red >14"], ["Rework", "every rework counts as a KA error except renego / nego ulang"]];
+  const wb = XLSX.utils.book_new();
+  const add = (name, aoa, widths) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = widths.map((w) => ({ wch: w })); XLSX.utils.book_append_sheet(wb, ws, name); };
+  add("Summary per KA", summary, [18, 9, 9, 12, 11, 11, 12, 14, 11, 12, 12, 12, 12, 16]);
+  add("Daily in-out", daily, [12, 18, 6, 6]);
+  add("CPR list", list, [22, 10, 40, 14, 14, 16, 14, 12, 16, 14, 10, 8, 28]);
+  add("About", info, [16, 90]);
+  XLSX.writeFile(wb, `CPR_KA_report_${mk}.xlsx`);
+  setStatus(`Monthly report ${monthText(mk)} downloaded.`);
+}
+
 for (const id of ["ioBy"]) $(id).addEventListener("change", () => { $("ioPer").value = ""; renderIo(); });
 for (const id of ["ioPer", "ioKa", "ioView"]) $(id).addEventListener("change", renderIo);
+$("ioReport").addEventListener("click", () => {
+  const v = $("ioPer").value; if (!v) return;
+  const mk = $("ioBy").value === "month" ? v : monthKey(Number(v));
+  try { monthlyReport(mk); } catch (e) { setStatus("The report could not be created: " + (e.message || e)); }
+});
 $("ioCopy").addEventListener("click", async () => {
   if (!IO_ROWS) return;
   const lines = [["Date", "Key Account", "In", "Out"].join("\t")];
@@ -2527,7 +2584,7 @@ function renderRework(rows) {
     tile("Renego (not counted)", fmtInt(list.reduce((a, r) => a + r.nc.E, 0)), "times", "sent back for renegotiation: shown in the approval steps but not counted against the KA")
   );
   const unread = list.reduce((a, r) => a + r.rwEvents.filter((e) => e.cause === "?").length, 0);
-  $("rwCauseNote").textContent = unread ? `${fmtInt(unread)} reworks are not classified yet: upload CPRHistory again.` : "Every rework counts except renego.";
+  $("rwCauseNote").textContent = unread ? `${fmtInt(unread)} reworks are not classified yet: upload CPRHistory again.` : "Every rework counts except renego / nego ulang.";
   const cprsOf = (r) => [...new Set(r.rwEvents.filter((e) => e.cause === "K" || e.cause === "?").map((e) => e.r.cpr))];
   barChartH($("chRw"), list.map((r) => `${r.name} (${r.rwCprs}/${r.n8})`), [{ name: "Rework rate (%)", color: "var(--s2)", values: list.map((r) => r.reworkRate ?? 0) }], { dec: 1, label: "Rework rate per KA (%)",
     tipRows: (i) => { const c = cprsOf(list[i]); return [...c.slice(0, 8).map((cpr) => ({ value: cpr, label: "" })), ...(c.length ? [{ value: "", label: c.length > 8 ? `+${c.length - 8} more · click to see all` : "click to see the details" }] : [])]; },
@@ -2882,6 +2939,7 @@ function recentSpeed(all) {
   };
 }
 
+const F4_CENSORED = false;   // tested 28 Oct 2026: learning also from CPRs still held at Seq 8 (knownAt) did not reduce the error (test MAE 3.67 vs 3.68, workload bias -29% vs -29%), so it is off
 // ---- Forecast 3 and 4: how long the KA holds the CPR (same features as the notebook) ----
 //   Forecast 3 = days from arrival at KA (Sequence 3) to the KA approval of Sequence 3
 //   Forecast 4 = days from the return to KA (Sequence 8) to the KA approval of Sequence 8
@@ -2916,7 +2974,10 @@ function kaHoldRows(kind) {   // history rows for Forecast 3 ("s3") or Forecast 
   }
   const state = kaQueue(items);
   const rows = items.filter((it) => it.y !== null).map((it) => ({ ...it, isNew: 1, q: state(it.ka, it.start) }));
-  return { rows, state };
+  // still open now (not approved, CPR still active): used by Forecast 4 as "at least this many days"
+  const active = new Set(RECS.filter((r) => !r.done && !isInactive(r) && !IGNORED[r.cpr]).map((r) => r.cpr));
+  const open = items.filter((it) => it.y === null && active.has(it.cpr)).map((it) => ({ ...it, isNew: 1, q: state(it.ka, it.start) }));
+  return { rows, state, open };
 }
 function f34Stats(L) {
   const allMed = median(L.map((r) => r.y));
@@ -2958,7 +3019,7 @@ let FC_SET = { ...FC_DEFAULT };
 let FC_RESULTS = {};   // settings key -> { f1, f2 } test MAE, so the default and the current setting can be compared
 const fcKey = (set) => JSON.stringify([set.from || "", !!set.onlyNew, Number(set.months) || 3, Number(set.maxDays) || 0, set.model || "auto"]);
 const fcIsDefault = (set) => fcKey(set) === fcKey(FC_DEFAULT);
-const choiceKey = () => `${TRAIN_META ? TRAIN_META.version : 0}|${TRAIN.size}|${fcKey(FC_SET)}`;   // depends only on the history and the settings
+const choiceKey = () => `${TRAIN_META ? TRAIN_META.version : 0}|${TRAIN.size}|${fcKey(FC_SET)}|f4c${F4_CENSORED ? 1 : 0}`;   // depends only on the history and the settings
 const modelKey = () => `${choiceKey()}|${RECS.length}`;
 function testWindow(all, months = 3) {
   const last = Math.max(...all.filter((t) => t.y !== null && t.create !== null).map((t) => t.create));
@@ -2993,24 +3054,37 @@ async function ensureModels(_start, onStatus) {
   const fullTest = (m) => !m || !m.test || !m.test.rows.length || m.test.rows[0].length >= 10;
   const saved = MODEL_CHOICE && MODEL_CHOICE.key === choiceKey() && "f3" in MODEL_CHOICE && ["f1", "f2", "f3", "f4"].every((k) => fullTest(MODEL_CHOICE[k])) ? MODEL_CHOICE : null;
   const fitOn = (sel, list0, stats, feats) => { const list = learnable(list0); const st = stats(list), X = list.map((r) => feats(r, st)), y = list.map((r) => Math.log1p(r.y)); const f = findCandidate(sel.chosen).fit(X, y); return { st, X, y, f }; };
-  const pick = async (label, hist, dateOf, stats, feats, savedSel) => {
-    if (hist.length < 100) return null;
-    const before = hist.filter((r) => dateOf(r) < testStart);
+  // Forecast 4 learns also from CPRs still held by the KA (censored): on a cut-off day, a CPR not approved yet has been held
+  // "at least" (cut-off − start) days; its duration is filled with the median of the finished CPRs that took at least that long.
+  // Without this, CPRs stuck for a long time are missing from the training data and the forecast is too optimistic.
+  const DDAY = dataDate();
+  const knownAt = (rows, open, cut) => {
+    const done = rows.filter((r) => r.start < cut && r.start + r.y < cut);
+    const ys = done.map((r) => r.y).sort((a, b) => a - b);
+    const fill = (e) => { let lo = 0, hi = ys.length; while (lo < hi) { const m = (lo + hi) >> 1; if (ys[m] < e) lo = m + 1; else hi = m; } const rest = ys.slice(lo); return rest.length ? median(rest) : e; };
+    const cens = [...rows.filter((r) => r.start < cut && r.start + r.y >= cut), ...open.filter((r) => r.start < cut)].map((r) => ({ ...r, y: fill(cut - r.start), cens: true }));
+    return [...done, ...cens];
+  };
+  const pick = async (label, hist0, dateOf, stats, feats, savedSel, openRows) => {
+    if (hist0.length < 100) return null;
+    const cens = !!openRows && DDAY !== null;
+    const hist = cens ? knownAt(hist0, openRows, DDAY + 1) : hist0;
+    const before = cens ? knownAt(hist0, openRows, testStart) : hist.filter((r) => dateOf(r) < testStart);
     let sel = savedSel;
     if (!sel) {
-      const tuneTrain = learnable(before.filter((r) => dateOf(r) < valStart)), tuneVal = before.filter((r) => dateOf(r) >= valStart && r.isNew === 1);
+      const tuneTrain = learnable(cens ? knownAt(hist0, openRows, valStart) : before.filter((r) => dateOf(r) < valStart)), tuneVal = (cens ? hist0.filter((r) => dateOf(r) < testStart) : before).filter((r) => dateOf(r) >= valStart && r.isNew === 1);
       const forced = FC_SET.model && FC_SET.model !== "auto" ? CANDIDATES.find((c) => `${c.family}|${c.setting}` === FC_SET.model) : null;
       if (forced) sel = { chosen: { family: forced.family, setting: forced.setting, valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true, forced: true };
       // too little older history to compare models fairly: use the model the notebook chose
       else if (tuneTrain.length < (fcIsDefault(FC_SET) ? 500 : 200) || tuneVal.length < (fcIsDefault(FC_SET) ? 50 : 30)) sel = { chosen: label === "arrival" ? { family: "Linear Regression", setting: "alpha=0", valMae: null } : { family: "XGBoost", setting: label === "Sequence 3" ? "max_depth=2, learning_rate=0.03" : "max_depth=2, learning_rate=0.1", valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true };
       else { onStatus && onStatus(`Selecting the best ${label} model (Linear Regression vs XGBoost) …`); await new Promise((r) => setTimeout(r, 10)); sel = chooseModel(tuneTrain, tuneVal, stats, feats); }
       // test: learn on everything before the test months, forecast the test months (2026 process only)
-      const testRows = hist.filter((r) => dateOf(r) >= testStart && r.isNew === 1);
+      const testRows = hist0.filter((r) => dateOf(r) >= testStart && r.isNew === 1);
       if (testRows.length >= 30 && before.length >= 100) {
         onStatus && onStatus(`Testing the ${label} model on the latest 3 months …`); await new Promise((r) => setTimeout(r, 10));
         const m = fitOn(sel, before, stats, feats);
         const res = m.y.map((v, i) => v - m.f(m.X[i])), q20 = quantile(res, 0.2), q80 = quantile(res, 0.8);
-        const newBefore = before.filter((r) => r.isNew === 1), baseAll = median(newBefore.map((r) => r.y));
+        const newBefore = before.filter((r) => r.isNew === 1 && !r.cens), baseAll = median(newBefore.map((r) => r.y));
         const baseUnit = groupStat(newBefore, (r) => r.unit, (r) => r.y, median);
         const rows = testRows.map((r) => { const lg = m.f(feats(r, m.st)), p = roundHalfEven(Math.max(0, Math.expm1(lg)));
           const lo = roundHalfEven(Math.max(0, Math.expm1(lg + q20))), hi = roundHalfEven(Math.max(0, Math.expm1(lg + q80)));
@@ -3023,8 +3097,11 @@ async function ensureModels(_start, onStatus) {
     const m = fitOn(sel, hist, stats, feats);
     const res = m.y.map((v, i) => v - m.f(m.X[i]));   // residuals in log days: P20-P80 range
     // the chosen setting learned only from history before the test months (in memory, for the daily workload check)
-    let beforeModel = null; const fitBefore = () => beforeModel || (beforeModel = fitOn(sel, before, stats, feats));
-    return { ...sel, n: hist.length, st: m.st, f: m.f, q20: quantile(res, 0.2), q80: quantile(res, 0.8), fitBefore };
+    // the model gives the most likely (median) duration; for WORKLOAD the average matters, and a few CPRs held very long make the
+    // average larger than the median: meanRatio = total actual days ÷ total forecast days on the learning data (used for workload only)
+    const ratioOf = (mm) => { const a = mm.y.reduce((t, v) => t + Math.expm1(v), 0), b = mm.X.reduce((t, x) => t + Math.max(0, Math.expm1(mm.f(x))), 0); return b > 0 ? a / b : 1; };
+    let beforeModel = null; const fitBefore = () => beforeModel || (beforeModel = (() => { const mm = fitOn(sel, before, stats, feats); mm.meanRatio = ratioOf(mm); return mm; })());
+    return { ...sel, meanRatio: ratioOf(m), n: hist.length, nCens: hist.filter((r) => r.cens).length, st: m.st, f: m.f, q20: quantile(res, 0.2), q80: quantile(res, 0.8), fitBefore };
   };
   const f1 = await pick("arrival", f1All, (r) => r.create, f1Stats, f1Features, saved && saved.f1);
   const f2 = await pick("return", f2All, (r) => r.approve, f2Stats, f2Features, saved && saved.f2);
@@ -3032,7 +3109,7 @@ async function ensureModels(_start, onStatus) {
   onStatus && onStatus("Preparing KA queue features …"); await new Promise((r) => setTimeout(r, 10));
   const h3 = kaHoldRows("s3"), h8 = kaHoldRows("s8");
   const f3 = await pick("Sequence 3", h3.rows, (r) => r.start, f34Stats, f34Features, saved && saved.f3);
-  const f4 = await pick("Sequence 8", h8.rows, (r) => r.start, f34Stats, f34Features, saved && saved.f4);
+  const f4 = await pick("Sequence 8", h8.rows, (r) => r.start, f34Stats, f34Features, saved && saved.f4, F4_CENSORED ? h8.open : null);
   if (f3) f3.state = h3.state; if (f4) f4.state = h8.state;
   MODELS = { key, f1, f2, f3, f4, simByCpr, recent, valStart, testStart };
   const strip = (m) => (m ? { chosen: m.chosen, bestPerFamily: m.bestPerFamily, nTune: m.nTune, nVal: m.nVal, fixed: !!m.fixed, test: m.test || null } : null);
@@ -3104,7 +3181,7 @@ function predictHold(m, r, ka, start) {
   const lg = m.f(f34Features({ unit: r.unit, ka, start, q: m.state(ka, day) }, m.st));
   const g = (x) => roundHalfEven(Math.max(0, Math.expm1(x)));
   const days = g(lg), lo = Math.min(days, g(lg + m.q20)), hi = Math.max(days, g(lg + m.q80));
-  return { days, lo, hi };
+  return { days, lo, hi, load: Math.round(Math.max(0, Math.expm1(lg)) * (m.meanRatio || 1)) };   // load = expected days for the workload
 }
 const predictF3 = (r, ka, start) => predictHold(MODELS && MODELS.f3, r, ka, start);
 const predictF4 = (r, ka, start) => predictHold(MODELS && MODELS.f4, r, ka, start);
@@ -3320,7 +3397,7 @@ function simulate() {
   const moveTo = (c, to, reason) => {
     add(L, c, -1); cnt[c.ka] = (cnt[c.ka] || 1) - 1;
     const from = c.ka; c.ka = to; add(L, c, 1); cnt[to] = (cnt[to] || 0) + 1;
-    c.rule = "Dialihkan"; c.moved = { from, to, reason, by: "Automatic" };
+    c.rule = "Dialihkan"; c.moved = { from, to, reason, by: "Automatic" }; c.why = "Moved: " + reason;
     const prev = transferMap.get(c.r.cpr);
     if (!prev || prev.to !== to) autoTransfers.push({ cpr: c.r.cpr, unit: c.unit, from, to, reason, by: "Automatic" });
   };
@@ -3379,7 +3456,7 @@ function simulate() {
     }
     const backDay = r.back ?? (r.kaOut ?? arrive + c.w1) + c.f2;
     c.f4 = useModels ? predictF4(r, c.ka, backDay) : null;
-    c.w2 = c.f4 ? Math.max(1, c.f4.days) : w2;
+    c.w2 = c.f4 ? Math.max(1, c.f4.load ?? c.f4.days) : w2;   // workload: expected (average) days held at Sequence 8
     c.s2 = r.back ?? (r.kaOut !== null && r.kaOut >= c.s1 ? r.kaOut + c.f2 : c.s1 + c.w1 + c.f2);
     setEnds(c);
   };
@@ -3392,6 +3469,7 @@ function simulate() {
       if (c.lock) {
         // already assigned in an earlier upload: the KA never changes
         c.ka = c.lock.ka; c.weight = c.lock.weight; c.rule = c.lock.rule; c.locked = true; planHold(c);
+        c.why = c.lock.rule === "Diproses KA" ? "Already taken by this KA (CPRHistory)" : c.lock.rule === "Dialihkan" ? "Reassigned" + (c.transfer && c.transfer.reason ? ": " + c.transfer.reason : "") : "Fixed from an earlier allocation";
         add(L, c, 1); assigned.push(c); cnt[c.ka] = (cnt[c.ka] || 0) + 1;
         if (!byVendor.has(c.vendor)) byVendor.set(c.vendor, []); byVendor.get(c.vendor).push(c);
         checkAbsence(c); rules[c.rule] = (rules[c.rule] || 0) + 1;
@@ -3408,7 +3486,10 @@ function simulate() {
         let { best, bestPeak } = bestKa({ weight: 1 }, days, null);
         if (!best) { for (const k of allocKas) { if (capOf(k) <= 0) continue; const pk = (peak(L, k, days, 1) + reserveOf(k)) / capOf(k); if (pk < bestPeak) { bestPeak = pk; best = k; } } } // everyone absent
         ka = best; rule = bestPeak <= maxPerDay ? "Beban terendah" : "Exception";
+        c.why = rule === "Exception" ? `All KAs above the limit; lightest: ${fmtNum(bestPeak, 0)} CPRs` : `Lightest Seq 8 load when it returns: ${fmtNum(bestPeak, 0)} of ${fmtNum(maxPerDay, 0)} CPRs`;
       }
+      if (rule === "Vendor sama") c.why = "Same vendor as a CPR this KA holds";
+      if (rule === "PIC unit") c.why = "Hospital PIC, within the limit";
       c.ka = ka; c.weight = weight; c.rule = rule; rules[rule]++; planHold(c);
       add(L, c, 1); assigned.push(c); cnt[ka] = (cnt[ka] || 0) + 1;
       if (!byVendor.has(c.vendor)) byVendor.set(c.vendor, []); byVendor.get(c.vendor).push(c);
@@ -3722,13 +3803,13 @@ function openTrack(cpr) {
     $("trLine").replaceChildren(); $("trHist").replaceChildren(el("li", {}, "Not allocated by the dashboard."));
     $("track").showModal(); renderSteps(cpr); return;
   }
-  const r = c.r, p = r.prog, D = dataDate(), w1 = c.w1 ?? SIM.w1, w2 = c.w2 ?? SIM.w2;
+  const r = c.r, p = r.prog, D = dataDate(), w1 = c.w1 ?? SIM.w1, w2 = c.f4 ? Math.max(1, c.f4.days) : c.w2 ?? SIM.w2;
   const [statusText, statusKind] = progressStatus(c);
   $("trTitle").textContent = r.cpr;
   $("trSub").textContent = [r.vendorName, c.unit].filter(Boolean).join(" · ");
   $("trMeta").replaceChildren(
     el("span", {}, "Key Account: "), el("b", {}, kaLabel(c.ka)),
-    el("span", {}, "Rule: " + ruleLabel(c.rule)),
+    el("span", {}, "Why this KA: " + (c.why || ruleLabel(c.rule))),
     pill(statusText, statusKind),
     el("span", { class: "note", style: "margin:0" }, D !== null ? `Data as of ${fmtDay(D)}` : "")
   );
@@ -3811,7 +3892,7 @@ function returnText(c) {
 }
 // Forecast 3 / 4 columns: the actual KA approval when it happened, else the estimate (arrival + Forecast 3, return + Forecast 4)
 const estS3 = (c) => (c.r.kaOut !== null ? c.r.kaOut : (actualArrival(c.r) ?? c.r.kaIn ?? c.predArrival) + c.w1);
-const estS8 = (c) => { const out = c.r.backOutFirst ?? c.r.backOut; return out !== null && out !== undefined ? out : estReturn(c) + c.w2; };
+const estS8 = (c) => { const out = c.r.backOutFirst ?? c.r.backOut; return out !== null && out !== undefined ? out : estReturn(c) + (c.f4 ? Math.max(1, c.f4.days) : c.w2); };
 // test-month forecast of one CPR (made by a model that had not seen it): [forecast days, low, high] or null
 let TEST_PRED = { key: null, maps: {} };
 function testPred(k, cpr) {
@@ -3861,7 +3942,7 @@ function renderIncoming() {
     { key: "s8", label: "④ KA approves Sequence 8", sortable: false, render: (c) => s8Text(c) },
     { key: "ka", label: "Key Account", sortable: false, render: (c) => kaLabel(c.ka) },
     { key: "status", label: "Status", sortable: false, render: (c) => { const [t, k] = progressStatus(c); return pill(t, k); } },
-    { key: "rule", label: "Rule", sortable: false, render: (c) => pill(ruleLabel(c.rule), ruleKind[c.rule]) },
+    { key: "rule", label: "Why this KA", sortable: false, render: (c) => { const d = el("div"); d.append(pill(ruleLabel(c.rule), ruleKind[c.rule])); if (c.why) d.append(smallNote(c.why)); return d; } },
     ...(useLocks() ? [{ key: "lk", label: "Assignment", sortable: false, render: (c) => pill(assignLabel(c), c.isNewAssign ? "info" : c.locked ? "muted" : "warn") }] : []),
   ], rows.slice(incState.page * per, incState.page * per + per));
 }
@@ -4239,14 +4320,15 @@ function loadCheck() {
     const out3 = arr + pr(b3, f34Features({ unit: r.unit, ka, start: arr, q: M.f3.state(ka, c0) }, b3.st));
     const [ra, ru] = M.recent(r.unit, c0);
     const back = out3 + pr(b2, f2Features({ unit: r.unit, isNew: 1, approve: out3, recentAll: ra, recentUnit: ru }, b2.st));
-    const out8 = back + pr(b4, f34Features({ unit: r.unit, ka, start: back, q: M.f4.state(ka, c0) }, b4.st));
+    // workload = expected (average) days at Sequence 8, like the allocation
+    const out8 = back + Math.round(Math.max(0, Math.expm1(b4.f(f34Features({ unit: r.unit, ka, start: back, q: M.f4.state(ka, c0) }, b4.st)))) * (b4.meanRatio || 1));
     const b8 = r.backFirst ?? r.back, o8 = r.backOutFirst ?? r.backOut;
     // a step not approved yet is still held until the data date, unless the CPR was finished, rejected or became inactive
     const openEnd = r.done || isInactive(r) || IGNORED[r.cpr] ? Math.min(D, r.lastAct ?? D) : D;
     const act = [];
-    if (r.kaIn !== null && r.kaIn !== undefined) act.push([r.kaIn, r.kaOut ?? openEnd]);
+    // KA workload = Sequence 8 (Sequence 3 is only a document check)
     if (b8 !== null && b8 !== undefined) act.push([b8, o8 ?? openEnd]);
-    cprs.push({ cpr: r.cpr, ka, fc: [[arr, out3], [back, out8]], act });
+    cprs.push({ cpr: r.cpr, ka, fc: [[back, out8]], act });
   }
   const days = []; for (let d = ts; d <= D; d++) if (weekday(d) < 5) days.push(d);
   const kas = [...new Set(cprs.map((x) => x.ka))].sort((a, b) => kaLabel(a).localeCompare(kaLabel(b)));
@@ -4295,7 +4377,7 @@ $("lcCopy").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(lines.join("\n")); setStatus(`${fmtInt(lines.length - 1)} rows copied (one per KA per working day). Paste into Excel with Ctrl+V.`); } catch { setStatus("The browser blocked copying."); }
 });
 function renderBukti() {
-  renderFcSettings(); renderStudy(); try { renderLoadCheck(); } catch (e) { $("lcNote").textContent = "Daily workload check failed: " + (e.message || e); } if (TL_ON.risk) { $("riskCard").hidden = false; try { renderRiskCheck(); } catch (e) {} }
+  renderFcSettings(); renderStudy(); try { renderLoadCheck(); } catch (e) { $("lcNote").textContent = "Daily workload check failed: " + (e.message || e); } 
   const clear = () => { for (const id of ["tblModels", "bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
   if (!SIM) { clear(); $("bkNote").textContent = "Please run the allocation in the CPR Allocation tab first."; return; }
   const mRows = [];
@@ -4546,8 +4628,8 @@ function showOpenTasks(ka) {
     { key: "desc", label: "Description", wrap: true, sortable: false, render: (t) => (t.r.vendorName ? String(t.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 70) : "–") },
     { key: "task", label: "Task", sortable: false, render: (t) => { const d = el("div"); d.append(pill(t.label, t.task === "rw" ? "warn" : t.task === "fin" ? "muted" : "info")); if (t.task === "fin") d.append(smallNote(posLabel(t.r) || "")); return d; } },
     { key: "since", label: "Since", sortable: false, render: (t) => (t.since !== null && t.since !== undefined ? fmtDay(t.since) : "–") },
-    { key: "tat3", label: "Sequence 3 TAT (days)", num: true, sortable: false, render: (t) => tatText(t.tat3, 3) },
-    { key: "tat8", label: "Sequence 8 TAT (days)", num: true, sortable: false, render: (t) => tatText(t.tat8, 8) },
+    { key: "tat3", label: "Sequence 3 TAT (working days)", num: true, sortable: false, render: (t) => tatText(t.tat3, 3) },
+    { key: "tat8", label: "Sequence 8 TAT (working days)", num: true, sortable: false, render: (t) => tatText(t.tat8, 8) },
     ...(!TL_ON.age ? [] : [
     { key: "age", label: "Days open", num: true, sortable: false, render: (t) => (t.age === null ? "–" : el("span", { style: t.age > 7 ? "color:var(--bad);font-weight:600" : "" }, fmtInt(t.age))) },
     { key: "risk", label: "Rework risk", sortable: false, render: (t) => (t.task === "rw" ? pill("Already in rework", "warn") : t.risk ? pill(`${t.risk.level} · ${fmtNum(t.risk.p * 100, 0)}%`, RISK_KIND[t.risk.level]) : "–") },
@@ -4565,8 +4647,11 @@ $("otClose").addEventListener("click", () => { OT_OPEN = null; $("otDetail").hid
 // left out: the final approvers may not have checked them yet); rework = KA error only (renego, discount / new price and unclear
 // are not counted); smoothed towards the team rate with 20 CPRs, so a KA with few CPRs is not trusted at 0%
 const RW_WINDOW = 90, RW_WAIT = 14;
+// the rates are refreshed every 2 weeks (on Mondays, counted from 5 Jan 2026), so a KA who improves gets more CPRs at the next refresh
+const RW_REFRESH = 14, RW_ANCHOR = isoToDay("2026-01-05");
+const rwRefreshDay = (D) => (D === null ? null : RW_ANCHOR + Math.floor((D - RW_ANCHOR) / RW_REFRESH) * RW_REFRESH);
 function reworkRates() {
-  const D = dataDate(), cnt = {}, n = {};
+  const D = rwRefreshDay(dataDate()), cnt = {}, n = {};
   if (D === null) return { rate: {}, n: {}, team: 0 };
   for (const r of RECS) {
     const s8 = r.backOutFirst ?? r.backOut; if (s8 === null || s8 === undefined || s8 > D - RW_WAIT || s8 < D - RW_WAIT - RW_WINDOW) continue;
@@ -4575,7 +4660,7 @@ function reworkRates() {
   }
   const N = Object.values(n).reduce((a, c) => a + c, 0), C = Object.values(cnt).reduce((a, c) => a + c, 0), team = N ? C / N : 0;
   const rate = {}; for (const k of Object.keys(n)) rate[k] = ((cnt[k] || 0) + 20 * team) / (n[k] + 20);
-  return { rate, n, team, raw: cnt };
+  return { rate, n, team, raw: cnt, asOf: D, next: D + RW_REFRESH };
 }
 // open task of a CPR for its KA (the KA who approved Sequence 3 keeps the CPR until the end):
 //   rec = Sequence 3 waiting for the KA, mat = Sequence 8 waiting for the KA, rw = sent back (rework), not approved again,
@@ -4593,15 +4678,21 @@ function taskOf(r) {
   if (out8 !== null && out8 !== undefined && !finished && /purchasing (head ho|director)/i.test(posLabel(r) || "")) return "fin";
   return null;
 }
-// TAT (turnaround time) of a KA step, in calendar days:
+// working days: Monday–Friday, without national holidays and cuti bersama (SKB 3 Menteri 2026); add next year's dates here
+const HOLIDAYS = new Set(["2026-01-01", "2026-01-16", "2026-02-16", "2026-02-17", "2026-03-18", "2026-03-19", "2026-03-20", "2026-03-21", "2026-03-22", "2026-03-23", "2026-03-24",
+  "2026-04-03", "2026-04-05", "2026-05-01", "2026-05-14", "2026-05-15", "2026-05-27", "2026-05-28", "2026-05-31", "2026-06-01", "2026-06-16", "2026-08-17", "2026-08-25", "2026-12-24", "2026-12-25"]);
+const isWorkDay = (d) => weekday(d) < 5 && !HOLIDAYS.has(dayToIso(d));
+// working days after day a up to and including day b (same day = 0; Friday → Monday = 1)
+function workDaysBetween(a, b) { let n = 0; for (let d = a + 1; d <= b; d++) if (isWorkDay(d)) n++; return n; }
+// TAT (turnaround time) of a KA step, in working days:
 //   Sequence 3 = from arrival at KA (Sequence 3) until the KA approves it
 //   Sequence 8 = from the return to KA (Sequence 8, first round) until the KA approves it
 // not approved yet: counted until the data date ("so far")
 function tatOf(r, seq, D) {
   const a = seq === 3 ? r.kaIn : r.backFirst ?? r.back, b = seq === 3 ? r.kaOut : r.backOutFirst ?? r.backOut;
   if (a === null || a === undefined) return null;
-  if (b !== null && b !== undefined && b >= a) return { d: b - a, running: false };
-  return D !== null && D >= a ? { d: D - a, running: true } : null;
+  if (b !== null && b !== undefined && b >= a) return { d: workDaysBetween(a, b), running: false };
+  return D !== null && D >= a ? { d: workDaysBetween(a, D), running: true } : null;
 }
 // TAT indicator (supervisor's targets): Sequence 3 at most 1 day after the KA receives the CPR;
 // Sequence 8: up to 5 days fine (green), more than 5 up to 14 days warning (yellow), more than 14 days bad (red)
@@ -4640,23 +4731,24 @@ function renderTaskLoad() {
   const lvCell = (c, seq) => { const box = el("div", { style: "display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap" }); for (const k of seq === 3 ? ["good", "bad"] : ["good", "warn", "bad"]) if (c[k]) box.append(pill(fmtInt(c[k]), k)); return box.childNodes.length ? box : "–"; };
   for (const t of ot) { if (t.task === "rec" && t.tat3) (run3[t.ka] = run3[t.ka] || []).push(t.tat3.d); if (t.task === "mat" && t.tat8) (run8[t.ka] = run8[t.ka] || []).push(t.tat8.d); }
   for (const t of ot) { if (t.age !== null && t.age > 7) old[t.ka] = (old[t.ka] || 0) + 1; if (t.risk && t.risk.level === "High") high[t.ka] = (high[t.ka] || 0) + 1; }
-  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin, work: per[ka].mat + per[ka].rw, res: SIM.reserve && SIM.reserve[ka] ? SIM.reserve[ka] : null, lv3: lvCount(run3[ka], 3), lv8: lvCount(run8[ka], 8), tat3: mean(run3[ka] || []), tat8: mean(run8[ka] || []), max3: run3[ka] ? Math.max(...run3[ka]) : null, max8: run8[ka] ? Math.max(...run8[ka]) : null })).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.work - a.work || b.n - a.n));
-  $("subTask").textContent = `Data as of ${D !== null ? fmtDay(D) : "–"}. Workload = Sequence 8 + rework.`;
-  $("lgTask").innerHTML = [["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"], ["Rework reserve", "var(--line-strong)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
+  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin, work: per[ka].mat + per[ka].rw, open: per[ka].mat + per[ka].rw + per[ka].fin, res: SIM.reserve && SIM.reserve[ka] ? SIM.reserve[ka] : null, lv3: lvCount(run3[ka], 3), lv8: lvCount(run8[ka], 8), tat3: mean(run3[ka] || []), tat8: mean(run8[ka] || []), max3: run3[ka] ? Math.max(...run3[ka]) : null, max8: run8[ka] ? Math.max(...run8[ka]) : null })).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.open - a.open || b.work - a.work));
+  const rr = reworkRates();
+  $("subTask").textContent = `Data as of ${D !== null ? fmtDay(D) : "–"}. Open tasks = Sequence 8 not done + rework + done at Sequence 8 but waiting at Purchasing Head HO / Director. Rework rate as of ${rr.asOf !== undefined ? fmtDay(rr.asOf) : "–"}, next refresh ${rr.next !== undefined ? fmtDay(rr.next) : "–"}.`;
+  $("lgTask").innerHTML = [["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"], ["Waiting at PH HO / Director", "var(--line-strong)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
   const W = TL_ON.weights;
-  barChartH($("chTask"), kas.map((k) => `${k.name} (${k.work} CPRs)`), [
+  barChartH($("chTask"), kas.map((k) => `${k.name} (${k.open})`), [
     { name: "Sequence 8", color: "var(--s2)", values: kas.map((k) => (W ? k.wMat : k.mat)) },
     { name: "Rework", color: "var(--s3, #8e5bd8)", values: kas.map((k) => (W ? k.wRw : k.rw)) },
-    { name: "Rework reserve", color: "var(--line-strong)", values: kas.map((k) => (k.res ? k.res.reserve : 0)) }
-  ], { stacked: true, dec: 1, label: "KA workload (Sequence 8 + rework) and rework reserve", onClick: (i) => showOpenTasks(kas[i].ka), tipRows: () => [{ value: "", label: "click to see the open CPRs" }] });
+    { name: "Waiting at PH HO / Director", color: "var(--line-strong)", values: kas.map((k) => k.fin) }
+  ], { stacked: true, dec: 0, label: "Open tasks per KA", onClick: (i) => showOpenTasks(kas[i].ka), tipRows: () => [{ value: "", label: "click to see the open CPRs" }] });
   renderTable($("tblTask"), [
     { key: "name", label: "Key Account", render: (r) => Object.assign(el("button", { class: "linkbtn", type: "button", title: "Show the open CPRs of this KA" }, r.name), { onclick: () => showOpenTasks(r.ka) }) },
     { key: "mat", label: "Sequence 8", num: true, render: (r) => fmtInt(r.mat) + (TL_ON.weights && r.big ? ` (${r.big} > Rp1 M)` : "") },
     { key: "rw", label: "Rework", num: true, render: (r) => fmtInt(r.rw) },
-    { key: "work", label: "Workload", num: true, render: (r) => el("b", {}, fmtInt(r.work)) },
-    { key: "lv8", label: "Seq 8 TAT (≤5 / 6–14 / >14 days)", num: true, sortable: false, render: (r) => lvCell(r.lv8, 8) },
-    { key: "tat8", label: "Seq 8 TAT so far, days (avg / max)", num: true, render: (r) => (r.tat8 === null ? "–" : `${fmtNum(r.tat8, 1)} / ${fmtInt(r.max8)}`) },
     { key: "fin", label: "Waiting at PH HO / Director", num: true, render: (r) => fmtInt(r.fin) },
+    { key: "open", label: "Open tasks", num: true, render: (r) => el("b", {}, fmtInt(r.open)) },
+    { key: "lv8", label: "Seq 8 TAT (≤5 / 6–14 / >14 working days)", num: true, sortable: false, render: (r) => lvCell(r.lv8, 8) },
+    { key: "tat8", label: "Seq 8 TAT so far, working days (avg / max)", num: true, render: (r) => (r.tat8 === null ? "–" : `${fmtNum(r.tat8, 1)} / ${fmtInt(r.max8)}`) },
     { key: "rate", label: "Rework rate (KA error)", num: true, render: (r) => (r.res ? fmtNum(r.res.rate * 100, 1) + "%" : "–") },
     { key: "resv", label: "Rework reserve (CPRs/day)", num: true, render: (r) => (r.res ? fmtNum(r.res.reserve, 1) : "–") },
     { key: "lim", label: "Daily limit after reserve", num: true, render: (r) => (r.res ? fmtNum(SIM.maxPerDay * capOf(r.ka) - r.res.reserve, 1) : "–") },
