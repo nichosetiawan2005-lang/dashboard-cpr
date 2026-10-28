@@ -440,7 +440,7 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="section-title"><h2>CPRs requiring action</h2><p id="asOfNote"></p></div>
     <div class="filters" style="margin-top:0">
       <div class="field"><label for="actFilter">Show</label><select id="actFilter">
-        <option value="">All active items</option><option value="late">Overdue in KA Sequence 3</option><option value="pre">Delayed before reaching KA</option><option value="post">Pending with approver (after KA)</option><option value="stale">Auto-rejected (no progress &gt; 30 days)</option><option value="ignored">Dismissed</option></select></div>
+        <option value="">All active items</option><option value="late">Overdue in KA Sequence 3</option><option value="post">Pending with approver (after KA)</option><option value="stale">Auto-rejected (no progress &gt; 30 days)</option><option value="ignored">Dismissed</option></select></div>
       <div class="field"><label for="actKa">KA</label><select id="actKa"></select></div>
       <button class="btn ghost" id="actIgnoreAll" type="button" hidden>Dismiss all shown</button>
     </div>
@@ -4007,11 +4007,13 @@ function dataDate() { // the latest date seen in the data (CPRHistory or PO Data
   for (const r of RECS) for (const k of ["create", "kaIn", "kaOut", "back", "backOut", "lastAct"]) if (r[k] !== null && r[k] !== undefined && (m === null || r[k] > m)) m = r[k];
   return m;
 }
+// Supervisor Control only follows CPRs that reached Sequence 3 (arrived at the KA) or later; Sequence 0–2 is ignored there
+const reachedKa = (r) => (r.kaIn !== null && r.kaIn !== undefined) || ((r.backFirst ?? r.back) !== null && (r.backFirst ?? r.back) !== undefined) || (r.kaOut !== null && r.kaOut !== undefined);
 function actionItems() {
   if (!SIM) return [];
   const D = dataDate(), out = [];
   for (const c of SIM.assigned) {
-    const r = c.r; if (r.backOut !== null || r.done) continue;
+    const r = c.r; if (r.backOut !== null || r.done || !reachedKa(r)) continue;
     if (!IGNORED[r.cpr] && isInactive(r)) { const AD = activityDate(), last = lastActivity(r); out.push({ c, type: "stale", days: AD - last, status: `No progress for ${AD - last} days (last activity ${fmtDay(last)}); rejected automatically. Not counted as KA workload.`, where: posLabel(r) || fallbackPos(r), canMove: false }); continue; }
     // without a progress update after the CPR entered KA, its status is unknown: not a problem yet
     if (!r.prog || D === null || D < (r.kaIn ?? r.create)) continue;
@@ -4047,11 +4049,9 @@ function renderSpv() {
   const items = actionItems();
   const week = Date.now() - 7 * 864e5;
   $("spvTiles").replaceChildren(
-    tile("CPRs in progress", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.backOut === null && !c.r.done && !IGNORED[c.r.cpr]).length : 0), "", "Sequence 8 not yet completed"),
-    tile("No update yet", fmtInt(SIM ? SIM.assigned.filter((c) => !c.r.prog && !IGNORED[c.r.cpr]).length : 0), "CPRs", "no approval step in CPRHistory yet; status unknown"),
-    tile("Completed", fmtInt(SIM ? SIM.assigned.filter((c) => c.r.done).length : 0), "CPRs", "converted into PO, Sequence 8 completed, or rejected"),
+    tile("CPRs in progress", fmtInt(SIM ? SIM.assigned.filter((c) => reachedKa(c.r) && c.r.backOut === null && !c.r.done && !IGNORED[c.r.cpr]).length : 0), "", "from Sequence 3; Sequence 8 not yet completed"),
+    tile("Completed", fmtInt(SIM ? SIM.assigned.filter((c) => reachedKa(c.r) && c.r.done).length : 0), "CPRs", "converted into PO, Sequence 8 completed, or rejected"),
     tile("Sequence 3 overdue", fmtInt(items.filter((x) => x.type === "late").length), "CPRs", "more than 3 days at KA"),
-    tile("Delayed before KA", fmtInt(items.filter((x) => x.type === "pre").length), "CPRs", "past the end of the arrival forecast range"),
     tile("Pending with approver", fmtInt(items.filter((x) => x.type === "post").length), "CPRs", "after KA Sequence 3, past the end of the return forecast range"),
     tile("Auto-rejected", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `no progress > ${STALE_DAYS} days at any sequence; not counted as workload, data kept`),
     tile("KAs absent today", fmtInt(new Set(ABSENCES.filter((a) => today >= a.from && today <= a.to).map((a) => a.ka)).size), "people", ""),
