@@ -1186,18 +1186,31 @@ async function loadSteps(cpr) {
   if (!STEP_CACHE.has(b)) { let items = {}; if (DB) { try { const d = await DB.doc("steps/" + b).get(); items = d.exists ? d.data().items || {} : {}; } catch {} } STEP_CACHE.set(b, items); }
   return STEP_CACHE.get(b)[cpr] || null;
 }
+// run async jobs a few at a time (the online database answers each request separately)
+async function runPool(jobs, size = 6) {
+  let next = 0;
+  const worker = async () => { while (next < jobs.length) { const job = jobs[next++]; await job(); } };
+  await Promise.all(Array.from({ length: Math.min(size, jobs.length) }, worker));
+}
 async function saveSteps(fresh, gone) {
   // fresh: Map cpr -> rows (only CPRs whose newest version came from this upload); gone: CPRs that left the queue
   const byB = new Map();
   for (const [cpr, rows] of fresh) { const b = stepBucket(cpr); if (!byB.has(b)) byB.set(b, { set: new Map(), del: [] }); byB.get(b).set.set(cpr, rows); }
   for (const cpr of gone) { const b = stepBucket(cpr); if (!byB.has(b)) byB.set(b, { set: new Map(), del: [] }); byB.get(b).del.push(cpr); }
-  for (const [b, ch] of byB) {
-    const d = await DB.doc("steps/" + b).get(); const items = { ...(d.exists ? d.data().items || {} : {}) };
+  // read every stored bucket in one request, then write only the buckets that really changed
+  let stored = null;
+  try { const st = await DB.collection("steps").get(); stored = new Map(st.docs.map((d) => [d.id, d.data().items || {}])); } catch { stored = null; }
+  const jobs = [...byB].map(([b, ch]) => async () => {
+    let old = stored ? stored.get(b) ?? null : null;
+    if (!stored) { const d = await DB.doc("steps/" + b).get(); old = d.exists ? d.data().items || {} : null; }
+    const items = { ...(old || {}) };
     for (const [cpr, rows] of ch.set) items[cpr] = rows;
     for (const cpr of ch.del) delete items[cpr];
-    if (Object.keys(items).length) await DB.doc("steps/" + b).set({ items }); else if (d.exists) await DB.doc("steps/" + b).delete();
     STEP_CACHE.set(b, items);
-  }
+    if (old && JSON.stringify(items) === JSON.stringify(old)) return;   // nothing new in this bucket
+    if (Object.keys(items).length) await DB.doc("steps/" + b).set({ items }); else if (old) await DB.doc("steps/" + b).delete();
+  });
+  await runPool(jobs, 6);
 }
 // ---------- CPRSummary: one row per CPR - who holds it now (Waiting To Approve), ERP ID (PR / PO), Created Date ----------
 const SCOL = { cpr: "Capital Req ID", status: "Document Status", waiting: "Waiting To Approve", erp: "ERP ID", created: "Created Date & Time", submitted: "Submitted Date & Time", subject: "Subject", unit: "Unit", category: "Category Type" };
@@ -1358,8 +1371,8 @@ async function saveCatalog() {
   if (!DB || !canSave()) return;
   const rows = [...CATALOG.values()].map((x) => CAT_FIELDS.map((k) => x[k] ?? null)), n = Math.ceil(rows.length / CHUNK);
   const old = await DB.doc("catalog/meta").get(); const oldN = old.exists ? old.data().chunks || 0 : 0;
-  for (let i = 0; i < n; i++) await DB.doc("catalog/chunk-" + i).set({ rows: rows.slice(i * CHUNK, (i + 1) * CHUNK) });
-  for (let i = n; i < oldN; i++) await DB.doc("catalog/chunk-" + i).delete();
+  await runPool([...Array.from({ length: n }, (_, i) => () => DB.doc("catalog/chunk-" + i).set({ rows: rows.slice(i * CHUNK, (i + 1) * CHUNK) })),
+    ...Array.from({ length: Math.max(0, oldN - n) }, (_, i) => () => DB.doc("catalog/chunk-" + (n + i)).delete())]);
   await DB.doc("catalog/meta").set({ chunks: n, count: rows.length, savedAt: new Date().toISOString() });
 }
 async function loadCatalog() {
@@ -1790,8 +1803,8 @@ async function saveData() {
   const n = Math.ceil(rows.length / CHUNK);
   const old = await DB.doc("cpr/meta").get();
   const oldN = old.exists ? old.data().chunks || 0 : 0;
-  for (let i = 0; i < n; i++) await DB.doc("cpr/chunk-" + i).set({ rows: rows.slice(i * CHUNK, (i + 1) * CHUNK) });
-  for (let i = n; i < oldN; i++) await DB.doc("cpr/chunk-" + i).delete();
+  await runPool([...Array.from({ length: n }, (_, i) => () => DB.doc("cpr/chunk-" + i).set({ rows: rows.slice(i * CHUNK, (i + 1) * CHUNK) })),
+    ...Array.from({ length: Math.max(0, oldN - n) }, (_, i) => () => DB.doc("cpr/chunk-" + (n + i)).delete())]);
   if (PIC_LIST) await DB.doc("settings/pic").set({ list: PIC_LIST });
   SAVED_AT = new Date().toISOString();
   await DB.doc("cpr/meta").set({ fileName: META.fileName, format: META.format || "cleaned", savedAt: SAVED_AT, chunks: n, count: rows.length, hasKa: !!META.hasKa,
@@ -2810,8 +2823,8 @@ async function saveTrain() {
   const rows = [...TRAIN.values()].map((t) => TRAIN_FIELDS.map((k) => t[k] ?? null));
   const n = Math.ceil(rows.length / CHUNK);
   const old = await DB.doc("train/meta").get(); const oldN = old.exists ? old.data().chunks || 0 : 0;
-  for (let i = 0; i < n; i++) await DB.doc("train/chunk-" + i).set({ rows: rows.slice(i * CHUNK, (i + 1) * CHUNK) });
-  for (let i = n; i < oldN; i++) await DB.doc("train/chunk-" + i).delete();
+  await runPool([...Array.from({ length: n }, (_, i) => () => DB.doc("train/chunk-" + i).set({ rows: rows.slice(i * CHUNK, (i + 1) * CHUNK) })),
+    ...Array.from({ length: Math.max(0, oldN - n) }, (_, i) => () => DB.doc("train/chunk-" + (n + i)).delete())]);
   await DB.doc("train/meta").set({ ...TRAIN_META, chunks: n });
 }
 async function loadTrain() {
