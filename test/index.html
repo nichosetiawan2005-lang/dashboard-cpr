@@ -989,8 +989,8 @@ function renderUpload() {
     const list = $(k === "h" ? "upListH" : "upListS");
     list.replaceChildren(...UP[k].map((f, i) => {
       const li = el("li"); li.append(el("span", { class: "fn", title: f.name }, f.name), el("span", { class: "note", style: "margin:0" }, kb(f.size)));
-      // a file whose name says the other type is probably in the wrong box
-      const other = k === "h" ? /summary/i : /history/i; if (other.test(f.name)) li.append(el("span", { class: "warn" }, k === "h" ? "looks like a CPRSummary" : "looks like a CPRHistory"));
+      // a file dropped in the other box was moved here automatically
+      if (f.__moved) li.append(el("span", { class: "warn", title: "This file is a " + (k === "h" ? "CPRHistory" : "CPRSummary") + ", so it was moved to this box" }, "moved here"));
       const x = el("button", { type: "button", title: "Remove this file", "aria-label": "Remove " + f.name }, "✕"); x.onclick = () => { UP[k].splice(i, 1); renderUpload(); };
       li.append(x); return li;
     }));
@@ -1001,7 +1001,26 @@ function renderUpload() {
     : UP.h.length && !UP.s.length ? "No CPRSummary: the KA now holding each CPR and the ERP ID (Completed) will not be updated. Adding it is recommended." : "";
 }
 function openUploadDialog() { UP.h = []; UP.s = []; renderUpload(); $("upDlg").showModal(); }
-function addUp(k, files) { for (const f of files) if (!UP[k].some((x) => x.name === f.name && x.size === f.size)) UP[k].push(f); renderUpload(); }
+// which kind of file is it? the name first, otherwise the column names of the first row
+async function fileKind(f) {
+  if (/summary/i.test(f.name) && !/history/i.test(f.name)) return "s";
+  if (/history/i.test(f.name) && !/summary/i.test(f.name)) return "h";
+  try {
+    const wb = XLSX.read(await f.arrayBuffer(), { type: "array", sheetRows: 2 });
+    const head = (XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 })[0] || []).map((h) => String(h).trim());
+    if (head.includes(SCOL.waiting) || head.includes(SCOL.created)) return "s";
+    if (head.includes(HCOL.role) || head.includes(HCOL.seq)) return "h";
+  } catch {}
+  return null;
+}
+async function addUp(k, files) {
+  for (const f of [...files]) {
+    const kind = (await fileKind(f)) || k;
+    if (kind !== k) f.__moved = true;
+    if (!UP[kind].some((x) => x.name === f.name && x.size === f.size)) UP[kind].push(f);
+  }
+  renderUpload();
+}
 $("lblCpr").addEventListener("click", openUploadDialog);
 $("upFileH").addEventListener("change", (e) => { addUp("h", e.target.files); e.target.value = ""; });
 $("upFileS").addEventListener("change", (e) => { addUp("s", e.target.files); e.target.value = ""; });
