@@ -4447,6 +4447,40 @@ $("lcCopy").addEventListener("click", async () => {
   for (const k of lc.kas) { const g = lc.grid.get(k); lc.days.forEach((d, i) => { const a = g.act[i], f = g.fc[i]; lines.push([dayToIso(d), kaLabel(k), a, f, f - a, pct(a ? Math.max(0, 1 - Math.abs(f - a) / a) : null), pct(a ? (f - a) / a : null)].join("\t")); }); }
   try { await navigator.clipboard.writeText(lines.join("\n")); setStatus(`${fmtInt(lines.length - 1)} rows copied (one per KA per working day). Paste into Excel with Ctrl+V.`); } catch { setStatus("The browser blocked copying."); }
 });
+// DSS plan vs reality: the KA the dashboard chose before the CPR reached a KA (saved allocation) against the KA
+// who really took it. Workload = CPRs held at Sequence 8 or in rework per KA per working day; "with the DSS" moves each
+// planned CPR to the planned KA and keeps the real dates (the days at Sequence 8 stay as they happened).
+function shadowCompare() {
+  if (!SIM) return null;
+  const plan = new Map();
+  for (const [cpr, a] of LOCKED) if (!["Diproses KA", "Sudah di KA"].includes(a.rule) && isCurrentKa(a.ka)) plan.set(cpr, a.ka);
+  if (!plan.size) return null;
+  const D = dataDate(), kas = currentKas(SIM.kaList);
+  const planned = RECS.filter((r) => plan.has(r.cpr));
+  const reached = planned.filter((r) => dataKa(r));
+  const followed = reached.filter((r) => dataKa(r) === plan.get(r.cpr)).length;
+  let start = null;
+  for (const r of planned) { const a = r.backFirst ?? r.back; if (a !== null && a !== undefined && (start === null || a < start)) start = a; }
+  const base = { n: plan.size, reached: reached.length, followed, start, end: D };
+  if (start === null || D === null) return base;
+  const held = RECS.map((r) => ({ r, a: r.backFirst ?? r.back, b: r.backOutFirst ?? r.backOut, rw: reworkList(r), ka: dataKa(r) }));
+  const stats = (usePlan) => {
+    const gaps = [], stds = [], maxs = [];
+    for (let d = start; d <= D; d++) {
+      if (!isWorkDay(d)) continue;
+      const m = Object.fromEntries(kas.map((k) => [k, 0]));
+      for (const x of held) {
+        const in8 = x.a !== null && x.a !== undefined && x.a <= d && (x.b === null || x.b === undefined || x.b > d);
+        if (!in8 && !x.rw.some((e) => e.start <= d && (e.end === null || e.end > d))) continue;
+        const k = usePlan && plan.has(x.r.cpr) ? plan.get(x.r.cpr) : x.ka;
+        if (k in m) m[k]++;
+      }
+      const v = Object.values(m); gaps.push(Math.max(...v) - Math.min(...v)); maxs.push(Math.max(...v)); stds.push(stdev(v));
+    }
+    return { gap: mean(gaps), std: mean(stds), max: mean(maxs), last: gaps.length ? gaps[gaps.length - 1] : null, days: gaps.length };
+  };
+  return { ...base, actual: stats(false), dss: stats(true) };
+}
 function renderBukti() {
   renderFcSettings(); renderStudy(); try { renderLoadCheck(); } catch (e) { $("lcNote").textContent = "Daily workload check failed: " + (e.message || e); } 
   const clear = () => { for (const id of ["tblModels", "bkFcTiles", "chFc", "lgFc", "tblBkLoad", "bkPoTiles", "chPo", "lgPo", "bkSpvTiles"]) $(id).replaceChildren(); };
@@ -4506,18 +4540,36 @@ function renderBukti() {
   const a = SIM.actual || actualFromPo(), d = SIM.dss, pct = (x, y) => (x ? fmtNum(((x - y) / x) * 100, 0) + "% better" : "–");
   const share = (arr) => { const t = arr.reduce((x, y) => x + y, 0) || 1; return `${fmtNum((Math.min(...arr) / t) * 100, 0)}% – ${fmtNum((Math.max(...arr) / t) * 100, 0)}%`; };
   const counts = Object.values(SIM.dssCount), countsA = a ? Object.values(a.counts || SIM.actualCount) : [];
-  $("bkLoadDesc").textContent = a ? "Before = actual KA allocation · After = dashboard allocation." : "Available after the dashboard has been used for a period.";
-  const rowsL = [
-    ["Average workload per KA per day (volume)", a && (a.avg ?? null), mean(SIM.load.flatMap((arr) => SIM.workDays.map((dd) => arr[dd - SIM.minDay] || 0)))],
-    ["Gap between busiest and least busy KA (CPRs/day)", a && a.gap, d.gap],
-    ["Workload dispersion across KAs (std. dev.)", a && a.std, d.std],
-    [`Days with a KA above the limit of ${fmtNum(SIM.maxPerDay)}`, a && a.over, d.over],
-    ["Highest single-KA workload in one day", a && a.highest, d.highest],
-    ["Share of CPRs per KA: lowest – highest", a ? share(countsA) : null, share(counts)]
-  ];
+  const sh = a ? null : shadowCompare();
+  let rowsL;
+  if (a) {
+    $("bkLoadDesc").textContent = "Before = actual KA allocation · After = dashboard allocation.";
+    rowsL = [
+      ["Average workload per KA per day (volume)", a.avg ?? null, mean(SIM.load.flatMap((arr) => SIM.workDays.map((dd) => arr[dd - SIM.minDay] || 0)))],
+      ["Gap between busiest and least busy KA (CPRs/day)", a.gap, d.gap],
+      ["Workload dispersion across KAs (std. dev.)", a.std, d.std],
+      [`Days with a KA above the limit of ${fmtNum(SIM.maxPerDay)}`, a.over, d.over],
+      ["Highest single-KA workload in one day", a.highest, d.highest],
+      ["Share of CPRs per KA: lowest – highest", share(countsA), share(counts)]
+    ];
+  } else if (sh && sh.actual && sh.actual.days) {
+    $("bkLoadDesc").textContent = `Before = the KA who really took each CPR · After = the KA the dashboard planned. ${fmtDay(sh.start)} – ${fmtDay(sh.end)}, ${fmtInt(sh.actual.days)} working days.`;
+    rowsL = [
+      ["CPRs allocated by the dashboard", null, sh.n],
+      ["  of which already at a KA", null, sh.reached],
+      ["  the KA in reality is the planned KA", null, `${fmtInt(sh.followed)} (${sh.reached ? fmtNum((sh.followed / sh.reached) * 100, 0) : 0}%)`],
+      ["Gap between busiest and least busy KA (CPRs at Seq 8 + rework, per day)", sh.actual.gap, sh.dss.gap],
+      ["Workload dispersion across KAs (std. dev.)", sh.actual.std, sh.dss.std],
+      ["Busiest KA per day (CPRs at Seq 8 + rework)", sh.actual.max, sh.dss.max],
+      [`Gap on ${fmtDay(sh.end)}`, sh.actual.last, sh.dss.last]
+    ];
+  } else {
+    $("bkLoadDesc").textContent = sh ? "Available once CPRs allocated by the dashboard have come back to the KA at Sequence 8." : "Available after the dashboard has allocated CPRs and new data has been uploaded.";
+    rowsL = [];
+  }
   renderTable($("tblBkLoad"), [
     { key: 0, label: "Measure", sortable: false, render: (r) => r[0] },
-    { key: 1, label: "Before", num: true, sortable: false, render: (r) => (r[1] === null || r[1] === undefined ? "–" : typeof r[1] === "number" ? fmtNum(r[1], Number.isInteger(r[1]) ? 0 : 1) : r[1]) },
+    { key: 1, label: "Before (actual)", num: true, sortable: false, render: (r) => (r[1] === null || r[1] === undefined ? "–" : typeof r[1] === "number" ? fmtNum(r[1], Number.isInteger(r[1]) ? 0 : 1) : r[1]) },
     { key: 2, label: "After (dashboard)", num: true, sortable: false, render: (r) => (typeof r[2] === "number" ? fmtNum(r[2], Number.isInteger(r[2]) ? 0 : 1) : r[2]) },
     { key: 3, label: "Change", num: true, sortable: false, render: (r) => (r[0].startsWith("Average workload") ? "volume reference" : typeof r[1] === "number" && typeof r[2] === "number" ? pct(r[1], r[2]) : "–") }
   ], rowsL);
