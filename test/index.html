@@ -346,13 +346,16 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
         <div class="field"><label for="sFrom">CPR created from</label><input type="date" id="sFrom"></div>
         <div class="field"><label for="sTo">to</label><input type="date" id="sTo"></div>
-        <div class="field"><label for="sVendor">Same-vendor weight</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
         <div class="field"><label for="sMax">Daily workload limit</label><input type="number" id="sMax" min="1" step="0.5" placeholder="automatic"></div>
-        <label class="check" title="The hospital PIC receives the CPR only while the PIC's CPR count does not exceed the average of all KAs"><input type="checkbox" id="sPic"> Prioritize hospital PIC (fair-share limit)</label>
         <button class="btn" id="sRun" type="button">Run allocation</button>
         <button class="btn ghost" id="sReset" type="button" hidden>Reallocate all</button>
       </div>
-      <details class="capbox" id="capBox"><summary>KA capacity for CPR review (%)</summary><div class="sub">Lower it for a KA with other work. 0% = no new CPRs.</div><div class="capgrid" id="capGrid"></div></details>
+      <details class="capbox" id="capBox"><summary>More settings</summary>
+        <div class="filters" style="border:0;padding:0;margin:8px 0">
+          <div class="field"><label for="sVendor">Same-vendor weight</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
+          <label class="check" title="The hospital PIC receives the CPR only while the PIC's CPR count does not exceed the average of all KAs"><input type="checkbox" id="sPic"> Prioritize hospital PIC</label>
+        </div>
+        <div class="sub">KA capacity (%): lower it for a KA with other work; 0% = no new CPRs.</div><div class="capgrid" id="capGrid"></div></details>
       <p class="note" id="runInfo" style="font-weight:500;color:var(--fg)"></p>
       <p class="note" id="simNote"></p>
     </div>
@@ -361,9 +364,9 @@ body.locked #loginForm .btn { width: 100%; }
     <div class="card" id="speedCard" style="margin-top:12px" hidden><h3>How the KA is chosen</h3><div class="tbl-wrap"><table id="tblSpeed"></table></div><p class="note" id="speedNote"></p></div>
     <p class="note" id="simCompare"></p>
     <div id="simResults"><div class="card" style="margin-top:12px"><h3 id="hKaCount">Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
-    <div class="card" style="margin-top:12px" id="cardKaDone" hidden><h3>Completed CPRs per KA</h3><div class="chart" id="chKaDone"></div></div>
+    <div class="card" style="margin-top:12px;display:none" id="cardKaDone" hidden><h3>Completed CPRs per KA</h3><div class="chart" id="chKaDone"></div></div>
     <div class="section-title"><h2>CPR assignment list</h2></div>
-    <div class="fcflow" aria-label="The four forecasts of a CPR">
+    <div class="fcflow" aria-label="The four forecasts of a CPR" hidden>
       <div class="st"><b>CPR created</b>by the hospital</div><span class="fc">Forecast 1 →</span>
       <div class="st"><b>① Arrives at KA</b>Sequence 3</div><span class="fc ka">Forecast 3 →</span>
       <div class="st"><b>② KA approves Seq 3</b>goes to other approvers</div><span class="fc">Forecast 2 →</span>
@@ -485,7 +488,7 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblAbs"></table></div>
     </div>
 
-    <div class="section-title"><h2>KA replaced (left the team)</h2></div>
+    <details class="more" style="margin-top:16px"><summary>KA replaced (left the team)</summary>
     <div class="card">
       <div class="filters" style="border:0;padding:0;margin:0" id="chgForm">
         <div class="field"><label for="chgUser">Former KA (username)</label><input type="text" id="chgUser" list="chgUsers" placeholder="e.g. maria.nugraheni"><datalist id="chgUsers"></datalist></div>
@@ -497,6 +500,7 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblChg"></table></div>
     </div>
 
+    </details>
     <div class="section-title"><h2>Reassignment log</h2></div>
     <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="tblTr"></table></div>
   </section>
@@ -506,6 +510,17 @@ body.locked #loginForm .btn { width: 100%; }
     <p class="note" id="bkNote"></p>
     <div class="section-title"><h2>1. Is the forecast accurate?</h2></div>
     <div id="bkFcTiles"></div><p class="note" id="bkFcNote"></p>
+    <details class="capbox" id="fcMore" style="margin-top:12px"><summary>More detail: forecast per CPR, daily workload check, model settings</summary>
+    <div class="card" id="lcCard" style="margin-top:12px"><h3>KA workload per day: forecast vs actual (test months)</h3>
+      <div class="sub">CPRs held at Sequence 8 per day: forecast made when the CPR was created vs actual.</div>
+      <div class="filters" style="border:0;padding:0;margin:8px 0">
+        <div class="field"><label for="lcKa">Key Account</label><select id="lcKa"></select></div>
+        <button class="btn ghost" type="button" id="lcCopy">Copy daily table</button>
+      </div>
+      <div class="legend" id="lgLc"></div><div class="chart" id="chLc"></div>
+      <div class="tbl-wrap" style="margin-top:10px"><table id="tblLc"></table></div>
+      <p class="note" id="lcNote"></p>
+    </div>
     <div class="card" id="chkCard" style="margin-top:12px"><h3>Check the forecast CPR by CPR (test months)</h3>
       <div class="sub">Each test CPR, forecast by a model that had not seen it.</div>
       <div class="filters" style="border:0;padding:0;margin:8px 0">
@@ -519,17 +534,6 @@ body.locked #loginForm .btn { width: 100%; }
       <div class="tbl-wrap" style="margin-top:10px;max-height:520px;overflow:auto"><table id="tblChkCpr"></table></div>
       <p class="note" id="chkNote"></p>
     </div>
-    <div class="card" id="lcCard" style="margin-top:12px"><h3>KA workload per day: forecast vs actual (test months)</h3>
-      <div class="sub">CPRs held at Sequence 8 per day: forecast made when the CPR was created vs actual.</div>
-      <div class="filters" style="border:0;padding:0;margin:8px 0">
-        <div class="field"><label for="lcKa">Key Account</label><select id="lcKa"></select></div>
-        <button class="btn ghost" type="button" id="lcCopy">Copy daily table</button>
-      </div>
-      <div class="legend" id="lgLc"></div><div class="chart" id="chLc"></div>
-      <div class="tbl-wrap" style="margin-top:10px"><table id="tblLc"></table></div>
-      <p class="note" id="lcNote"></p>
-    </div>
-    <details class="capbox" id="fcMore" style="margin-top:12px"><summary>Model details and settings</summary>
     <div class="card" id="fcSetCard" style="margin-top:12px"><h3>Forecast settings</h3>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
         <div class="field"><label for="fcFrom">Learn from CPRs created from</label><input type="date" id="fcFrom"></div>
@@ -551,7 +555,7 @@ body.locked #loginForm .btn { width: 100%; }
     </details>
     <div class="section-title"><h2>2. Is the KA workload more evenly distributed?</h2><p id="bkLoadDesc"></p></div>
     <div class="tbl-wrap"><table id="tblBkLoad"></table></div>
-    <div class="section-title"><h2>3. Are CPRs converted into POs more quickly?</h2><p id="bkPoDesc"></p></div>
+    <div class="section-title" id="bkPoHead"><h2>3. Are CPRs converted into POs more quickly?</h2><p id="bkPoDesc"></p></div>
     <div class="tiles" id="bkPoTiles"></div>
     <div class="card" id="poCard" style="margin-top:12px"><h3>Median days by PO creation month</h3><div class="sub" id="bkPoSub"></div><div class="legend" id="lgPo"></div><div class="chart" id="chPo"></div></div>
     <div class="section-title"><h2>4. Is the supervisor's workload reduced?</h2></div>
@@ -569,7 +573,7 @@ body.locked #loginForm .btn { width: 100%; }
     </div>
     <div class="section-title"><h2>Activity log</h2></div>
     <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="tblLog"></table></div>
-    <div class="tiles" id="dqTiles"></div>
+    <div class="tiles" id="dqTiles" hidden></div>
     <div id="histCard" hidden>
       <div class="section-title"><h2>CPR queue file (CPRHistory)</h2></div>
       <div class="card">
@@ -1088,7 +1092,7 @@ $("fileCpr").addEventListener("change", async (e) => {
     const newMin = added.length ? Math.min(...added.map((r) => r.create)) : null;
     deriveMeta(); populateControls(hadData ? { newMin } : null);
     $("sampleBanner").hidden = true; updateModeBanner();
-    $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPRs`;
+    $("dataLabel").textContent = `${fmtInt(RECS.length)} CPRs · data up to ${dataDate() !== null ? fmtDay(dataDate()) : "–"}`;
     SIM = null; SIM_KA = new Map(); // allocation waits for "Run allocation"
     if (fromSetup) await setSetupPending(true);
     renderAll();
@@ -1098,7 +1102,7 @@ $("fileCpr").addEventListener("change", async (e) => {
       SAVING = true;
       try {
         await saveData(); await saveCatalog();
-        $("dataLabel").textContent = `${file.name} · ${fmtInt(RECS.length)} CPRs · saved ${fmtStamp(SAVED_AT)}`;
+        $("dataLabel").textContent = `${fmtInt(RECS.length)} CPRs · data up to ${dataDate() !== null ? fmtDay(dataDate()) : "–"}`;
         saved = " Data saved.";
         const fresh = RECS.filter((r) => !before.has(r.cpr)).length;
         const now = new Set(RECS.map((r) => r.cpr)), gone = [...before].filter((c) => !now.has(c)).length;
@@ -1805,11 +1809,11 @@ async function initDb() {
     deriveMeta(); populateControls();
     if (m.simFrom) { $("sFrom").value = m.simFrom; $("sTo").value = m.simTo; }
     $("sampleBanner").hidden = true; updateModeBanner();
-    $("dataLabel").textContent = `${m.fileName} · ${fmtInt(RECS.length)} CPRs · saved ${fmtStamp(m.savedAt)}`;
+    $("dataLabel").textContent = `${fmtInt(RECS.length)} CPRs · data up to ${dataDate() !== null ? fmtDay(dataDate()) : "–"}`;
     // show the stored data right away; the forecasts and the allocation are calculated after that
     SIM = null; SIM_KA = new Map(); renderAll(); renderSavedInfo();
-    if (LOCKED.size) { setStatus(`Stored data loaded: ${fmtInt(RECS.length)} CPRs. Calculating forecasts and workload …`); await runSimulation({ save: false }); }
-    setStatus(`Stored data loaded: ${fmtInt(RECS.length)} CPRs from ${m.fileName}.`);
+    if (LOCKED.size) { setStatus("Calculating forecasts …"); await runSimulation({ save: false }); }
+    setStatus("");
   } catch (err) { setStatus("Stored data could not be loaded: " + (err.message || err.code)); renderSavedInfo(); }
 }
 function fmtStamp(iso) { if (!iso) return "–"; const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; }
@@ -1965,8 +1969,8 @@ function renderSavedInfo() {
   if (!DB_READY) { info.textContent = "Checking stored data …"; return; }
   if (!DB) { info.textContent = "Storage is not available in this view (for example, when not signed in). Data is processed only in the browser and will be lost when the page is closed."; return; }
   if (IS_SAMPLE) { info.textContent = (PIC_LIST ? `Hospital PIC List saved (${fmtInt(Object.keys(PIC_LIST).length)} hospitals). ` : "") + "No CPR data yet. Upload a CPR queue file to begin."; return; }
-  info.textContent = `File: ${META.fileName || "–"} · ${fmtInt(RECS.length)} CPRs · saved ${fmtStamp(SAVED_AT)} · Hospital PIC List: ${PIC_LIST ? fmtInt(Object.keys(PIC_LIST).length) + " hospitals" : "not uploaded"} · `
-    + (META.hasKa ? "Validation mode: the allocation is recalculated on every run and is not locked." : `${fmtInt(LOCKED.size)} CPRs have a fixed KA from previous allocations.`);
+  info.textContent = `${fmtInt(RECS.length)} CPRs · saved ${fmtStamp(SAVED_AT)} · Hospital PIC List: ${PIC_LIST ? fmtInt(Object.keys(PIC_LIST).length) + " hospitals" : "not uploaded"} · ${fmtInt(LOCKED.size)} CPRs with a fixed KA`;
+  info.title = META.fileName || "";
 }
 // destructive actions: a confirmation window + the administrator access code typed again
 // (without the online database there is no code, so the word CONFIRM is typed instead)
@@ -4209,8 +4213,6 @@ function renderSpv() {
     tile("Sequence 8 overdue", fmtInt(items.filter((x) => x.type === "late8").length), "CPRs", `more than ${TAT_LIMIT.s8bad} working days`),
     tile("In rework", fmtInt(items.filter((x) => x.type === "rework").length), "CPRs", "sent back, not approved again"),
     tile("Auto-rejected", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `no progress > ${STALE_DAYS} days at Sequence 3, 8 or rework`),
-    tile("KAs absent today", fmtInt(new Set(ABSENCES.filter((a) => today >= a.from && today <= a.to).map((a) => a.ka)).size), "people", ""),
-    tile("Reassignments (last 7 days)", fmtInt(activeTransfers().filter((t) => Date.parse(t.at) >= week).length), "", `${fmtInt(activeTransfers().filter((t) => t.by === "SPV").length)} by supervisor in total`)
   );
   const f = $("actFilter").value, fk = $("actKa").value;
   // "All active items" hides CPRs that are probably not active and CPRs the SPV ignored
@@ -4661,11 +4663,11 @@ function renderBukti() {
   const live = UPLOAD_LOG.filter((x) => logType(x.type) === "Allocation").map((x) => toDay(x.at.slice(0, 10))).sort((x, y) => x - y)[0] ?? null;
   const po = PO_RECS.filter((r) => r.po !== null);
   if (!po.length) {
-    $("bkPoDesc").textContent = "Not available yet: the exports have no PO date."; $("poCard").hidden = true;
+    $("bkPoDesc").textContent = "Not available yet: the exports have no PO date."; $("poCard").hidden = true; $("bkPoHead").hidden = true; $("bkPoTiles").hidden = true;
   } else {
     const before = live !== null ? po.filter((r) => r.create < live) : po, after = live !== null ? po.filter((r) => r.create >= live) : [];
     const med = (l, k) => median(l.map((r) => r[k]));
-    $("bkPoDesc").textContent = live !== null ? `Dashboard first used on ${fmtDay(live)}.` : ""; $("poCard").hidden = false;
+    $("bkPoDesc").textContent = live !== null ? `Dashboard first used on ${fmtDay(live)}.` : ""; $("poCard").hidden = false; $("bkPoHead").hidden = false; $("bkPoTiles").hidden = false;
     $("bkPoTiles").replaceChildren(
       tile("CPR created → PO, before", fmtNum(med(before, "toPo")), "days", `median of ${fmtInt(before.length)} CPRs`),
       tile("CPR created → PO, after", after.length >= 20 ? fmtNum(med(after, "toPo")) : "–", after.length >= 20 ? "days" : "", after.length >= 20 ? `median of ${fmtInt(after.length)} CPRs` : `only ${fmtInt(after.length)} CPRs converted into POs since adoption; at least 20 required`),
@@ -5034,7 +5036,7 @@ function capInputs(container) {
     l.append(i); return l;
   }));
 }
-function syncCap() { for (const id of ["capGrid", "capGrid4"]) { const c = document.getElementById(id); if (c) capInputs(c); } const n = Object.keys(CAPACITY).length; const sm = document.querySelector("#capBox summary"); if (sm) sm.textContent = `KA capacity for CPR review (%)${n ? ` · ${n} KA${n > 1 ? "s" : ""} below 100%` : ""}`; }
+function syncCap() { for (const id of ["capGrid", "capGrid4"]) { const c = document.getElementById(id); if (c) capInputs(c); } const n = Object.keys(CAPACITY).length; const sm = document.querySelector("#capBox summary"); if (sm) sm.textContent = `More settings${n ? ` · ${n} KA${n > 1 ? "s" : ""} below 100% capacity` : ""}`; }
 // files uploaded from the setup page: the page stays (steps 1-3) until Run allocation is selected there
 let SETUP_PENDING = false;
 async function setSetupPending(on) { SETUP_PENDING = on; if (DB && canSave()) { try { if (on) await DB.doc("settings/setup").set({ pending: true }); else await DB.doc("settings/setup").delete(); } catch {} } }
