@@ -3325,6 +3325,11 @@ function kaSpeeds(kaList) {
   const rates = [];
   for (const k of kaList) { if (out.days[k] > 0 && out.done[k] > 0) { out.perDay[k] = out.done[k] / out.days[k]; rates.push(out.perDay[k]); } }
   out.team = rates.length ? mean(rates) : 1;
+  // working days one CPR stays with the KA at Sequence 8 (from arrival back at KA to the KA approval), from the data
+  const held = (from, to) => { const m = {}; for (const r of RECS) { const a = r.backFirst ?? r.back, b = r.backOutFirst ?? r.backOut; if (a == null || b == null || b < from || b > to || b < a) continue; const k = recKa(r, r.ka8User); if (k) (m[k] = m[k] || []).push(workDaysBetween(a, b)); } return m; };
+  const wk = held(monday, friday), w4 = held(monday - 21, friday), all = Object.values(w4).flat();
+  out.holdDays = {}; out.holdFrom = {}; out.holdTeam = all.length ? mean(all) : 2;
+  for (const k of kaList) { if ((wk[k] || []).length >= 3) { out.holdDays[k] = mean(wk[k]); out.holdFrom[k] = "last week"; } else if ((w4[k] || []).length >= 3) { out.holdDays[k] = mean(w4[k]); out.holdFrom[k] = "last 4 weeks"; } }
   return out;
 }
 // average working days to fix a rework (sent back by Purchasing Head HO / Director until the KA approves again), last 90 days
@@ -3493,21 +3498,9 @@ function simulate() {
   const fix = reworkFixDays();
   const riskOf = (k) => (RW.rate[k] ?? RW.team) * (fix.ka[k] ?? fix.team);
   // estimated days until a new CPR is finished by KA k: (CPRs held + 1) ÷ CPRs finished per day + rework risk
-  const simpleFinish = (k, held) => (held + 1) / Math.max(0.2, SPEED.perDay[k] ?? SPEED.team) + riskOf(k);
-  // Forecast 4 for this CPR if KA k holds it: days at Sequence 8, given the KA's queue on the day it returns
-  // (queue = CPRs the KA is expected to hold that day, including the ones given in this run) + rework risk
-  const f4m = useModels && MODELS.f4 && MODELS.f4.state ? MODELS.f4 : null;
-  const f4Finish = (c, k, held) => {
-    if (!f4m || !c || !c.r) return simpleFinish(k, held);
-    const start = Number.isFinite(c.s2) ? c.s2 : (D ?? c.r.create);
-    const day = D !== null ? Math.min(start, D + 1) : start;
-    const q = f4m.state(k, day).slice();
-    q[0] = held; q[2] = held / Math.max(1, q[1] / F3_WORK_DAYS);
-    const f4days = Math.max(0, Math.expm1(f4m.f(f34Features({ unit: c.unit, ka: k, start, q }, f4m.st))));
-    const queueDays = (held + 1) / Math.max(0.2, SPEED.perDay[k] ?? SPEED.team);   // the KA can only finish so many CPRs a day
-    return Math.max(f4days, queueDays) + riskOf(k);
-  };
-  const finishOf = (k, held, c) => (c ? f4Finish(c, k, held) : simpleFinish(k, held));
+  // estimated working days until one more CPR is finished by KA k, from the data only:
+  //   finish = (CPRs held + 1) ÷ CPRs the KA approved per working day last week + rework rate × days to fix a rework
+  const finishOf = (k, held) => (held + 1) / Math.max(0.2, SPEED.perDay[k] ?? SPEED.team) + riskOf(k);
   const bestKa = (c, days, exclude) => {
     // 1) KAs that are present and stay within the limit with this CPR; 2) the fastest estimated finish among them
     // nobody within the limit: the fastest one anyway (Exception for the supervisor)
@@ -3613,7 +3606,7 @@ function simulate() {
         if (!best) { for (const k of allocKas) { if (capOf(k) <= 0) continue; const held = peak(L, k, days, 0) + reserveOf(k), f = finishOf(k, held, c); if (!best || f < fin) { fin = f; best = k; bestPeak = held + 1; over = bestPeak > maxPerDay; } } } // everyone absent
         ka = best; rule = over ? "Exception" : "Beban terendah";
         const sp = SPEED.perDay[ka] ?? SPEED.team;
-        c.why = `${over ? "All KAs above the limit; " : ""}fastest finish (Forecast 4 and queue): ${fmtNum(fin, 1)} days at Seq 8 incl. rework risk (${fmtNum(bestPeak - 1, 0)} held, ${fmtNum(sp, 1)}/day last week, rework ${fmtNum((RW.rate[ka] ?? RW.team) * 100, 0)}%)`;
+        c.why = `${over ? "All KAs above the limit; " : ""}fastest finish: ${fmtNum(fin, 1)} working days (${fmtNum(bestPeak - 1, 0)} held, ${fmtNum(sp, 1)}/day last week, rework ${fmtNum((RW.rate[ka] ?? RW.team) * 100, 0)}%)`;
       }
       if (rule === "Vendor sama") c.why = "Same vendor as a CPR this KA holds";
       if (rule === "PIC unit") c.why = "Hospital PIC, within the limit";
@@ -3650,7 +3643,6 @@ function simulate() {
   SIM_KA = new Map(assigned.map((c) => [c.r.cpr, c.ka]));
   return {
     start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, reserve, teamRate: RW.team, speed: SPEED, fix, allocKas, finishOf,
-    probe: D !== null ? { r: { create: D }, unit: null, s2: D + 1 } : null,
     histCount: useModels && MODELS.f1 ? MODELS.f1.n : 0, models: useModels ? MODELS : null,
     f1Method: useModels && MODELS.f1 ? `${MODELS.f1.chosen.family} (${MODELS.f1.chosen.setting})` : "median per hospital",
     f2Method: useModels && MODELS.f2 ? `${MODELS.f2.chosen.family} (${MODELS.f2.chosen.setting})` : "median per hospital",
@@ -3677,7 +3669,7 @@ function renderSpeed() {
   const rr = reworkRates();
   const rows = s.allocKas.map((k) => {
     const res = s.reserve[k] ? s.reserve[k].reserve : 0, h = held[k] || 0, sp = s.speed.perDay[k], rate = rr.rate[k] ?? rr.team, fx = s.fix.ka[k] ?? s.fix.team;
-    return { ka: k, name: kaLabel(k), held: h, res, done: s.speed.done[k] || 0, days: s.speed.days[k] || 0, sp, rate, fx, fin: s.finishOf(k, h + res, s.probe), within: h + res + 1 <= s.maxPerDay * capOf(k), given: s.assigned.filter((c) => c.ka === k && (c.isNewAssign || !c.locked)).length };
+    return { ka: k, name: kaLabel(k), held: h, res, done: s.speed.done[k] || 0, days: s.speed.days[k] || 0, sp, rate, fx, hold: s.speed.holdDays[k], holdFrom: s.speed.holdFrom[k], fin: s.finishOf(k, h + res), within: h + res + 1 <= s.maxPerDay * capOf(k), given: s.assigned.filter((c) => c.ka === k && (c.isNewAssign || !c.locked)).length };
   }).sort((a, b) => a.fin - b.fin);
   renderTable($("tblSpeed"), [
     { key: "name", label: "Key Account" },
@@ -3691,7 +3683,7 @@ function renderSpeed() {
     { key: "within", label: "Within limit", sortable: false, render: (r) => pill(r.within ? "Yes" : "No", r.within ? "good" : "bad") },
     { key: "given", label: "New this run", num: true, render: (r) => fmtInt(r.given) }
   ], rows);
-  $("speedNote").textContent = `Last week = ${s.speed.from !== null ? fmtDay(s.speed.from) + " – " + fmtDay(s.speed.to) : "–"}. Est. finish = the longer of Forecast 4 (days the KA would hold one more CPR at Sequence 8) and the queue time ((held + reserve + 1) ÷ speed), + rework rate × fix days; shown for a CPR returning tomorrow. A new CPR goes to the fastest KA still within the limit of ${fmtNum(s.maxPerDay, 0)}; * = team average.`;
+  $("speedNote").textContent = `Last week = ${s.speed.from !== null ? fmtDay(s.speed.from) + " – " + fmtDay(s.speed.to) : "–"}. All from the uploaded data, in working days. Est. finish = (held + reserve + 1) ÷ speed + rework rate × fix days. A new CPR goes to the fastest KA still within the limit of ${fmtNum(s.maxPerDay, 0)}; * = team average.`;
 }
 function renderSim() {
   try { syncCap(); syncTw(); renderTaskLoad(); renderSpeed(); } catch (e) {}
