@@ -3677,7 +3677,7 @@ function renderSpeed() {
   const rr = reworkRates();
   const rows = s.allocKas.map((k) => {
     const res = s.reserve[k] ? s.reserve[k].reserve : 0, h = held[k] || 0, sp = s.speed.perDay[k], rate = rr.rate[k] ?? rr.team, fx = s.fix.ka[k] ?? s.fix.team;
-    return { ka: k, name: kaLabel(k), held: h, res, done: s.speed.done[k] || 0, days: s.speed.days[k] || 0, sp, rate, fx, fin: s.finishOf(k, h + res, s.probe), within: h + res + 1 <= s.maxPerDay * capOf(k), given: s.assigned.filter((c) => c.ka === k && !c.locked).length };
+    return { ka: k, name: kaLabel(k), held: h, res, done: s.speed.done[k] || 0, days: s.speed.days[k] || 0, sp, rate, fx, fin: s.finishOf(k, h + res, s.probe), within: h + res + 1 <= s.maxPerDay * capOf(k), given: s.assigned.filter((c) => c.ka === k && (c.isNewAssign || !c.locked)).length };
   }).sort((a, b) => a.fin - b.fin);
   renderTable($("tblSpeed"), [
     { key: "name", label: "Key Account" },
@@ -3734,7 +3734,7 @@ function renderSim() {
   const activeCount = {}, doneCount = {};
   for (const c of s.assigned) { const r = c.r; if (r.done) doneCount[c.ka] = (doneCount[c.ka] || 0) + 1; else if (!IGNORED[r.cpr] && !isInactive(r)) activeCount[c.ka] = (activeCount[c.ka] || 0) + 1; }
   const kas = (s.actual ? s.kaList.slice() : s.kaList.filter((k) => isCurrentKa(k))).sort((a, b) => (s.actual ? (s.dssCount[b] || 0) - (s.dssCount[a] || 0) : (activeCount[b] || 0) - (activeCount[a] || 0)));
-  $("hKaCount").firstChild.textContent = s.actual ? "Number of CPRs per KA" : "Active CPRs per KA (workload)";
+  $("hKaCount").firstChild.textContent = s.actual ? "Number of CPRs per KA" : "Unfinished CPRs per KA (all stages)";
   $("subKaCount").textContent = s.actual ? "DSS allocation vs actual allocation." : "";
   $("lgKaCount").innerHTML = s.actual ? lg([["DSS", "var(--s1)"], ["Actual", "var(--s2)"]]) : "";
   $("cardKaDone").hidden = !!s.actual;
@@ -4712,7 +4712,7 @@ const INFO = [
   ["panel-overview", "All CPRs", ["#ovNote"], "CPRHistory (every approval step) + CPRSummary (current holder, PR / PO number) from the latest upload."],
   ["panel-distribusi", "Allocation settings", ["#simNote"], "CPRHistory + CPRSummary, Hospital PIC List, KA absences and KA capacity, and the forecast models (Forecast 1–4) trained on CPRHistory."],
   ["panel-distribusi", "How the KA is chosen", ["#speedNote"], "CPRHistory: Sequence 8 approvals of last week per KA, CPRs held now, reworks (Revise To and the approver's note) and KA absences."],
-  ["panel-distribusi", "#hKaCount", ["#subKaCount", "#simCompare"], "The allocation result for the selected creation period (DSS), compared with the actual KA in CPRHistory."],
+  ["panel-distribusi", "#hKaCount", ["#subKaCount", "#simCompare"], "Every CPR given to the KA that is not finished yet, at any stage: before KA (Seq 0–2), Seq 3, other approvers, Seq 8, rework, or waiting at Purchasing Head HO / Director. This is wider than \"Held\" in the table above, which counts only Seq 8 + rework (the KA's real work now)."],
   ["panel-distribusi", "Completed CPRs per KA", [], "CPRHistory: CPRs approved by each KA at Sequence 8."],
   ["panel-distribusi", "CPR assignment list", [], "One row per CPR: the KA chosen by the DSS and why, forecast dates (Forecast 1–4) and actual dates from CPRHistory."],
   ["panel-ka", "Open tasks now", ["#subTask", "#cardTask > p.note"], "CPRHistory (approval steps) + CPRSummary (current position, PR / PO), as of the latest data date. Daily limit uses the automatic limit and each KA's rework rate."],
