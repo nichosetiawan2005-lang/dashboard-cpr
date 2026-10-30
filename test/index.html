@@ -3662,15 +3662,15 @@ function renderSpeed() {
   }).sort((a, b) => a.fin - b.fin);
   renderTable($("tblSpeed"), [
     { key: "name", label: "Key Account" },
-    { key: "held", label: "Held now (Seq 8 + rework)", num: true, render: (r) => fmtInt(r.held) },
-    { key: "res", label: "Rework reserve", num: true, render: (r) => fmtNum(r.res, 1) },
-    { key: "done", label: "Seq 8 approved last week", num: true, render: (r) => `${fmtInt(r.done)} in ${fmtInt(r.days)} days` },
-    { key: "sp", label: "Speed (CPRs/day)", num: true, render: (r) => (r.sp === undefined ? el("span", { title: "No Seq 8 approval last week: team average used" }, fmtNum(s.speed.team, 1) + "*") : fmtNum(r.sp, 1)) },
-    { key: "rate", label: "Rework rate", num: true, render: (r) => fmtNum(r.rate * 100, 1) + "%" },
-    { key: "fx", label: "Days to fix a rework", num: true, render: (r) => fmtNum(r.fx, 1) },
-    { key: "fin", label: "Estimated finish of one more CPR (days)", num: true, render: (r) => el("b", {}, fmtNum(r.fin, 1)) },
-    { key: "within", label: "Within the limit", sortable: false, render: (r) => pill(r.within ? "Yes" : "No", r.within ? "good" : "bad") },
-    { key: "given", label: "New CPRs this run", num: true, render: (r) => fmtInt(r.given) }
+    { key: "held", label: "Held (Seq 8 + rework)", num: true, render: (r) => fmtInt(r.held) },
+    { key: "res", label: "Reserve", num: true, render: (r) => fmtNum(r.res, 1) },
+    { key: "done", label: "Done last week", num: true, render: (r) => `${fmtInt(r.done)} in ${fmtInt(r.days)} days` },
+    { key: "sp", label: "Speed /day", num: true, render: (r) => (r.sp === undefined ? el("span", { title: "No Seq 8 approval last week: team average used" }, fmtNum(s.speed.team, 1) + "*") : fmtNum(r.sp, 1)) },
+    { key: "rate", label: "Rework", num: true, render: (r) => fmtNum(r.rate * 100, 1) + "%" },
+    { key: "fx", label: "Fix days", num: true, render: (r) => fmtNum(r.fx, 1) },
+    { key: "fin", label: "Est. finish (days)", num: true, render: (r) => el("b", {}, fmtNum(r.fin, 1)) },
+    { key: "within", label: "Within limit", sortable: false, render: (r) => pill(r.within ? "Yes" : "No", r.within ? "good" : "bad") },
+    { key: "given", label: "New this run", num: true, render: (r) => fmtInt(r.given) }
   ], rows);
   $("speedNote").textContent = `Last week = ${s.speed.from !== null ? fmtDay(s.speed.from) + " – " + fmtDay(s.speed.to) : "–"}. Estimated finish = (CPRs held + reserve + 1) ÷ speed + rework rate × days to fix. A new CPR goes to the fastest KA still within the limit of ${fmtNum(s.maxPerDay, 0)}; * = team average.`;
 }
