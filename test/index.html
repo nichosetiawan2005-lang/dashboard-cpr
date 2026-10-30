@@ -1841,7 +1841,7 @@ async function saveNewAssignments() {
   if (!useLocks() || !SIM || !canSave()) return 0;
   const fresh = SIM.assigned.filter((c) => !c.locked);
   if (!fresh.length) return 0;
-  const today = toDay(new Date());
+  const today = dataDate() ?? toDay(new Date());   // the day of the data: a KA chosen before the CPR reached KA stays fixed
   const byMonth = new Map();
   for (const c of fresh) { const k = monthKey(c.r.create); if (!byMonth.has(k)) byMonth.set(k, []); byMonth.get(k).push(c); }
   for (const [k, list] of byMonth) {
@@ -2581,6 +2581,7 @@ function roleForUser(us, minSeq) {
 }
 // the first usual sequence number of a role at or after minSeq (minSeq when the role is unknown)
 function seqOfRole(map, role, minSeq) { const q = (map[role] || []).find((x) => x >= minSeq); return q ?? minSeq; }
+const recKa = (r, u) => userKa(u) || (LOCKED.get(r.cpr) && isCurrentKa(LOCKED.get(r.cpr).ka) ? LOCKED.get(r.cpr).ka : null);
 const userKa = (u) => { if (!u) return null; const ka = poKa({ ka: u, kaName: null }).ka; return (META.kaList || []).includes(ka) || kaNameOf(u) || HIST_KA_USERS.has(String(u).toLowerCase()) ? ka : null; };
 async function loadKaUsers() { if (!DB) return; try { const d = await DB.doc("settings/kausers").get(); HIST_KA_USERS = new Set(d.exists ? d.data().users || [] : []); HIST_USER_STEPS = d.exists ? d.data().steps || {} : {}; HIST_ROLE_SEQS = d.exists ? d.data().roleSeqs || {} : {}; } catch {} }
 function renderKaFromHistory(view) {
@@ -2591,10 +2592,10 @@ function renderKaFromHistory(view) {
   let n3 = 0, n8 = 0, unknown = 0;
   for (const r of RECS) {
     if (!r.hstatus) continue;
-    if (inP(r.kaOut) && r.kaIn !== null) { const ka = userKa(r.ka3User); if (ka) { const x = get(ka); x.s3.push({ w: workDaysBetween(r.kaIn, r.kaOut), d: r.kaOut - r.kaIn, h: hoursBetween(r.kaInAt, r.kaOutAt) }); x.ev.push(r.kaOut); n3++; } else unknown++; }
+    if (inP(r.kaOut) && r.kaIn !== null) { const ka = recKa(r, r.ka3User); if (ka) { const x = get(ka); x.s3.push({ w: workDaysBetween(r.kaIn, r.kaOut), d: r.kaOut - r.kaIn, h: hoursBetween(r.kaInAt, r.kaOutAt) }); x.ev.push(r.kaOut); n3++; } else unknown++; }
     const b8 = r.backOutFirst ?? null, a8 = r.backFirst ?? r.back;
-    if (inP(b8) && a8 !== null && a8 !== undefined) { const ka = userKa(r.ka8User); if (ka) { const x = get(ka); x.s8.push({ w: workDaysBetween(a8, b8), d: b8 - a8, h: hoursBetween(r.backFirstAt ?? r.backAt, r.backOutFirstAt ?? r.backOutAt) }); x.ev.push(b8); n8++; } else unknown++; }
-    for (const e of reworkList(r)) if (inP(e.start)) { const ka = userKa(r.ka8User || r.kaUser); if (!ka) continue; const x = get(ka);
+    if (inP(b8) && a8 !== null && a8 !== undefined) { const ka = recKa(r, r.ka8User); if (ka) { const x = get(ka); x.s8.push({ w: workDaysBetween(a8, b8), d: b8 - a8, h: hoursBetween(r.backFirstAt ?? r.backAt, r.backOutFirstAt ?? r.backOutAt) }); x.ev.push(b8); n8++; } else unknown++; }
+    for (const e of reworkList(r)) if (inP(e.start)) { const ka = recKa(r, r.ka8User || r.kaUser); if (!ka) continue; const x = get(ka);
       (x.rwEvents || (x.rwEvents = [])).push({ r, ...e });
       // only a KA error counts in the KA's rework performance ("?" = uploaded before the causes were read: still counted)
       if (e.cause !== "K" && e.cause !== "?") { x.nc[e.cause] = (x.nc[e.cause] || 0) + 1; continue; }
@@ -3484,7 +3485,7 @@ function simulate() {
     const fromData = META.hasKa ? null : dataKa(r);
     // already at KA according to CPRHistory, but the holder is not in the data (only CPRSummary names it): the hospital PIC is presumed,
     // because the CPR has already been routed; it is not allocated again by workload
-    const presumed = !fromData && !META.hasKa && r.kaIn !== null && !r.done && pic[r.unit] && kaList.includes(pic[r.unit]) ? pic[r.unit] : null;
+    const presumed = usePic && !fromData && !META.hasKa && r.kaIn !== null && !r.done && pic[r.unit] && kaList.includes(pic[r.unit]) ? pic[r.unit] : null;   // universal allocation: a CPR at KA without a name is allocated by workload
     const lock = fromData ? { ka: fromData, rule: "Diproses KA", weight: 1, fixed: true } : tr ? { ka: tr.to, rule: "Dialihkan", weight: 1 } : saved && !(presumed && saved.rule !== "Sudah di KA" && saved.on > r.kaIn) ? saved : presumed ? { ka: presumed, rule: "Sudah di KA", weight: 1 } : saved;
     // (a KA saved by the DSS only counts if it was chosen before the CPR reached KA; chosen afterwards it was only a guess)
     const replacedFrom = fromData && kaStillOpen(r) && kaLeft(dataKaUser(r)) && fromData !== poKa({ ka: dataKaUser(r), kaName: null }).ka ? String(dataKaUser(r)).toLowerCase() : null;
@@ -4837,7 +4838,7 @@ function reworkRates() {
   if (D === null) return { rate: {}, n: {}, team: 0 };
   for (const r of RECS) {
     const s8 = r.backOutFirst ?? r.backOut; if (s8 === null || s8 === undefined || s8 > D - RW_WAIT || s8 < D - RW_WAIT - RW_WINDOW) continue;
-    const k = userKa(r.ka8User || r.kaUser); if (!k) continue;
+    const k = recKa(r, r.ka8User || r.kaUser); if (!k) continue;
     n[k] = (n[k] || 0) + 1; const rl = reworkList(r); if (rl.some((e) => e.cause === "K" || e.cause === "?")) cnt[k] = (cnt[k] || 0) + 1;
     for (const e of rl) (ev[k] = ev[k] || []).push({ r, ...e });
   }
