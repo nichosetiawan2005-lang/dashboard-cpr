@@ -1782,30 +1782,32 @@ async function initDb() {
   DB_READY = true;
   if (!DB) { renderSavedInfo(); return; }
   try {
-    const meta = await DB.doc("cpr/meta").get();
-    const pic = await DB.doc("settings/pic").get();
-    const params = await DB.doc("settings/params").get();
+    // independent documents are fetched at the same time (each request waits for the online database)
+    const [meta, pic, params] = await Promise.all([DB.doc("cpr/meta").get(), DB.doc("settings/pic").get(), DB.doc("settings/params").get()]);
     if (params.exists) { const p = params.data(); $("sVendor").value = p.vendor ?? 0.5; $("sMax").value = p.max || ""; $("sPic").checked = !!p.usePic; HIST_MODE = p.histMode || "selesai"; $("histMode").value = HIST_MODE; CAPACITY = p.capacity || {}; TASK_W = { ...TW_DEFAULT, ...(p.taskW || {}) }; syncTw(); }
     if (pic.exists) PIC_LIST = pic.data().list || null;
-    try { await loadPo(); } catch {}
-    try { await loadProgress(); } catch {}
-    try { await loadTrain(); await loadModelChoice(); await loadKaUsers(); await loadSetup(); await loadCatalog(); await loadKaChanges(); } catch {}
-    await loadLog(); renderLog(); await loadSpv();
-    if (!meta.exists) { renderSavedInfo(); renderQuality(); renderKa(); return; }
     setStatus("Loading stored data …");
-    const m = meta.data();
-    const chunks = await Promise.all(Array.from({ length: m.chunks }, (_, i) => DB.doc("cpr/chunk-" + i).get()));
+    const safe = (f) => Promise.resolve().then(f).catch(() => {});
+    const m = meta.exists ? meta.data() : null;
+    const [chunks] = await Promise.all([
+      m ? Promise.all(Array.from({ length: m.chunks }, (_, i) => DB.doc("cpr/chunk-" + i).get())) : Promise.resolve([]),
+      safe(loadPo), safe(loadProgress), safe(loadTrain), safe(loadModelChoice), safe(loadKaUsers), safe(loadSetup),
+      safe(loadCatalog), safe(loadKaChanges), safe(loadLog), safe(loadSpv), safe(loadLocks)
+    ]);
+    renderLog();
+    if (!m) { renderSavedInfo(); renderQuality(); renderKa(); setStatus(""); return; }
     const rows = chunks.flatMap((c) => (c.exists ? c.data().rows : []));
     META = { hasKa: m.hasKa, format: m.format, fileName: m.fileName, rawRows: m.rawRows, duplicates: m.duplicates, negatives: m.negatives, columnsFound: m.columnsFound };
     RECS = rows.map((a) => { const r = {}; FIELDS.forEach((k, i) => { r[k] = a[i]; }); return finishRec(r); });
     SAVED_AT = m.savedAt; IS_SAMPLE = false; renderEmptyState();
     applyProgress();
-    await loadLocks();
     deriveMeta(); populateControls();
     if (m.simFrom) { $("sFrom").value = m.simFrom; $("sTo").value = m.simTo; }
     $("sampleBanner").hidden = true; updateModeBanner();
     $("dataLabel").textContent = `${m.fileName} · ${fmtInt(RECS.length)} CPRs · saved ${fmtStamp(m.savedAt)}`;
-    if (LOCKED.size) await runSimulation({ save: false }); else { SIM = null; SIM_KA = new Map(); renderAll(); }
+    // show the stored data right away; the forecasts and the allocation are calculated after that
+    SIM = null; SIM_KA = new Map(); renderAll(); renderSavedInfo();
+    if (LOCKED.size) { setStatus(`Stored data loaded: ${fmtInt(RECS.length)} CPRs. Calculating forecasts and workload …`); await runSimulation({ save: false }); }
     setStatus(`Stored data loaded: ${fmtInt(RECS.length)} CPRs from ${m.fileName}.`);
   } catch (err) { setStatus("Stored data could not be loaded: " + (err.message || err.code)); renderSavedInfo(); }
 }
