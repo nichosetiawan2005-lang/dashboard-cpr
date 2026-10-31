@@ -2349,7 +2349,7 @@ function ioEvents() {
   const ev = [];
   for (const r of RECS) {
     if (!r.hstatus) continue;
-    const ka = dataKa(r); if (!ka) continue;
+    const lk = LOCKED.get(r.cpr), ka = dataKa(r) || (lk && isCurrentKa(lk.ka) ? lk.ka : null); if (!ka) continue;
     const b8 = r.backFirst ?? r.back;
     if (r.kaIn !== null && r.kaIn !== undefined) ev.push([r.kaIn, ka, "in", !!r.kaInAt, r.cpr]);
     else if (b8 !== null && b8 !== undefined) ev.push([b8, ka, "in", !!(r.backFirstAt ?? r.backAt), r.cpr]);
@@ -2406,22 +2406,9 @@ function renderIo() {
   const f1 = (x) => fmtNum(x, 1);
   const estIn = inP.filter((e) => e[2] === "in" && !e[3] && (ksel.value ? e[1] === ksel.value : kas.includes(e[1]))).length;
   if ($("ioView").value === "day") {
-    // one row per calendar date of the period that has a working day or any movement (weekends shown when something happened)
-    const kk = ksel.value ? [ksel.value] : kas, D2 = to;
-    const dates = []; for (let d = from; d <= D2; d++) if (isWorkDay(d) || inP.some((e) => e[0] === d && kk.includes(e[1]))) dates.push(d);
-    const cntOf = (d, t, ka, exactOnly) => inP.filter((e) => e[0] === d && e[2] === t && (ka ? e[1] === ka : kk.includes(e[1])) && (exactOnly === undefined || e[3] === exactOnly)).length;
-    let run = kk.reduce((a, k) => a + Math.max(0, openBefore(k)), 0);
-    const drows = dates.map((d) => { const i = cntOf(d, "in"), o = cntOf(d, "out"); run += i - o - cntOf(d, "close"); return { d, i, o, est: cntOf(d, "in", null, false), open: Math.max(0, run), wk: !isWorkDay(d), hol: HOLIDAYS.has(dayToIso(d)) }; });
-    // weekend movements are included, spread over the working days (same as the chart)
-    const nWd = Math.max(1, drows.filter((r) => !r.wk).length);
-    const avgRow = { avg: true, i: drows.reduce((a, r) => a + r.i, 0) / nWd, o: drows.reduce((a, r) => a + r.o, 0) / nWd };
-    renderTable($("tblIo"), [
-      { key: "d", label: "Date", sortable: false, render: (r) => (r.avg ? el("b", {}, "Average per working day") : el("span", { style: r.wk ? "color:var(--muted)" : "" }, `${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][weekday(r.d)]} ${fmtDay(r.d)}${r.hol ? " · holiday" : ""}`)) },
-      { key: "i", label: "In", num: true, sortable: false, render: (r) => (r.avg ? el("b", {}, fmtNum(r.i, 1)) : fmtInt(r.i)) },
-      { key: "o", label: "Out", num: true, sortable: false, render: (r) => (r.avg ? el("b", {}, fmtNum(r.o, 1)) : fmtInt(r.o)) },
-      { key: "open", label: "Open at end of day", num: true, sortable: false, render: (r) => (r.avg ? "" : fmtInt(r.open)) },
-      ...(ksel.value ? [] : kas.map((k) => ({ key: "k" + k, label: kaLabel(k) + " in / out", num: true, sortable: false, render: (r) => (r.avg ? "" : (() => { const a = cntOf(r.d, "in", k), b = cntOf(r.d, "out", k); return a || b ? `${a} / ${b}` : "–"; })()) })))
-    ], [avgRow, ...drows]);
+    const t = ioDayTable(from, to, ksel.value ? [ksel.value] : kas, !ksel.value, ev);
+    renderTable($("tblIo"), t.header.map((h, k) => ({ key: k, label: h, num: k > 0, sortable: false,
+      render: (r) => (k === 0 ? (r.avg ? el("b", {}, r.cells[0]) : el("span", { style: r.wk ? "color:var(--muted)" : "" }, r.cells[0])) : r.avg && r.cells[k] !== "" ? el("b", {}, r.cells[k]) : r.cells[k]) })), t.rows);
   } else
   renderTable($("tblIo"), [
     { key: "name", label: "Key Account", sortable: false, render: (r) => (r.all || r.avg ? el("b", {}, r.name) : Object.assign(el("button", { class: "linkbtn", type: "button" }, r.name), { onclick: () => { $("ioKa").value = r.ka; renderIo(); } })) },
@@ -2438,57 +2425,41 @@ function renderIo() {
   IO_ROWS = { days, kas, inP, label: k0, wd };
 }
 let IO_ROWS = null;
+// the "Per date" table: Date, In, Out, Open at end of day, then "<KA> in / out" for every KA (when perKa)
+// same numbers on screen and in the downloaded report
+function ioDayTable(from, to, kk, perKa, ev) {
+  const inP = ev.filter((e) => e[0] >= from && e[0] <= to);
+  const dates = []; for (let d = from; d <= to; d++) if (isWorkDay(d) || inP.some((e) => e[0] === d && kk.includes(e[1]))) dates.push(d);
+  const cntOf = (d, t, ka) => inP.filter((e) => e[0] === d && e[2] === t && (ka ? e[1] === ka : kk.includes(e[1]))).length;
+  const openBefore = (ka) => ev.reduce((a, e) => a + (e[1] === ka && e[0] < from ? (e[2] === "in" ? 1 : -1) : 0), 0);
+  let run = kk.reduce((a, k) => a + Math.max(0, openBefore(k)), 0);
+  const dname = (d) => `${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][weekday(d)]} ${fmtDay(d)}${HOLIDAYS.has(dayToIso(d)) ? " (holiday)" : ""}`;
+  const rows = dates.map((d) => { const i = cntOf(d, "in"), o = cntOf(d, "out"); run += i - o - cntOf(d, "close");
+    const cells = [dname(d), String(i), String(o), String(Math.max(0, run))];
+    if (perKa) for (const k of kk) { const a = cntOf(d, "in", k), b = cntOf(d, "out", k); cells.push(a || b ? `${a} / ${b}` : "–"); }
+    return { d, wk: !isWorkDay(d), i, o, cells }; });
+  // weekend movements are included, spread over the working days
+  const nWd = Math.max(1, rows.filter((r) => !r.wk).length);
+  const avg = { avg: true, cells: ["Average per working day", fmtNum(rows.reduce((a, r) => a + r.i, 0) / nWd, 1), fmtNum(rows.reduce((a, r) => a + r.o, 0) / nWd, 1), "", ...(perKa ? kk.map(() => "") : [])] };
+  const header = ["Date", "In", "Out", "Open at end of day", ...(perKa ? kk.map((k) => kaLabel(k) + " in / out") : [])];
+  return { header, rows: [avg, ...rows] };
+}
 // ---- monthly report per KA (Excel): summary, daily in/out, CPR list ----
 function monthlyReport(mk) {
   const D = dataDate(); if (D === null) return;
   const y = Number(mk.slice(0, 4)), mo = Number(mk.slice(5, 7)) - 1;
   const from = toDay(new Date(Date.UTC(y, mo, 1)).toISOString()), to = Math.min(D, toDay(new Date(Date.UTC(y, mo + 1, 0)).toISOString()));
-  const inM = (d) => d !== null && d !== undefined && d >= from && d <= to;
   const ev = ioEvents().filter((e) => e[0] <= D);
-  const days = []; for (let d = from; d <= to; d++) if (isWorkDay(d)) days.push(d);
-  const nW = Math.max(1, days.length);
-  const wdOf = (d) => { if (isWorkDay(d)) return d; for (let n = d + 1; n <= to; n++) if (isWorkDay(n)) return n; for (let n = d - 1; n >= from; n--) if (isWorkDay(n)) return n; return d; };
-  const kas = [...new Set(ev.filter((e) => inM(e[0])).map((e) => e[1]))].filter(isCurrentKa).sort((a, b) => kaLabel(a).localeCompare(kaLabel(b)));
-  const openAt = (ka, day) => Math.max(0, ev.reduce((a, e) => a + (e[1] === ka && e[0] < day ? (e[2] === "in" ? 1 : -1) : 0), 0));
-  // per CPR facts for the month
-  const cprRows = [], per = {}, amap = new Map(SIM ? SIM.assigned.map((c) => [c.r.cpr, c]) : []);
-  for (const r of RECS) {
-    if (!r.hstatus) continue; const ka = dataKa(r); if (!ka || !isCurrentKa(ka)) continue;
-    const b8 = r.backFirst ?? r.back, o8 = r.backOutFirst ?? r.backOut, rin = r.kaIn ?? b8;
-    const rw = reworkList(r).filter((e) => inM(e.start)), rwK = rw.filter((e) => e.cause !== "E").length, rwE = rw.length - rwK;
-    const tat = b8 !== null && b8 !== undefined ? (o8 !== null && o8 !== undefined ? workDaysBetween(b8, o8) : workDaysBetween(b8, Math.min(D, to))) : null;
-    const s8done = inM(o8), openEnd = rin !== null && rin <= to && !(r.backOut !== null && r.backOut <= to) && !((r.done || isInactive(r)) && (r.lastAct ?? D) <= to);
-    if (!(inM(rin) || inM(r.backOut) || s8done || rw.length || openEnd)) continue;
-    const x = per[ka] || (per[ka] = { tat: [], s8: 0, rwK: 0, rwE: 0 });
-    if (s8done) { x.s8++; x.tat.push(tat); } x.rwK += rwK; x.rwE += rwE;
-    const lv = tat === null ? "" : tat <= TAT_LIMIT.s8warn ? "Green" : tat <= TAT_LIMIT.s8bad ? "Yellow" : "Red";
-    cprRows.push([r.cpr, r.unit || "", String(r.vendorName || "").replace(/\s+/g, " ").trim(), kaLabel(ka), rin !== null && rin !== undefined ? dayToIso(rin) : "", b8 !== null && b8 !== undefined ? dayToIso(b8) : "",
-      o8 !== null && o8 !== undefined ? dayToIso(o8) : "", tat === null ? "" : tat, tat === null ? "" : (o8 !== null && o8 !== undefined ? lv : lv + " (so far)"), r.backOut !== null && r.backOut !== undefined && !inRework(r) ? dayToIso(r.backOut) : "", rwK, rwE, amap.has(r.cpr) ? progressStatus(amap.get(r.cpr))[0] : r.hstatus || ""]);
-  }
-  const summary = [["Key Account", "CPRs in", "CPRs out", "Avg out per working day", "Open at start", "Open at end", "Seq 8 approved", "Seq 8 TAT avg (working days)", "Seq 8 ≤5 days", "Seq 8 6–14 days", "Seq 8 >14 days", "Rework (KA error)", "Renego (not counted)", "Rework rate (KA error ÷ Seq 8 approved)"]];
-  for (const ka of kas) {
-    const i = ev.filter((e) => e[1] === ka && e[2] === "in" && inM(e[0])).length, o = ev.filter((e) => e[1] === ka && e[2] === "out" && inM(e[0])).length;
-    const x = per[ka] || { tat: [], s8: 0, rwK: 0, rwE: 0 }, t = x.tat, pct = (f) => (t.length ? Math.round((t.filter(f).length / t.length) * 1000) / 10 + "%" : "");
-    const ob = openAt(ka, from), oe = Math.max(0, ob + i - o - ev.filter((e) => e[1] === ka && e[2] === "close" && inM(e[0])).length);
-    summary.push([kaLabel(ka), i, o, Math.round((o / nW) * 10) / 10, ob, oe, x.s8, t.length ? Math.round(mean(t) * 10) / 10 : "", pct((d) => d <= TAT_LIMIT.s8warn), pct((d) => d > TAT_LIMIT.s8warn && d <= TAT_LIMIT.s8bad), pct((d) => d > TAT_LIMIT.s8bad), x.rwK, x.rwE, x.s8 ? Math.round((x.rwK / x.s8) * 1000) / 10 + "%" : ""]);
-  }
-  const tot = summary.slice(1).reduce((a, r) => a.map((v, k) => (typeof r[k] === "number" && k !== 3 && k !== 7 ? v + r[k] : v)), new Array(14).fill(0));
-  summary.push(["All Key Accounts", tot[1], tot[2], Math.round((tot[2] / nW) * 10) / 10, tot[4], tot[5], tot[6], "", "", "", "", tot[11], tot[12], tot[6] ? Math.round((tot[11] / tot[6]) * 1000) / 10 + "%" : ""]);
-  const daily = [["Date", "Key Account", "In", "Out"]];
-  for (const ka of kas) for (const d of days) daily.push([dayToIso(d), kaLabel(ka), ev.filter((e) => e[1] === ka && e[2] === "in" && inM(e[0]) && wdOf(e[0]) === d).length, ev.filter((e) => e[1] === ka && e[2] === "out" && inM(e[0]) && wdOf(e[0]) === d).length]);
-  const list = [["CPR Number", "Hospital", "Description", "Key Account", "Received by KA", "Returned to KA (Seq 8)", "Seq 8 approved", "Seq 8 TAT (working days)", "Seq 8 TAT status", "Finished by KA", "Rework (KA error)", "Renego", "Current status"], ...cprRows];
-  const info = [["CPR monthly report per Key Account"], ["Month", monthText(mk)], ["Period", `${dayToIso(from)} to ${dayToIso(to)}`], ["Working days", nW], ["Data as of", dayToIso(D)],
-    ["In", "the KA received the CPR"], ["Out", "the KA finished the CPR (last approval at Purchasing HO)"], ["Seq 8 TAT", "working days from the return to KA until the KA's approval (weekends, holidays and cuti bersama not counted); green ≤5, yellow 6–14, red >14"], ["Rework", "every rework counts as a KA error except renego / nego ulang"]];
-  const wb = XLSX.utils.book_new();
-  const add = (name, aoa, widths) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = widths.map((w) => ({ wch: w })); XLSX.utils.book_append_sheet(wb, ws, name); };
-  add("Summary per KA", summary, [18, 9, 9, 12, 11, 11, 12, 14, 11, 12, 12, 12, 12, 16]);
-  add("Daily in-out", daily, [12, 18, 6, 6]);
-  add("CPR list", list, [22, 10, 40, 14, 14, 16, 14, 12, 16, 14, 10, 8, 28]);
-  add("About", info, [16, 90]);
-  XLSX.writeFile(wb, `CPR_KA_report_${mk}.xlsx`);
-  setStatus(`Monthly report ${monthText(mk)} downloaded.`);
+  const kas = [...new Set(ev.filter((e) => e[0] >= from && e[0] <= to).map((e) => e[1]))].filter(isCurrentKa).sort((a, b) => kaLabel(a).localeCompare(kaLabel(b)));
+  const t = ioDayTable(from, to, kas, true, ev);
+  const num = (v) => (/^-?\d+(\.\d+)?$/.test(String(v).replace(",", ".")) && !String(v).includes("/") ? Number(String(v).replace(",", ".")) : v);
+  const aoa = [t.header, ...t.rows.map((r) => r.cells.map((v, k) => (k > 0 && k < 4 ? num(v) : v)))];
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = t.header.map((h, k) => ({ wch: k === 0 ? 24 : k < 4 ? 10 : Math.max(12, h.length + 2) }));
+  XLSX.utils.book_append_sheet(wb, ws, "CPRs in and out");
+  XLSX.writeFile(wb, `CPR_in_out_${mk}.xlsx`);
+  setStatus(`Report ${monthText(mk)} downloaded.`);
 }
-
 for (const id of ["ioBy"]) $(id).addEventListener("change", () => { $("ioPer").value = ""; renderIo(); });
 for (const id of ["ioPer", "ioKa", "ioView"]) $(id).addEventListener("change", renderIo);
 $("ioReport").addEventListener("click", () => {
