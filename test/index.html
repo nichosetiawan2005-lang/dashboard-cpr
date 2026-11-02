@@ -261,7 +261,46 @@ body.locked #loginForm { flex-direction: column; align-items: stretch; }
 body.locked #loginForm .btn { width: 100%; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 @media (max-width: 560px) { .tile .v { font-size: 22px; } .brand h1 { font-size: 17px; } }
+
+/* ---------- look: ward-teal header with the approval route drawn behind it, mint page, white working surfaces ---------- */
+:root {
+  --ward: #0d4f57; --ward-2: #0a3f46; --mint: #eaf2ef; --line: #d3e2dd; --line-strong: #b7cdc7;
+  --accent: #0f7f86; --accent-ink: #0b5f65; --head: #12302f; --bg: var(--mint); --info-bg: #e3f1ef;
+}
+body { background: var(--mint); }
+.top { background: linear-gradient(180deg, var(--ward) 0%, var(--ward-2) 100%); border-bottom: 0; color: #fff; }
+.top::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='760' height='120' viewBox='0 0 760 120'><g fill='none' stroke='%23ffffff' stroke-opacity='0.16' stroke-width='1.5'><path d='M0 78 H180 C220 78 230 40 270 40 H430 C470 40 480 78 520 78 H760'/><path d='M270 40 C300 40 310 98 350 98 H450' stroke-dasharray='3 5'/></g><g fill='%23ffffff' fill-opacity='0.22'><circle cx='60' cy='78' r='4'/><circle cx='130' cy='78' r='4'/><circle cx='300' cy='40' r='5'/><circle cx='400' cy='40' r='4'/><circle cx='560' cy='78' r='5'/><circle cx='660' cy='78' r='4'/><circle cx='740' cy='78' r='6'/></g></svg>") right -40px top 0 / 760px 120px no-repeat; }
+.top .wrap { position: relative; padding-bottom: 0; }
+.brand h1 { color: #fff; }
+.brand span, .top .note { color: rgba(255,255,255,.78); }
+.top .file-btn:not(.primary) { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.35); color: #fff; }
+.top .file-btn.primary { background: #fff; border-color: #fff; color: var(--ward); }
+.top .file-btn:hover { filter: none; background: rgba(255,255,255,.18); }
+.top .file-btn.primary:hover { background: #e9f5f3; }
+.tabs { gap: 4px; padding-top: 4px; }
+.tab { color: rgba(255,255,255,.78); border-bottom: 0; border-radius: 9px 9px 0 0; padding: 10px 16px; }
+.tab:hover { color: #fff; background: rgba(255,255,255,.08); }
+.tab[aria-selected="true"] { color: var(--ward); background: var(--mint); font-weight: 600; }
+.tab:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.tab .cnt { background: #f0a43a; color: var(--ward-2); font-weight: 700; }
+.section-title h2, .card h3, .drawer h2, .drawer h3 { color: var(--head); }
+.section-title h2 { font-size: 17px; }
+.card, .tile, .tbl-wrap { border-color: var(--line); }
+.tile { background: #fff; }
+.tile .k { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 600; color: #4b6a65; }
+.tile .v { color: var(--ward); }
+.field label { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; color: #4b6a65; }
+th { text-transform: none; letter-spacing: 0; font-size: 12px; color: #3f5f5a; background: #f2f8f6; }
+tbody tr:hover td { background: #f1f8f6; }
+.btn { background: var(--accent); border-color: var(--accent); }
+.btn.ghost { background: #fff; color: var(--accent-ink); }
+.kalink { color: var(--accent-ink); }
+.alertbar { border-color: #e7b866; }
+@media (max-width: 560px) { .top::before { background-position: right -260px top 0; } }
+
 /* global filter bar, KA drill-down panel, tidier tables */
+.gbar[hidden] { display: none; }
 .gbar { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 14px; padding: 8px 0 10px; }
 .gbar .field label { font-size: 11px; }
 .gbar select, .gbar input { min-width: 0; }
@@ -311,7 +350,7 @@ tbody tr:hover td { background: var(--info-bg); }
       <button class="tab" role="tab" aria-selected="false" data-tab="bukti" id="tab-bukti">Evaluation</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="kualitas" id="tab-kualitas">Data Management</button>
     </div>
-    <div class="gbar" id="gbar">
+    <div class="gbar" id="gbar" hidden>
       <div class="field"><label for="gKa">Key Account</label><select id="gKa"><option value="">All Key Accounts</option></select></div>
       <div class="field"><label for="gPer">Period</label><select id="gPer"><option value="last90">Last 3 months</option><option value="thisMonth">This month</option><option value="lastMonth">Last month</option><option value="thisWeek">This week</option><option value="lastWeek">Last week</option><option value="custom">Custom …</option></select></div>
       <div class="field" id="gFromW" hidden><label for="gFrom">From</label><input type="date" id="gFrom"></div>
