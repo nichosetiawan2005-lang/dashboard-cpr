@@ -353,7 +353,29 @@ tbody tr:hover td { background: #f1f8f6; }
 .top .file-btn.primary { border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.18); font-weight: 600; }
 #picKeepWrap { border-radius: 999px; background: transparent; border-style: dashed; }
 .uploads { align-items: center; }
-@media (max-width: 560px) { .logo { display: none; } }
+/* page look: header colour fades into the page, soft cards, accent on section titles */
+body { background: linear-gradient(180deg, #cfe2e6 0px, var(--mint) 340px) no-repeat, var(--mint); }
+.card, .tbl-wrap, .tile, .filters { border-color: transparent; border-radius: 14px; box-shadow: 0 1px 2px rgba(10,68,84,.06), 0 6px 18px rgba(10,68,84,.06); }
+.tile { border-left-width: 0; position: relative; overflow: hidden; padding: 14px 16px 14px 20px; }
+.tile::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--tile-c, var(--line-strong)); }
+.tile .v { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+.tile.k-all, #simTiles .tile:nth-child(1), #spvTiles .tile:nth-child(1) { --tile-c: var(--accent); }
+.tile.k-approved { --tile-c: #2f9e57; background: linear-gradient(135deg, #fff 60%, #eaf7ef); }
+.tile.k-review { --tile-c: #2a78d6; background: linear-gradient(135deg, #fff 60%, #eaf2fc); }
+.tile.k-rejected { --tile-c: #d0573b; background: linear-gradient(135deg, #fff 60%, #fcefeb); }
+.tile.k-completed { --tile-c: #7a5bd0; background: linear-gradient(135deg, #fff 60%, #f1edfb); }
+#spvTiles .tile:nth-child(2), #spvTiles .tile:nth-child(4) { --tile-c: #d03b3b; background: linear-gradient(135deg, #fff 60%, #fcecec); }
+#spvTiles .tile:nth-child(3) { --tile-c: #e0a100; background: linear-gradient(135deg, #fff 60%, #fdf5e1); }
+#spvTiles .tile:nth-child(5) { --tile-c: #7a5bd0; background: linear-gradient(135deg, #fff 60%, #f1edfb); }
+#spvTiles .tile:nth-child(6) { --tile-c: #9aa7ad; }
+#simTiles .tile:nth-child(4) { --tile-c: #d0573b; }
+#simTiles .tile:nth-child(2), #simTiles .tile:nth-child(3), #bkSpvTiles .tile { --tile-c: #6fb6bf; }
+.section-title h2 { display: flex; align-items: center; gap: 10px; }
+.section-title h2::before { content: ""; width: 4px; height: 18px; border-radius: 2px; background: linear-gradient(180deg, var(--accent), #6fc3c8); }
+.card .filters, .card .tbl-wrap, .card .tile, .drawer .tbl-wrap, .drawer .tile, .filters .tbl-wrap { box-shadow: none; }
+.card .tbl-wrap { border: 1px solid var(--line); border-radius: 10px; }
+.tab[aria-selected="true"] { background: #cfe2e6; }
+.tile:hover, .card:hover { box-shadow: 0 1px 2px rgba(10,68,84,.08), 0 10px 24px rgba(10,68,84,.09); }
 
 /* global filter bar, KA drill-down panel, tidier tables */
 .gbar[hidden] { display: none; }
@@ -380,7 +402,6 @@ tbody tr:hover td { background: var(--info-bg); }
   <div class="wrap">
     <div class="top-row">
       <div class="brandwrap">
-      <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 4v16M5 20h14M6 8h12"/><path d="M6 8l-3 6h6zM18 8l-3 6h6z"/></svg></div>
       <div class="brand">
         <h1>CPR Allocation &amp; Workload Balancing</h1>
         <div class="meta"><span id="dataLabel">Decision Support System for Key Account HO</span><span class="pill muted" id="saveBadge">Checking storage …</span></div>
