@@ -576,7 +576,7 @@ tbody tr:hover td { background: var(--info-bg); }
   <section class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
     <div class="section-title" style="margin-top:16px"><h2>All CPRs</h2><p id="ovNote"></p></div>
     <div class="alertbar" id="ovAlert" hidden></div>
-    <div class="ovpipe" id="ovTiles"></div>
+    <div class="tiles ovtiles" id="ovTiles"></div>
     <div class="card" style="margin-top:12px"><h3 id="ovTitle">All CPRs</h3>
       <div class="filters" style="border:0;padding:0;margin:8px 0">
         <div class="field" style="flex:1 1 260px"><label for="ovSearch">Search</label><input type="search" id="ovSearch" placeholder="CPR number, hospital, description, approver …"></div>
@@ -1646,28 +1646,15 @@ function renderOverview() {
   const rows = ovRows();
   // the ERP ID (PR / PO number) is only in CPRSummary: without it "Completed" cannot be counted
   const hasErp = rows.some((x) => x.erp);
-  // pipeline: In Review CPRs per step of the journey, then Done; the busiest step gets the strongest colour
-  const pick = (key) => { OV = { group: OV.group === key ? "all" : key, page: 0 }; renderOverview(); };
-  const clickable = (node, key) => { node.tabIndex = 0; node.setAttribute("role", "button"); node.classList.toggle("sel", OV.group === key); node.onclick = () => pick(key); node.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(key); } }; return node; };
-  const cnt = {}; for (const x of rows) { const k = pipeStep(x); if (k) cnt[k] = (cnt[k] || 0) + 1; }
-  const maxStep = Math.max(1, ...PIPE.map((st) => cnt[st.key] || 0)), inReview = PIPE.reduce((a, st) => a + (cnt[st.key] || 0), 0);
-  const pipe = el("div", { class: "pipe" });
-  PIPE.forEach((st) => {
-    const n = cnt[st.key] || 0, share = n / maxStep;
-    const box = el("div", { class: "pstep" + (st.ka ? " ka" : "") + (n === maxStep && n > 0 ? " busiest" : "") });
-    box.style.setProperty("--fill", (0.06 + 0.3 * share).toFixed(2));
-    box.append(el("div", { class: "pl" }, st.label), el("div", { class: "pv" }, fmtInt(n)), el("div", { class: "ps" }, st.sub));
-    const bar = el("div", { class: "pbar" }); const f = el("span"); f.style.width = (inReview ? (n / inReview) * 100 : 0).toFixed(1) + "%"; bar.append(f); box.append(bar);
-    pipe.append(clickable(box, st.key));
-  });
-  const done = rows.filter(OV_GROUPS[1].test).length;
-  const end = el("div", { class: "pstep done" }); end.append(el("div", { class: "pl" }, "Approved"), el("div", { class: "pv" }, fmtInt(done)), el("div", { class: "ps" }, hasErp ? `${fmtInt(rows.filter(OV_GROUPS[4].test).length)} with PR / PO` : "fully approved"));
-  pipe.append(clickable(end, "approved"));
-  const side = el("div", { class: "pside" });
-  const chip = (key, label, n, cls) => clickable(el("span", { class: "pchip " + cls }, el("b", {}, fmtInt(n)), " " + label), key);
-  side.append(chip("all", "total CPRs", rows.length, "c-all"), chip("review", "in review", inReview, "c-review"), chip("rejected", "rejected", rows.filter(OV_GROUPS[3].test).length, "c-rej"));
-  if (hasErp) side.append(chip("completed", "PR / PO created", rows.filter(OV_GROUPS[4].test).length, "c-done"));
-  $("ovTiles").replaceChildren(pipe, side);
+  $("ovTiles").replaceChildren(...OV_GROUPS.filter((g) => !g.hidden).map((g) => {
+    const noErp = g.key === "completed" && !hasErp;
+    const t = tile(g.label, noErp ? "–" : fmtInt(rows.filter(g.test).length), "", noErp ? "upload the CPRSummary to see this (ERP ID is only in CPRSummary)" : g.desc);
+    t.classList.toggle("sel", OV.group === g.key); t.classList.add("k-" + g.key);
+    t.tabIndex = 0; t.setAttribute("role", "button");
+    const pick = () => { OV = { group: g.key, page: 0 }; renderOverview(); };
+    t.onclick = pick; t.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
+    return t;
+  }));
   const units = [...new Set(rows.map((x) => x.unit).filter(Boolean))].sort();
   const uSel = $("ovUnit"), cur = uSel.value; uSel.replaceChildren(el("option", { value: "" }, "All hospitals"), ...units.map((u) => el("option", { value: u }, u))); if (units.includes(cur)) uSel.value = cur;
   const g = OV_GROUPS.find((x) => x.key === OV.group) || OV_GROUPS[0];
