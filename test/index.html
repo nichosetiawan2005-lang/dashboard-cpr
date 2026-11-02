@@ -380,6 +380,32 @@ body.loading .tile .v * , body.loading .tbl-wrap tbody td * { visibility: hidden
 .capgrid label { display: flex !important; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 10px; background: var(--mint); font-size: 13px; font-weight: 600; color: var(--head); }
 .capgrid input { width: 62px !important; padding: 5px 8px !important; border: 1px solid var(--line-strong) !important; border-radius: 8px !important; background: #fff !important; text-align: right; font: inherit; }
 .capgrid label.low { background: #fdf3dc; }
+/* Workload Now */
+.tile.now-good { --tile-c: #2f9e57; } .tile.now-good .v { color: #1f7a42; }
+.tile.now-warn { --tile-c: #e0a100; } .tile.now-warn .v { color: #9a6c00; }
+.tile.now-bad { --tile-c: #d03b3b; } .tile.now-bad .v { color: #b52f2f; }
+.now-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.now-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.now-legend .avgkey { color: var(--head); }
+i.s3, .nowbar .s3 { background: var(--s1); } i.s8, .nowbar .s8 { background: var(--s2); } i.rw, .nowbar .rw { background: var(--s3); } i.fin, .nowbar .fin { background: #c3d2d6; }
+.nowlist { display: grid; gap: 4px; }
+.nowrow { display: grid; grid-template-columns: 150px 1fr 130px 100px 170px; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 10px; cursor: pointer; }
+.nowrow:hover { background: #f3f9fa; } .nowrow.sel { background: #e6f4f3; box-shadow: inset 3px 0 0 var(--ward); }
+.nowbar { position: relative; display: flex; height: 16px; border-radius: 8px; background: #edf3f4; overflow: visible; }
+.nowbar span { height: 100%; } .nowbar span:first-child { border-radius: 8px 0 0 8px; } .nowbar span:last-of-type { border-radius: 0 8px 8px 0; } .nowbar span:only-of-type { border-radius: 8px; }
+.nowbar span + span { margin-left: 2px; }
+.nowbar .avgline { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px dashed var(--head); opacity: .55; }
+.nownum b { font-size: 18px; color: var(--head); } .nownum small { color: var(--muted); font-size: 12px; }
+.nowdiff { font-size: 12px; font-weight: 700; color: var(--muted); } .nowdiff.up { color: #b52f2f; } .nowdiff.down { color: #1c5cab; }
+.nowchips { display: flex; gap: 6px; flex-wrap: wrap; }
+.nc { font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+.nc.late { background: #fcecec; color: #b52f2f; } .nc.warn { background: #fdf3dc; color: #8a6200; } .nc.ok { background: #eaf7ef; color: #1f7a42; }
+.now-dhead { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+#nowDTitle { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } #nowDTitle .kalink { font-weight: 700; font-size: 16px; }
+.now-dsub { color: var(--muted); font-size: 12.5px; }
+#tblNow td { padding-top: 10px; padding-bottom: 10px; }
+@media (max-width: 860px) { .nowrow { grid-template-columns: 1fr 1fr; } .nowbar { grid-column: 1 / -1; } }
+.tab[data-tab="now"] { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M3 12h4l3-8 4 16 3-8h4'/%3E%3C/svg%3E"); }
 .barnum { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .bn-track { width: 64px; height: 6px; border-radius: 3px; background: #e8eff1; overflow: hidden; flex: none; }
 .bn-fill { display: block; height: 100%; border-radius: 3px; }
@@ -534,6 +560,7 @@ tbody tr:hover td { background: var(--info-bg); }
       <button class="tab" role="tab" aria-selected="false" data-tab="overview" id="tab-overview">Overview</button>
       <button class="tab" role="tab" aria-selected="true" data-tab="distribusi" id="tab-distribusi">CPR Allocation</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="ka" id="tab-ka">KA Performance</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="now" id="tab-now">Workload Now</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="spv" id="tab-spv">Supervisor Control</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="bukti" id="tab-bukti">Evaluation</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="kualitas" id="tab-kualitas">Data Management</button>
@@ -644,6 +671,20 @@ tbody tr:hover td { background: var(--info-bg); }
   </section>
 
   <!-- KINERJA KA -->
+  <!-- WORKLOAD NOW: straight from the uploaded data, who holds what today -->
+  <section class="panel" id="panel-now" role="tabpanel" aria-labelledby="tab-now">
+    <div class="section-title"><h2>Workload now</h2><p id="nowAsOf"></p></div>
+    <div class="tiles" id="nowTiles"></div>
+    <div class="card" style="margin-top:14px">
+      <div class="now-legend"><span><i class="s3"></i>Sequence 3</span><span><i class="s8"></i>Sequence 8</span><span><i class="rw"></i>Rework</span><span><i class="fin"></i>Waiting PH HO / Director</span><span class="avgkey">┊ team average</span><span style="margin-left:auto">Click a KA to see the CPRs they hold</span></div>
+      <div id="nowList" class="nowlist"></div>
+    </div>
+    <div class="card" id="nowDetail" style="margin-top:14px" hidden>
+      <div class="now-dhead"><div id="nowDTitle"></div><div class="filters" style="border:0;padding:0;margin:0;box-shadow:none"><div class="field"><label for="nowShow">Show</label><select id="nowShow"><option value="">All CPRs held</option><option value="late">Late only</option><option value="warn">Warning only</option><option value="rec">Sequence 3</option><option value="mat">Sequence 8</option><option value="rw">Rework</option><option value="fin">Waiting PH HO / Director</option></select></div><button class="btn ghost" type="button" id="nowClose">Close</button></div></div>
+      <div class="tbl-wrap tall" style="margin-top:10px"><table id="tblNow"></table></div>
+    </div>
+  </section>
+
   <section class="panel" id="panel-ka" role="tabpanel" aria-labelledby="tab-ka">
     <div class="section-title"><h2>Open tasks now</h2></div>    <div id="cardTask" hidden><div class="sub" id="subTask" hidden></div><div class="kacards" id="kaCards"></div><div class="legend" id="lgTask" hidden></div><div class="chart" id="chTask" hidden></div><details class="more" style="margin-top:12px"><summary>Numbers per KA</summary><div class="tbl-wrap" style="margin-top:8px"><table id="tblTask"></table></div></details>
       <div id="otDetail" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="otTitle"></h3><div class="sub" id="otSub"></div></div><button class="btn ghost" type="button" id="otClose">Close</button></div>
@@ -979,6 +1020,81 @@ function showTip(evt, title, rows) {
   tip.style.left = Math.max(8, x) + "px"; tip.style.top = Math.max(8, y) + "px";
 }
 const hideTip = () => { tip.hidden = true; };
+
+/* ---------- Workload Now tab: who holds which CPR according to the uploaded data (not the allocation plan) ---------- */
+let NOW_KA = null;
+function nowItems() {
+  const D = dataDate(), out = [];
+  if (D === null) return out;
+  for (const r of RECS) {
+    const task = taskOf(r); if (!task) continue;
+    const ka = dataKa(r); if (!ka || !isCurrentKa(ka)) continue;   // only CPRs a KA has really taken
+    const since = task === "rw" ? r.stageSince : task === "rec" ? r.kaIn : task === "mat" ? r.backFirst ?? r.back : r.backOutFirst ?? r.backOut;
+    const days = since !== null && since !== undefined ? workDaysBetween(since, D) : null;
+    // on time / warning / late, same targets as Supervisor Control (working days)
+    let lv = "ok";
+    if (task === "rec" && days !== null && days > TAT_LIMIT.s3) lv = "late";
+    if (task === "mat" && days !== null) lv = days > TAT_LIMIT.s8bad ? "late" : days > TAT_LIMIT.s8warn ? "warn" : "ok";
+    if (task === "rw") lv = "rw";
+    if (task === "fin") lv = "fin";
+    out.push({ r, ka, task, since, days, lv });
+  }
+  return out;
+}
+function renderNow() {
+  const D = dataDate(), items = nowItems();
+  $("nowAsOf").textContent = D !== null ? `From the uploaded data, as of ${fmtDay(D)}` : "";
+  const kas = [...new Set([...(META.kaList || []).filter(isCurrentKa), ...items.map((x) => x.ka)])];
+  const per = kas.map((ka) => {
+    const mine = items.filter((x) => x.ka === ka), n = (t) => mine.filter((x) => x.task === t).length;
+    return { ka, rec: n("rec"), mat: n("mat"), rw: n("rw"), fin: n("fin"), work: n("rec") + n("mat") + n("rw"), total: mine.length,
+      late: mine.filter((x) => x.lv === "late").length, warn: mine.filter((x) => x.lv === "warn").length, oldest: Math.max(0, ...mine.filter((x) => x.task !== "fin").map((x) => x.days || 0)) };
+  }).sort((a, b) => b.work - a.work || b.total - a.total);
+  // balance: how far apart the KAs are (work = Seq 3 + Seq 8 + rework)
+  const works = per.map((k) => k.work), avg = mean(works) ?? 0, sd = works.length ? Math.sqrt(mean(works.map((w) => (w - avg) ** 2))) : 0;
+  const cv = avg > 0 ? sd / avg : 0, busiest = per[0], least = per[per.length - 1];
+  const verdict = cv < 0.35 ? ["Balanced", "good"] : cv < 0.6 ? ["Slightly uneven", "warn"] : ["Uneven", "bad"];
+  const late = items.filter((x) => x.lv === "late").length, warn = items.filter((x) => x.lv === "warn").length;
+  const t1 = tile("Spread of work", verdict[0], "", busiest ? `busiest ${kaLabel(busiest.ka)} ${busiest.work} · least ${kaLabel(least.ka)} ${least.work}` : ""); t1.classList.add("now-" + verdict[1]);
+  const t2 = tile("CPRs held by KAs", fmtInt(items.filter((x) => x.task !== "fin").length), "", `average ${fmtNum(avg, 1)} per KA`);
+  const t3 = tile("Late", fmtInt(late), "CPRs", "Seq 3 > 1 day or Seq 8 > 14 days"); t3.classList.add(late ? "now-bad" : "now-good");
+  const t4 = tile("Warning", fmtInt(warn), "CPRs", "Seq 8 6–14 working days"); t4.classList.add(warn ? "now-warn" : "now-good");
+  $("nowTiles").replaceChildren(t1, t2, t3, t4);
+  // one row per KA: stacked bar of what the KA holds, the team average as a dashed line
+  const max = Math.max(1, ...per.map((k) => k.total));
+  $("nowList").replaceChildren(...per.map((k) => {
+    const row = el("div", { class: "nowrow" + (NOW_KA === k.ka ? " sel" : ""), role: "button", tabIndex: 0, title: "Show the CPRs " + kaLabel(k.ka) + " holds" });
+    const bar = el("div", { class: "nowbar" });
+    for (const [key, v] of [["s3", k.rec], ["s8", k.mat], ["rw", k.rw], ["fin", k.fin]]) if (v) { const seg = el("span", { class: key, title: `${v}` }); seg.style.width = (v / max) * 100 + "%"; bar.append(seg); }
+    const line = el("i", { class: "avgline" }); line.style.left = (avg / max) * 100 + "%"; bar.append(line);
+    const diff = avg > 0 ? (k.work - avg) / avg : 0;
+    const chips = el("div", { class: "nowchips" });
+    if (k.late) chips.append(el("span", { class: "nc late" }, `${k.late} late`));
+    if (k.warn) chips.append(el("span", { class: "nc warn" }, `${k.warn} warning`));
+    if (!k.late && !k.warn) chips.append(el("span", { class: "nc ok" }, "on time"));
+    row.append(kaCell(k.ka), bar, el("div", { class: "nownum" }, el("b", {}, fmtInt(k.work)), el("small", {}, ` held${k.fin ? ` + ${k.fin} waiting` : ""}`)),
+      el("div", { class: "nowdiff " + (diff > 0.25 ? "up" : diff < -0.25 ? "down" : "") }, avg > 0 ? `${diff >= 0 ? "+" : ""}${fmtNum(diff * 100, 0)}% vs avg` : "–"), chips);
+    const open = () => { NOW_KA = NOW_KA === k.ka ? null : k.ka; renderNow(); if (NOW_KA) $("nowDetail").scrollIntoView({ behavior: "smooth", block: "start" }); };
+    row.onclick = (e) => { if (e.target.closest(".kalink")) return; open(); }; row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
+    return row;
+  }));
+  // the CPRs of the chosen KA
+  $("nowDetail").hidden = !NOW_KA; if (!NOW_KA) return;
+  const k = per.find((x) => x.ka === NOW_KA);
+  $("nowDTitle").replaceChildren(kaCell(NOW_KA), el("span", { class: "now-dsub" }, k ? `${k.work} held · ${k.rec} Seq 3 · ${k.mat} Seq 8 · ${k.rw} rework · ${k.fin} waiting PH HO / Director` : ""));
+  const f = $("nowShow").value, LV = { ok: ["On time", "good"], warn: ["Warning", "warn"], late: ["Late", "bad"], rw: ["In rework", "serious"], fin: ["Waiting", "muted"] };
+  const rows = items.filter((x) => x.ka === NOW_KA && (!f || x.task === f || x.lv === f)).sort((a, b) => ({ late: 0, warn: 1, rw: 2, ok: 3, fin: 4 }[a.lv] - { late: 0, warn: 1, rw: 2, ok: 3, fin: 4 }[b.lv]) || (b.days ?? 0) - (a.days ?? 0));
+  renderTable($("tblNow"), [
+    { key: "cpr", label: "CPR", sortable: false, render: (x) => cprCell(x.r.cpr, x.r.vendorName) },
+    { key: "unit", label: "Hospital", sortable: false, render: (x) => unitChip(unitName(x.r.unit, x.r.cpr)) },
+    { key: "task", label: "Step", sortable: false, render: (x) => TASK_LABEL[x.task] },
+    { key: "since", label: "Since", sortable: false, render: (x) => fmtDay(x.since) },
+    { key: "days", label: "Working days", num: true, sortable: false, render: (x) => (x.days === null ? "–" : fmtInt(x.days)) },
+    { key: "lv", label: "Status", sortable: false, render: (x) => pill(LV[x.lv][0], LV[x.lv][1]) }
+  ], rows);
+}
+$("nowShow").addEventListener("change", renderNow);
+$("nowClose").addEventListener("click", () => { NOW_KA = null; renderNow(); });
 
 /* ---------- Shared table cells ---------- */
 var AVATAR_COLORS = ["#0f7f86", "#2a78d6", "#7a5bd0", "#c0631f", "#2f9e57", "#b2437a", "#5b6b7a", "#a0861a"];
@@ -5038,7 +5154,7 @@ function renderBukti() {
 }
 
 /* ---------- Tabs and boot ---------- */
-const renderers = { overview: renderOverview, distribusi: renderSim, ka: renderKa, spv: renderSpv, bukti: renderBukti, kualitas: renderQuality };
+const renderers = { overview: renderOverview, now: renderNow, distribusi: renderSim, ka: renderKa, spv: renderSpv, bukti: renderBukti, kualitas: renderQuality };
 let currentTab = "distribusi";
 function showTab(name) {
   if ($("tab-" + name).hidden) name = "distribusi"; // a tab hidden for this access level cannot be opened
