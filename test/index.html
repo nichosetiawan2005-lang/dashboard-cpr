@@ -281,6 +281,9 @@ body { background: var(--mint); }
 .subtabs button { border: 1px solid var(--line-strong); background: #fff; color: var(--head); padding: 7px 14px; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer; }
 .subtabs button[aria-selected="true"] { background: var(--ward); border-color: var(--ward); color: #fff; }
 #tblAct td.stagecell { max-width: 230px; white-space: normal; }
+#incFilters:not(.open) .xf { display: none; }
+#bkSpvTiles .tile .d, #bkPoTiles .tile .d { display: none; }
+#tblLog td:nth-child(3) { max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile.k-all, #simTiles .tile:nth-child(1) { border-left-color: var(--accent); }
 .tile.k-approved { border-left-color: #2f9e57; } .tile.k-approved .v { color: #1f7a42; }
 .tile.k-review { border-left-color: #2a78d6; } .tile.k-review .v { color: #1c5cab; }
@@ -466,12 +469,13 @@ tbody tr:hover td { background: var(--info-bg); }
       <div class="field"><label for="incStatus">Status</label><select id="incStatus"></select></div>
       <div class="field"><label for="incKa">Key Account</label><select id="incKa"></select></div>
       <div class="field"><label for="incUnit">Hospital</label><select id="incUnit"></select></div>
-      <div class="field"><label for="incRule">Rule</label><select id="incRule"></select></div>
-      <div class="field"><label for="incAssign">Assignment</label><select id="incAssign"></select></div>
-      <div class="field"><label for="incDateBy">Date</label><select id="incDateBy"><option value="create">Created</option><option value="estArr">Estimated arrival at KA</option><option value="actArr">Actual arrival at KA</option><option value="estS3">Estimated Sequence 3 approval</option><option value="estRet">Estimated return to KA</option><option value="estS8">Estimated Sequence 8 approval</option></select></div>
-      <div class="field"><label for="incMonth">Month</label><select id="incMonth"></select></div>
-      <div class="field"><label for="incFrom">From</label><input type="date" id="incFrom"></div>
-      <div class="field"><label for="incTo">To</label><input type="date" id="incTo"></div>
+      <div class="field xf"><label for="incRule">Rule</label><select id="incRule"></select></div>
+      <div class="field xf"><label for="incAssign">Assignment</label><select id="incAssign"></select></div>
+      <div class="field xf"><label for="incDateBy">Date</label><select id="incDateBy"><option value="create">Created</option><option value="estArr">Estimated arrival at KA</option><option value="actArr">Actual arrival at KA</option><option value="estS3">Estimated Sequence 3 approval</option><option value="estRet">Estimated return to KA</option><option value="estS8">Estimated Sequence 8 approval</option></select></div>
+      <div class="field xf"><label for="incMonth">Month</label><select id="incMonth"></select></div>
+      <div class="field xf"><label for="incFrom">From</label><input type="date" id="incFrom"></div>
+      <div class="field xf"><label for="incTo">To</label><input type="date" id="incTo"></div>
+      <button class="btn ghost" type="button" id="incMore" onclick="this.parentNode.classList.toggle('open');this.textContent=this.parentNode.classList.contains('open')?'Fewer filters':'More filters'">More filters</button>
       <button class="btn ghost" type="button" id="incClear">Clear filters</button>
     </div>
     <div class="tbl-tools"><input type="search" id="incSearch" placeholder="Search CPR number, description, hospital, KA"><div class="pager"><button type="button" id="incCopy">Copy table</button><button type="button" id="incPrev" aria-label="Previous page">‹</button><span id="incPage"></span><button type="button" id="incNext" aria-label="Next page">›</button></div></div>
@@ -604,7 +608,7 @@ tbody tr:hover td { background: var(--info-bg); }
   <!-- BUKTI -->
   <section class="panel" id="panel-bukti" role="tabpanel" aria-labelledby="tab-bukti">
     <p class="note" id="bkNote"></p>
-    <div class="section-title"><h2>1. Is the forecast accurate?</h2></div>
+    <div class="section-title"><h2>Is the forecast accurate?</h2></div>
     <div id="bkFcTiles"></div><p class="note" id="bkFcNote"></p>
     <details class="capbox" id="fcMore" style="margin-top:12px"><summary>More detail: forecast per CPR, daily workload check, model settings</summary>
     <div class="card" id="lcCard" style="margin-top:12px"><h3>KA workload per day: forecast vs actual (test months)</h3>
@@ -649,12 +653,12 @@ tbody tr:hover td { background: var(--info-bg); }
     <div class="card" style="margin-top:12px"><h3>Comparison of the four models (analysis notebook)</h3><div class="sub">Python study on CPR_Cleaned 2023–2026 (validation Apr–Jun, test Jul–Sep 2026).</div><div class="tbl-wrap"><table id="tblStudy"></table></div></div>
     <div class="card" style="margin-top:12px"><h3>Forecast 1: mean absolute error per week (test months)</h3><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
     </details>
-    <div class="section-title"><h2>2. Is the KA workload more evenly distributed?</h2><p id="bkLoadDesc"></p></div>
+    <div class="section-title"><h2>Is the KA workload more even?</h2><p id="bkLoadDesc"></p></div>
     <div class="tbl-wrap"><table id="tblBkLoad"></table></div>
-    <div class="section-title" id="bkPoHead"><h2>3. Are CPRs converted into POs more quickly?</h2><p id="bkPoDesc"></p></div>
+    <div class="section-title" id="bkPoHead"><h2>Are CPRs turned into POs faster?</h2><p id="bkPoDesc"></p></div>
     <div class="tiles" id="bkPoTiles"></div>
     <div class="card" id="poCard" style="margin-top:12px"><h3>Median days by PO creation month</h3><div class="sub" id="bkPoSub"></div><div class="legend" id="lgPo"></div><div class="chart" id="chPo"></div></div>
-    <div class="section-title"><h2>4. Is the supervisor's workload reduced?</h2></div>
+    <div class="section-title"><h2>Is the supervisor's work lighter?</h2></div>
     <div class="tiles" id="bkSpvTiles"></div>
   </section>
 
@@ -3754,15 +3758,12 @@ function renderSpeed() {
   }).filter((r) => !G.ka || r.ka === G.ka).sort((a, b) => a.fin - b.fin);
   renderTable($("tblSpeed"), [
     { key: "name", label: "Key Account", render: (r) => kaLink(r.ka) },
-    { key: "held", label: "Held (Seq 8 + rework)", num: true, render: (r) => fmtInt(r.held) },
-    { key: "res", label: "Reserve", num: true, render: (r) => fmtNum(r.res, 1) },
-    { key: "done", label: "Done last week", num: true, render: (r) => `${fmtInt(r.done)} in ${fmtInt(r.days)} days` },
+    { key: "held", label: "Held now", num: true, render: (r) => fmtInt(r.held) },
     { key: "sp", label: "Speed /day", num: true, render: (r) => (r.sp === undefined ? el("span", { title: "No Seq 8 approval last week: team average used" }, fmtNum(s.speed.team, 1) + "*") : fmtNum(r.sp, 1)) },
     { key: "rate", label: "Rework", num: true, render: (r) => fmtNum(r.rate * 100, 1) + "%" },
-    { key: "fx", label: "Fix days", num: true, render: (r) => fmtNum(r.fx, 1) },
-    { key: "fin", label: "Est. finish (days)", num: true, render: (r) => el("b", {}, fmtNum(r.fin, 1)) },
+    { key: "fin", label: "Est. finish (days)", num: true, render: (r) => el("b", { title: `Reserve ${fmtNum(r.res, 1)} · done last week ${fmtInt(r.done)} in ${fmtInt(r.days)} days · fix days ${fmtNum(r.fx, 1)}` }, fmtNum(r.fin, 1)) },
     { key: "within", label: "Within limit", sortable: false, render: (r) => pill(r.within ? "Yes" : "No", r.within ? "good" : "bad") },
-    { key: "given", label: "New this run", num: true, render: (r) => fmtInt(r.given) }
+    { key: "given", label: "New", num: true, render: (r) => fmtInt(r.given) }
   ], rows);
   $("speedNote").textContent = `Last week = ${s.speed.from !== null ? fmtDay(s.speed.from) + " – " + fmtDay(s.speed.to) : "–"}. All from the uploaded data, in working days. Est. finish = (held + reserve + 1) ÷ speed + rework rate × fix days. A new CPR goes to the fastest KA still within the limit of ${fmtNum(s.maxPerDay, 0)}; * = team average.`;
 }
@@ -4685,13 +4686,12 @@ function renderBukti() {
   $("bkFcTiles").firstChild.append(accTbl);
   renderTable(accTbl, [
     { key: "name", label: "Forecast", sortable: false, render: (r) => { const d = el("div"); d.append(el("b", {}, r.name)); d.append(smallNote(r.what)); return d; } },
-    { key: "model", label: "Model in use", sortable: false },
+    { key: "model", label: "Model", sortable: false, render: (r) => String(r.model || "–").split(" (")[0] },
     { key: "n", label: "CPRs tested", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtInt(r.n)) },
-    { key: "mae", label: "Average error (MAE, days)", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.mae, 2)) },
-    { key: "base", label: "Simple guess error (days)", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.base, 2)) },
+    { key: "mae", label: "Avg error (days)", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.mae, 2)) },
     { key: "within2", label: "Within ±2 days", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.within2 * 100, 0) + "%") },
     { key: "inRange", label: "Inside the likely range", num: true, sortable: false, render: (r) => (r.inRange === null || r.inRange === undefined ? "–" : fmtNum(r.inRange * 100, 0) + "%") },
-    { key: "v", label: "", sortable: false, render: (r) => (r.n === null ? pill("Not enough history", "muted") : r.mae < r.base ? pill("More accurate than the simple guess", "good") : pill("Not yet better than the simple guess", "warn")) }
+    { key: "v", label: "", sortable: false, render: (r) => (r.n === null ? pill("Not enough history", "muted") : r.mae < r.base ? pill("Better than guessing", "good") : pill("Not better yet", "warn")) }
   ], accRows);
   const t0 = accRows.find((r) => r.n !== null);
   renderCheck();
@@ -4805,15 +4805,15 @@ const INFO = [
   ["panel-spv", "KA absences", [], "Absences entered here by the supervisor. The allocation does not give new CPRs to an absent KA."],
   ["panel-spv", "KA replaced (left the team)", ["#chgForm ~ p.sub"], "Hospital PIC List + this table. The CPRs come from CPRHistory."],
   ["panel-spv", "Reassignment log", [], "Reassignments saved by the supervisor and the automatic ones (absence, KA left)."],
-  ["panel-bukti", "1. Is the forecast accurate?", ["#bkNote", "#bkFcNote"], "The test months of CPRHistory: what each forecast said vs what happened."],
+  ["panel-bukti", "Is the forecast accurate?", ["#bkNote", "#bkFcNote"], "The test months of CPRHistory: what each forecast said vs what happened."],
   ["panel-bukti", "Check the forecast CPR by CPR (test months)", ["#chkCard > .sub", "#chkNote"], "CPRHistory test months; every CPR is forecast by a model that had not seen it."],
   ["panel-bukti", "KA workload per day: forecast vs actual (test months)", ["#lcCard > .sub", "#lcNote"], "CPRHistory test months: CPRs held at Sequence 8 per KA per day, forecast vs actual."],
   ["panel-bukti", "Forecast settings", ["#fcSetNote"], "CPRHistory, split by date into training, validation and test months."],
   ["panel-bukti", "Model selection in the dashboard (automatic)", ["h3 + .sub"], "Validation months of CPRHistory."],
   ["panel-bukti", "Comparison of the four models (analysis notebook)", ["h3 + .sub"], "Python notebook on CPR_Cleaned 2023–2026."],
-  ["panel-bukti", "2. Is the KA workload more evenly distributed?", ["#bkLoadDesc"], "DSS allocation vs the actual KA in CPRHistory, same CPRs and days."],
-  ["panel-bukti", "3. Are CPRs converted into POs more quickly?", ["#bkPoDesc", "#bkPoSub"], "CPRSummary (PR / PO number and dates) + CPRHistory."],
-  ["panel-bukti", "4. Is the supervisor's workload reduced?", [], "Activity log and reassignment log of this dashboard."]
+  ["panel-bukti", "Is the KA workload more even?", ["#bkLoadDesc"], "DSS allocation vs the actual KA in CPRHistory, same CPRs and days."],
+  ["panel-bukti", "Are CPRs turned into POs faster?", ["#bkPoDesc", "#bkPoSub"], "CPRSummary (PR / PO number and dates) + CPRHistory."],
+  ["panel-bukti", "Is the supervisor's work lighter?", [], "Activity log and reassignment log of this dashboard."]
 ];
 let INFO_OPEN = null;
 function setupInfo() {
