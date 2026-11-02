@@ -3101,7 +3101,19 @@ function fitRidge(X, y, alpha) {
   for (let i = 0; i < n; i++) { const yc = y[i] - ym; for (let a = 0; a < k; a++) { const xa = X[i][a] - xm[a]; b[a] += xa * yc; for (let c = a; c < k; c++) A[a][c] += xa * (X[i][c] - xm[c]); } }
   for (let a = 0; a < k; a++) { for (let c = 0; c < a; c++) A[a][c] = A[c][a]; A[a][a] += alpha; }
   const w = solveLinear(A, b), b0 = ym - xm.reduce((s, v, j) => s + v * w[j], 0);
-  return (x) => b0 + x.reduce((s, v, j) => s + v * w[j], 0);
+  return modelFn({ kind: "lin", b0, w });
+}
+// a trained model as plain data (so it can be kept in the browser) -> forecast function
+function modelFn(model) {
+  if (model.kind === "lin") { const f = (x) => model.b0 + x.reduce((s, v, j) => s + v * model.w[j], 0); f.model = model; return f; }
+  const trees = model.trees.map((t) => ({ splits: t.s, leafVal: new Map(t.l) }));
+  const walk = (tr, x) => {
+    let m = 0;
+    for (let d = 0; d < tr.splits.length; d++) { const s = tr.splits[d][m]; if (!s) return tr.leafVal.get(100000 + d * 1000 + m) ?? 0; m = s.child + (x[s.f] <= s.thr ? 0 : 1); }
+    return tr.leafVal.get(m) ?? 0;
+  };
+  const f = (x) => { let s = model.base; for (const tr of trees) s += walk(tr, x); return s; };
+  f.model = model; return f;
 }
 
 // ---- XGBoost (reg:absoluteerror, tree_method hist, max_bin 256, lambda 1, min_child_weight 1) ----
@@ -3160,13 +3172,16 @@ function fitXgb(X, y, depth, eta, nTrees = 300) {
     for (let i = 0; i < n; i++) pred[i] += leafVal.get(leafId[i]);
     trees.push({ splits, leafVal, depthUsed: splits.length });
   }
-  const walk = (tr, x) => {
-    let m = 0;
-    for (let d = 0; d < tr.splits.length; d++) { const s = tr.splits[d][m]; if (!s) return tr.leafVal.get(100000 + d * 1000 + m) ?? 0; m = s.child + (x[s.f] <= s.thr ? 0 : 1); }
-    return tr.leafVal.get(m) ?? 0;
-  };
-  return (x) => trees.reduce((s, tr) => s + walk(tr, x), base);
+  return modelFn({ kind: "xgb", base, trees: trees.map((t) => ({ s: t.splits, l: [...t.leafVal] })) });
 }
+
+// ---- trained models kept in this browser (IndexedDB): the next visit with the same data skips the training ----
+function idbOpen() { return new Promise((ok, no) => { try { const r = indexedDB.open("cprDash", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); } catch (e) { no(e); } }); }
+async function idbGet(k) { try { const db = await idbOpen(); return await new Promise((ok) => { const q = db.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => ok(q.result ?? null); q.onerror = () => ok(null); }); } catch { return null; } }
+async function idbSet(k, v) { try { const db = await idbOpen(); await new Promise((ok) => { const t = db.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = ok; t.onerror = ok; }); } catch {} }
+// stats objects contain Maps: turn them into plain data and back
+const packStats = (st) => JSON.stringify(st, (k, v) => (v instanceof Map ? { __map: [...v] } : v));
+const unpackStats = (txt) => JSON.parse(txt, (k, v) => (v && v.__map ? new Map(v.__map) : v));
 
 // ---- features (same names and fill rules as the notebook) ----
 function f1Stats(L) {
@@ -3333,6 +3348,7 @@ async function ensureModels(_start, onStatus) {
     const cens = [...rows.filter((r) => r.start < cut && r.start + r.y >= cut), ...open.filter((r) => r.start < cut)].map((r) => ({ ...r, y: fill(cut - r.start), cens: true }));
     return [...done, ...cens];
   };
+  const oldCache = (await idbGet(STORE_PREFIX + "models")) || {}, newCache = {};
   const pick = async (label, hist0, dateOf, stats, feats, savedSel, openRows) => {
     if (hist0.length < 100) return null;
     const cens = !!openRows && DDAY !== null;
@@ -3361,15 +3377,19 @@ async function ensureModels(_start, onStatus) {
         sel = { ...sel, test: { from: testStart, to: Math.max(...testRows.map(dateOf)), trainN: before.length, rows } };
       }
     }
-    // retrain the chosen setting on all history -> forecasts for the queue
+    // retrain the chosen setting on all history -> forecasts for the queue (or reuse the copy trained on the same data)
+    const ratioOf = (mm) => { const a = mm.y.reduce((t, v) => t + Math.expm1(v), 0), b = mm.X.reduce((t, x) => t + Math.max(0, Math.expm1(mm.f(x))), 0); return b > 0 ? a / b : 1; };
+    let beforeModel = null; const fitBefore = () => beforeModel || (beforeModel = (() => { const mm = fitOn(sel, before, stats, feats); mm.meanRatio = ratioOf(mm); return mm; })());
+    const ck = [key, DDAY, label, sel.chosen.family, sel.chosen.setting, hist.length].join("|"), hit = oldCache[ck];
+    if (hit) { newCache[ck] = hit; return { ...sel, meanRatio: hit.meanRatio, n: hist.length, nCens: hist.filter((r) => r.cens).length, st: unpackStats(hit.st), f: modelFn(hit.model), q20: hit.q20, q80: hit.q80, fitBefore }; }
     const m = fitOn(sel, hist, stats, feats);
     const res = m.y.map((v, i) => v - m.f(m.X[i]));   // residuals in log days: P20-P80 range
     // the chosen setting learned only from history before the test months (in memory, for the daily workload check)
     // the model gives the most likely (median) duration; for WORKLOAD the average matters, and a few CPRs held very long make the
     // average larger than the median: meanRatio = total actual days ÷ total forecast days on the learning data (used for workload only)
-    const ratioOf = (mm) => { const a = mm.y.reduce((t, v) => t + Math.expm1(v), 0), b = mm.X.reduce((t, x) => t + Math.max(0, Math.expm1(mm.f(x))), 0); return b > 0 ? a / b : 1; };
-    let beforeModel = null; const fitBefore = () => beforeModel || (beforeModel = (() => { const mm = fitOn(sel, before, stats, feats); mm.meanRatio = ratioOf(mm); return mm; })());
-    return { ...sel, meanRatio: ratioOf(m), n: hist.length, nCens: hist.filter((r) => r.cens).length, st: m.st, f: m.f, q20: quantile(res, 0.2), q80: quantile(res, 0.8), fitBefore };
+    const out = { ...sel, meanRatio: ratioOf(m), n: hist.length, nCens: hist.filter((r) => r.cens).length, st: m.st, f: m.f, q20: quantile(res, 0.2), q80: quantile(res, 0.8), fitBefore };
+    newCache[ck] = { model: m.f.model, st: packStats(m.st), q20: out.q20, q80: out.q80, meanRatio: out.meanRatio };
+    return out;
   };
   const f1 = await pick("arrival", f1All, (r) => r.create, f1Stats, f1Features, saved && saved.f1);
   const f2 = await pick("return", f2All, (r) => r.approve, f2Stats, f2Features, saved && saved.f2);
@@ -3380,6 +3400,7 @@ async function ensureModels(_start, onStatus) {
   const f4 = await pick("Sequence 8", h8.rows, (r) => r.start, f34Stats, f34Features, saved && saved.f4, F4_CENSORED ? h8.open : null);
   if (f3) f3.state = h3.state; if (f4) f4.state = h8.state;
   MODELS = { key, f1, f2, f3, f4, simByCpr, recent, valStart, testStart };
+  idbSet(STORE_PREFIX + "models", newCache);
   const strip = (m) => (m ? { chosen: m.chosen, bestPerFamily: m.bestPerFamily, nTune: m.nTune, nVal: m.nVal, fixed: !!m.fixed, test: m.test || null } : null);
   const testMae = (m) => (m && m.test ? mean(m.test.rows.map((x) => Math.abs(x[1]))) : null);
   FC_RESULTS[fcKey(FC_SET)] = { f1: testMae(f1), f2: testMae(f2), f3: testMae(f3), f4: testMae(f4), n1: f1 && f1.test ? f1.test.rows.length : 0, n2: f2 && f2.test ? f2.test.rows.length : 0, f1Model: f1 ? `${f1.chosen.family} (${f1.chosen.setting})` : "–", f2Model: f2 ? `${f2.chosen.family} (${f2.chosen.setting})` : "–", train: TRAIN.size };
@@ -4337,7 +4358,14 @@ function makeSample() {
 }
 
 /* ---------- Kontrol SPV ---------- */
+// remembered result: dataDate() is asked thousands of times while allocating, the data does not change in between
+let DATA_DATE_CACHE = null;
 function dataDate() { // the latest date seen in the data (CPRHistory or PO Data) = "today" for the action list
+  const pd = progressDate(), c = DATA_DATE_CACHE;
+  if (c && c.recs === RECS && c.len === RECS.length && c.pd === pd) return c.val;
+  const val = dataDateRaw(); DATA_DATE_CACHE = { recs: RECS, len: RECS.length, pd, val }; return val;
+}
+function dataDateRaw() {
   let m = progressDate();
   for (const r of RECS) for (const k of ["create", "kaIn", "kaOut", "back", "backOut", "lastAct"]) if (r[k] !== null && r[k] !== undefined && (m === null || r[k] > m)) m = r[k];
   return m;
@@ -5062,7 +5090,13 @@ function openKaPanel(ka) {
   document.body.append(bg, dr);
 }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && KA_PANEL) closeKaPanel(); });
-function renderAll() { try { fillGlobalKa(); } catch (e) {} renderEmptyState(); renderOverview(); renderKaChanges(); renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
+// only the open tab is drawn; the other tabs are drawn when they are opened (showTab)
+function renderAll() {
+  try { fillGlobalKa(); } catch (e) {}
+  renderEmptyState(); renderKaChanges(); renderQuality();
+  try { renderLateAlert(); } catch (e) {}   // the Supervisor Control badge
+  if (currentTab !== "kualitas") renderers[currentTab]();
+}
 // before the CPR queue is uploaded: no sample data on screen, only what to upload
 function renderEmptyState() {
   // the setup page stays until the first allocation has been run (nothing is allocated automatically)
