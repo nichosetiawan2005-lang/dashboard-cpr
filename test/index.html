@@ -537,6 +537,52 @@ tbody tr:hover td { background: var(--info-bg); }
 .drawer .tiles { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-top: 12px; }
 .drawer h3 { font-size: 14px; margin: 18px 0 8px; }
 @media (max-width: 560px) { .gbar .gnote { margin-left: 0; width: 100%; } .tabs { margin-inline: -16px; padding-inline: 16px; } }
+
+/* ===== modern pass: flatter header, underline tabs, pill buttons, airy cards and tables ===== */
+.top { background: linear-gradient(120deg, #0a2470 0%, #0c2a82 55%, #1b3f9e 100%); }
+.top-row { padding-block: 18px 12px; }
+.brand h1 { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; }
+.tabs { gap: 2px; padding-top: 2px; }
+.tab { border-radius: 0; padding: 12px 14px 13px; color: rgba(255,255,255,.72); font-weight: 600; position: relative; background: none !important; box-shadow: none !important; }
+.tab:hover { color: #fff; }
+.tab[aria-selected="true"] { color: #fff; background: none; }
+.tab[aria-selected="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--siloam-yellow); }
+body { background: var(--mint); }
+.panel { padding-top: 6px; }
+.card, .tbl-wrap, .tile, .filters, .alertbar, .kacard { border-radius: 18px; box-shadow: 0 1px 2px rgba(12,42,130,.04), 0 8px 24px rgba(12,42,130,.06); }
+.card { padding: 18px 20px; }
+.card .tbl-wrap, .card .filters, .card .tile { border-radius: 12px; box-shadow: none; }
+.section-title { margin: 32px 0 12px; }
+.section-title h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.015em; }
+.section-title h2::before { width: 6px; height: 6px; border-radius: 50%; background: var(--siloam-yellow); }
+.card h3 { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+/* tiles: clean, number first, a small coloured dot instead of a side bar */
+.tile { padding: 16px 18px; background: #fff !important; }
+.tile::before { top: 18px; left: auto; right: 18px; bottom: auto; width: 10px; height: 10px; border-radius: 50%; }
+.tile .k { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.tile .v { font-size: 32px; font-weight: 800; letter-spacing: -0.03em; margin-top: 6px; }
+.tile .v small { font-size: 13px; font-weight: 600; color: var(--muted); margin-left: 4px; letter-spacing: 0; }
+.ovtiles .tile.sel { box-shadow: inset 0 0 0 2px var(--ward), 0 8px 24px rgba(12,42,130,.1); }
+/* buttons and inputs */
+.btn, .file-btn { border-radius: 999px !important; padding: 9px 18px; font-weight: 700; letter-spacing: -0.005em; transition: transform .1s, box-shadow .15s, background .15s; }
+.btn:not(.ghost) { box-shadow: 0 4px 12px rgba(12,42,130,.22); }
+.btn:not(.ghost):hover { background: var(--ward-2); }
+.btn:active { transform: translateY(1px); }
+.btn.ghost { border-color: var(--line); background: #fff; }
+.btn.ghost:hover { border-color: var(--accent); }
+.field label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 2px; }
+.field input, .field select, #incSearch, #ovSearch, input[type="search"] { border-radius: 10px; border: 1px solid var(--line); background: #f6f8fd; padding: 9px 12px; transition: border-color .15s, box-shadow .15s, background .15s; }
+.field input:focus, .field select:focus, input[type="search"]:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(31,67,168,.14); }
+/* tables: no grey header block, lighter lines, more air */
+th { background: #fff !important; color: var(--muted) !important; font-size: 12px; font-weight: 700; border-bottom: 1px solid var(--line) !important; padding-top: 12px; padding-bottom: 12px; }
+td { border-bottom: 1px solid #edf1f8 !important; }
+tbody tr:last-child td { border-bottom: 0 !important; }
+tbody tr:hover td { background: #f6f8fe !important; }
+.pill { border-radius: 999px; padding: 3px 10px; font-weight: 600; }
+.unitchip { border-radius: 999px; padding: 3px 10px; background: #edf1fb; color: var(--ward); }
+.linkbtn, .kalink { text-decoration: none !important; border-bottom: 0 !important; }
+.linkbtn:hover, .kalink:hover { text-decoration: underline !important; }
+details.more > summary, details.capbox > summary { font-weight: 700; color: var(--accent-ink); }
 </style>
 
 <div class="top">
