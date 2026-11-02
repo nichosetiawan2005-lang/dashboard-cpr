@@ -389,13 +389,14 @@ body.loading .tile .v * , body.loading .tbl-wrap tbody td * { visibility: hidden
 .now-legend .avgkey { color: var(--head); }
 i.s3, .nowbar .s3 { background: var(--s1); } i.s8, .nowbar .s8 { background: var(--s2); } i.rw, .nowbar .rw { background: var(--s3); } i.fin, .nowbar .fin { background: #c3d2d6; }
 .nowlist { display: grid; gap: 4px; }
-.nowrow { display: grid; grid-template-columns: 150px 1fr 130px 100px 170px; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 10px; cursor: pointer; }
+.nowrow { display: grid; grid-template-columns: 150px 1fr 130px 90px 100px 170px; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 10px; cursor: pointer; }
 .nowrow:hover { background: #f3f9fa; } .nowrow.sel { background: #e6f4f3; box-shadow: inset 3px 0 0 var(--ward); }
 .nowbar { position: relative; display: flex; height: 16px; border-radius: 8px; background: #edf3f4; overflow: visible; }
 .nowbar span { height: 100%; } .nowbar span:first-child { border-radius: 8px 0 0 8px; } .nowbar span:last-of-type { border-radius: 0 8px 8px 0; } .nowbar span:only-of-type { border-radius: 8px; }
 .nowbar span + span { margin-left: 2px; }
 .nowbar .avgline { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px dashed var(--head); opacity: .55; }
 .nownum b { font-size: 18px; color: var(--head); } .nownum small { color: var(--muted); font-size: 12px; }
+.nowcoming b { font-size: 16px; color: var(--s1); } .nowcoming small { color: var(--muted); font-size: 12px; } .nowcoming.zero b { color: var(--faint); }
 .nowdiff { font-size: 12px; font-weight: 700; color: var(--muted); } .nowdiff.up { color: #b52f2f; } .nowdiff.down { color: #1c5cab; }
 .nowchips { display: flex; gap: 6px; flex-wrap: wrap; }
 .nc { font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
@@ -676,11 +677,11 @@ tbody tr:hover td { background: var(--info-bg); }
     <div class="section-title"><h2>Workload now</h2><p id="nowAsOf"></p></div>
     <div class="tiles" id="nowTiles"></div>
     <div class="card" style="margin-top:14px">
-      <div class="now-legend"><span><i class="s3"></i>Sequence 3</span><span><i class="s8"></i>Sequence 8</span><span><i class="rw"></i>Rework</span><span><i class="fin"></i>Waiting PH HO / Director</span><span class="avgkey">┊ team average</span><span style="margin-left:auto">Click a KA to see the CPRs they hold</span></div>
+      <div class="now-legend"><span><i class="s3"></i>Sequence 3</span><span><i class="s8"></i>Sequence 8</span><span><i class="rw"></i>Rework</span><span><i class="fin"></i>Waiting PH HO / Director</span><span class="avgkey">┊ team average</span><span><b style="color:var(--s1)">coming</b> = given to the KA by the system, still at Seq 0–2</span><span style="margin-left:auto">Click a KA to see the CPRs they hold</span></div>
       <div id="nowList" class="nowlist"></div>
     </div>
     <div class="card" id="nowDetail" style="margin-top:14px" hidden>
-      <div class="now-dhead"><div id="nowDTitle"></div><div class="filters" style="border:0;padding:0;margin:0;box-shadow:none"><div class="field"><label for="nowShow">Show</label><select id="nowShow"><option value="">All CPRs held</option><option value="late">Late only</option><option value="warn">Warning only</option><option value="rec">Sequence 3</option><option value="mat">Sequence 8</option><option value="rw">Rework</option><option value="fin">Waiting PH HO / Director</option></select></div><button class="btn ghost" type="button" id="nowClose">Close</button></div></div>
+      <div class="now-dhead"><div id="nowDTitle"></div><div class="filters" style="border:0;padding:0;margin:0;box-shadow:none"><div class="field"><label for="nowShow">Show</label><select id="nowShow"><option value="">All CPRs held</option><option value="late">Late only</option><option value="warn">Warning only</option><option value="rec">Sequence 3</option><option value="mat">Sequence 8</option><option value="rw">Rework</option><option value="fin">Waiting PH HO / Director</option><option value="next">Coming (given by the system, not at KA yet)</option></select></div><button class="btn ghost" type="button" id="nowClose">Close</button></div></div>
       <div class="tbl-wrap tall" style="margin-top:10px"><table id="tblNow"></table></div>
     </div>
   </section>
@@ -1039,6 +1040,13 @@ function nowItems() {
     if (task === "fin") lv = "fin";
     out.push({ r, ka, task, since, days, lv });
   }
+  // coming: CPRs the allocation gave to a KA that have not reached the KA step yet (still at Seq 0–2)
+  if (SIM) for (const c of SIM.assigned) {
+    const r = c.r;
+    if (!c.ka || !isCurrentKa(c.ka) || dataKaUser(r) || r.done || isInactive(r) || IGNORED[r.cpr] || /reject|cancel/i.test(r.hstatus || "")) continue;
+    if (r.kaIn !== null && r.kaIn !== undefined) continue;
+    out.push({ r, ka: c.ka, task: "next", since: r.create, days: workDaysBetween(r.create, D), lv: "next", where: posLabel(r) || fallbackPos(r) || "" });
+  }
   return out;
 }
 function renderNow() {
@@ -1047,7 +1055,7 @@ function renderNow() {
   const kas = [...new Set([...(META.kaList || []).filter(isCurrentKa), ...items.map((x) => x.ka)])];
   const per = kas.map((ka) => {
     const mine = items.filter((x) => x.ka === ka), n = (t) => mine.filter((x) => x.task === t).length;
-    return { ka, rec: n("rec"), mat: n("mat"), rw: n("rw"), fin: n("fin"), work: n("rec") + n("mat") + n("rw"), total: mine.length,
+    return { ka, rec: n("rec"), mat: n("mat"), rw: n("rw"), fin: n("fin"), next: n("next"), work: n("rec") + n("mat") + n("rw"), total: mine.length - n("next"),
       late: mine.filter((x) => x.lv === "late").length, warn: mine.filter((x) => x.lv === "warn").length, oldest: Math.max(0, ...mine.filter((x) => x.task !== "fin").map((x) => x.days || 0)) };
   }).sort((a, b) => b.work - a.work || b.total - a.total);
   // balance: how far apart the KAs are (work = Seq 3 + Seq 8 + rework)
@@ -1056,7 +1064,7 @@ function renderNow() {
   const verdict = cv < 0.35 ? ["Balanced", "good"] : cv < 0.6 ? ["Slightly uneven", "warn"] : ["Uneven", "bad"];
   const late = items.filter((x) => x.lv === "late").length, warn = items.filter((x) => x.lv === "warn").length;
   const t1 = tile("Spread of work", verdict[0], "", busiest ? `busiest ${kaLabel(busiest.ka)} ${busiest.work} · least ${kaLabel(least.ka)} ${least.work}` : ""); t1.classList.add("now-" + verdict[1]);
-  const t2 = tile("CPRs held by KAs", fmtInt(items.filter((x) => x.task !== "fin").length), "", `average ${fmtNum(avg, 1)} per KA`);
+  const t2 = tile("CPRs held by KAs", fmtInt(items.filter((x) => x.task !== "fin" && x.task !== "next").length), "", `average ${fmtNum(avg, 1)} per KA · ${fmtInt(items.filter((x) => x.task === "next").length)} coming`);
   const t3 = tile("Late", fmtInt(late), "CPRs", "Seq 3 > 1 day or Seq 8 > 14 days"); t3.classList.add(late ? "now-bad" : "now-good");
   const t4 = tile("Warning", fmtInt(warn), "CPRs", "Seq 8 6–14 working days"); t4.classList.add(warn ? "now-warn" : "now-good");
   $("nowTiles").replaceChildren(t1, t2, t3, t4);
@@ -1073,6 +1081,7 @@ function renderNow() {
     if (k.warn) chips.append(el("span", { class: "nc warn" }, `${k.warn} warning`));
     if (!k.late && !k.warn) chips.append(el("span", { class: "nc ok" }, "on time"));
     row.append(kaCell(k.ka), bar, el("div", { class: "nownum" }, el("b", {}, fmtInt(k.work)), el("small", {}, ` held${k.fin ? ` + ${k.fin} waiting` : ""}`)),
+      el("div", { class: "nowcoming" + (k.next ? "" : " zero") }, el("b", {}, fmtInt(k.next)), el("small", {}, " coming")),
       el("div", { class: "nowdiff " + (diff > 0.25 ? "up" : diff < -0.25 ? "down" : "") }, avg > 0 ? `${diff >= 0 ? "+" : ""}${fmtNum(diff * 100, 0)}% vs avg` : "–"), chips);
     const open = () => { NOW_KA = NOW_KA === k.ka ? null : k.ka; renderNow(); if (NOW_KA) $("nowDetail").scrollIntoView({ behavior: "smooth", block: "start" }); };
     row.onclick = (e) => { if (e.target.closest(".kalink")) return; open(); }; row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
@@ -1081,13 +1090,13 @@ function renderNow() {
   // the CPRs of the chosen KA
   $("nowDetail").hidden = !NOW_KA; if (!NOW_KA) return;
   const k = per.find((x) => x.ka === NOW_KA);
-  $("nowDTitle").replaceChildren(kaCell(NOW_KA), el("span", { class: "now-dsub" }, k ? `${k.work} held · ${k.rec} Seq 3 · ${k.mat} Seq 8 · ${k.rw} rework · ${k.fin} waiting PH HO / Director` : ""));
-  const f = $("nowShow").value, LV = { ok: ["On time", "good"], warn: ["Warning", "warn"], late: ["Late", "bad"], rw: ["In rework", "serious"], fin: ["Waiting", "muted"] };
-  const rows = items.filter((x) => x.ka === NOW_KA && (!f || x.task === f || x.lv === f)).sort((a, b) => ({ late: 0, warn: 1, rw: 2, ok: 3, fin: 4 }[a.lv] - { late: 0, warn: 1, rw: 2, ok: 3, fin: 4 }[b.lv]) || (b.days ?? 0) - (a.days ?? 0));
+  $("nowDTitle").replaceChildren(kaCell(NOW_KA), el("span", { class: "now-dsub" }, k ? `${k.work} held · ${k.rec} Seq 3 · ${k.mat} Seq 8 · ${k.rw} rework · ${k.fin} waiting PH HO / Director · ${k.next} coming` : ""));
+  const f = $("nowShow").value, LV = { ok: ["On time", "good"], warn: ["Warning", "warn"], late: ["Late", "bad"], rw: ["In rework", "serious"], fin: ["Waiting", "muted"], next: ["Coming", "info"] };
+  const rows = items.filter((x) => x.ka === NOW_KA && (!f || x.task === f || x.lv === f)).sort((a, b) => ({ late: 0, warn: 1, rw: 2, ok: 3, fin: 4, next: 5 }[a.lv] - { late: 0, warn: 1, rw: 2, ok: 3, fin: 4, next: 5 }[b.lv]) || (b.days ?? 0) - (a.days ?? 0));
   renderTable($("tblNow"), [
     { key: "cpr", label: "CPR", sortable: false, render: (x) => cprCell(x.r.cpr, x.r.vendorName) },
     { key: "unit", label: "Hospital", sortable: false, render: (x) => unitChip(unitName(x.r.unit, x.r.cpr)) },
-    { key: "task", label: "Step", sortable: false, render: (x) => TASK_LABEL[x.task] },
+    { key: "task", label: "Step", sortable: false, render: (x) => (x.task === "next" ? el("div", { class: "poscell" }, el("div", {}, "Not at KA yet"), el("div", { class: "desc1" }, x.where)) : TASK_LABEL[x.task]) },
     { key: "since", label: "Since", sortable: false, render: (x) => fmtDay(x.since) },
     { key: "days", label: "Working days", num: true, sortable: false, render: (x) => (x.days === null ? "–" : fmtInt(x.days)) },
     { key: "lv", label: "Status", sortable: false, render: (x) => pill(LV[x.lv][0], LV[x.lv][1]) }
