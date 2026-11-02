@@ -500,7 +500,8 @@ tbody tr:hover td { background: #f2f5fc; }
 #authBox .note { font-size: 12.5px; }
 #authBox .file-btn { border-radius: 999px; padding: 6px 14px; }
 .top .file-btn.primary { border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.18); font-weight: 600; }
-#picKeepWrap { border-radius: 999px; background: transparent; border-style: dashed; }
+.upgrid #upBoxP { grid-column: 1 / -1; min-height: 0; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; border-style: solid; border-color: var(--line); }
+.upgrid #upBoxP .upadd { align-self: center; }
 .uploads { align-items: center; }
 /* page look: header colour fades into the page, soft cards, accent on section titles */
 body { background: linear-gradient(180deg, #d7e0f3 0px, var(--mint) 340px) no-repeat, var(--mint); }
@@ -611,12 +612,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
           Upload CPRHistory + CPRSummary
         </button>
         <input type="file" id="fileCpr" accept=".xlsx,.xls,.csv" multiple hidden>
-        <label class="file-btn" for="filePic" id="lblPic">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
-          Hospital PIC List
-          <input type="file" id="filePic" accept=".xlsx,.xls,.csv">
-        </label>
-        <label class="file-btn" id="picKeepWrap" hidden title="Untick to upload a new Hospital PIC List"><input type="checkbox" id="picKeep" checked style="position:static;width:auto;height:auto;opacity:1;pointer-events:auto;margin:0"> <span>Same PIC list (<span id="picCount"></span> hospitals)</span></label>
+        <span id="picKeepWrap" hidden><input type="checkbox" id="picKeep" checked><span id="picCount"></span></span>
       </div>
     </div>
     <div class="tabs" role="tablist">
@@ -989,6 +985,8 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
     <div class="upbox" id="upBoxS" data-kind="s"><div class="uphead"><b>2. CPRSummary</b><span class="note" style="margin:0">current holder and ERP ID (PR / PO) · recommended</span></div>
       <label class="btn ghost upadd">+ Add CPRSummary file(s)<input type="file" id="upFileS" accept=".xlsx,.xls,.csv" multiple hidden></label>
       <ul class="uplist" id="upListS"></ul></div>
+    <div class="upbox" id="upBoxP"><div class="uphead"><b>3. Hospital PIC List</b><span class="note" style="margin:0" id="upPicInfo"></span></div>
+      <label class="btn ghost upadd" for="filePic" id="lblPic">Upload a new PIC list<input type="file" id="filePic" accept=".xlsx,.xls,.csv" hidden></label></div>
   </div>
   <p class="note" id="upMsg" style="margin:12px 0 0"></p>
   <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn ghost" type="button" id="upCancel">Cancel</button><button class="btn" type="button" id="upGo" disabled>Process files</button></div>
@@ -2431,9 +2429,11 @@ async function clearAlloc() {
 function renderPicControl() {
   const canUpload = !SB || IS_ADMIN;
   const has = !!PIC_LIST;
-  $("picKeepWrap").hidden = !has || !canUpload;
+  // the PIC list lives in the upload window: the saved list stays in use until a new one is uploaded
+  $("picKeepWrap").hidden = true;
   $("picCount").textContent = has ? fmtInt(Object.keys(PIC_LIST).length) : "";
-  $("lblPic").hidden = !canUpload || (has && $("picKeep").checked);
+  $("lblPic").hidden = !canUpload;
+  $("upPicInfo").textContent = has ? `saved list in use · ${fmtInt(Object.keys(PIC_LIST).length)} hospitals · upload only when PIC units change` : "not uploaded yet";
 }
 $("picKeep").addEventListener("change", renderPicControl);
 function renderSaveBadge() {
