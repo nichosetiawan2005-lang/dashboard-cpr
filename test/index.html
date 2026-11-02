@@ -261,6 +261,24 @@ body.locked #loginForm { flex-direction: column; align-items: stretch; }
 body.locked #loginForm .btn { width: 100%; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 @media (max-width: 560px) { .tile .v { font-size: 22px; } .brand h1 { font-size: 17px; } }
+/* global filter bar, KA drill-down panel, tidier tables */
+.gbar { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 14px; padding: 8px 0 10px; }
+.gbar .field label { font-size: 11px; }
+.gbar select, .gbar input { min-width: 0; }
+.gbar .gnote { font-size: 12px; color: var(--muted); margin-left: auto; align-self: center; }
+.tbl-wrap.tall { max-height: 70vh; overflow: auto; }
+tbody tr:hover td { background: var(--info-bg); }
+.kalink { background: none; border: 0; padding: 0; color: var(--accent-ink); font: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.kalink:hover { text-decoration: underline; }
+.card { transition: box-shadow .15s; }
+.card:hover { box-shadow: 0 2px 10px rgba(0,0,0,.05); }
+.drawer-bg { position: fixed; inset: 0; background: rgba(20,24,32,.28); z-index: 70; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--bg); z-index: 71; overflow: auto; box-shadow: -8px 0 30px rgba(0,0,0,.18); padding: 18px 18px 40px; }
+.drawer h2 { font-size: 20px; margin: 0; }
+.drawer .dhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+.drawer .tiles { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-top: 12px; }
+.drawer h3 { font-size: 14px; margin: 18px 0 8px; }
+@media (max-width: 560px) { .gbar .gnote { margin-left: 0; width: 100%; } .tabs { margin-inline: -16px; padding-inline: 16px; } }
 </style>
 
 <div class="top">
@@ -292,6 +310,13 @@ body.locked #loginForm .btn { width: 100%; }
       <button class="tab" role="tab" aria-selected="false" data-tab="spv" id="tab-spv">Supervisor Control</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="bukti" id="tab-bukti">Evaluation</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="kualitas" id="tab-kualitas">Data Management</button>
+    </div>
+    <div class="gbar" id="gbar">
+      <div class="field"><label for="gKa">Key Account</label><select id="gKa"><option value="">All Key Accounts</option></select></div>
+      <div class="field"><label for="gPer">Period</label><select id="gPer"><option value="last90">Last 3 months</option><option value="thisMonth">This month</option><option value="lastMonth">Last month</option><option value="thisWeek">This week</option><option value="lastWeek">Last week</option><option value="custom">Custom …</option></select></div>
+      <div class="field" id="gFromW" hidden><label for="gFrom">From</label><input type="date" id="gFrom"></div>
+      <div class="field" id="gToW" hidden><label for="gTo">To</label><input type="date" id="gTo"></div>
+      <span class="gnote" id="gNote"></span>
     </div>
   </div>
 </div>
@@ -335,7 +360,7 @@ body.locked #loginForm .btn { width: 100%; }
         <div class="field" style="flex:1 1 260px"><label for="ovSearch">Search</label><input type="search" id="ovSearch" placeholder="CPR number, hospital, description, approver …"></div>
         <div class="field"><label for="ovUnit">Hospital</label><select id="ovUnit"></select></div>
       </div>
-      <div class="tbl-wrap"><table id="tblOv"></table></div>
+      <div class="tbl-wrap tall"><table id="tblOv"></table></div>
       <div class="filters" style="border:0;padding:0;margin:8px 0 0;justify-content:flex-end"><span class="note" id="ovPage" style="margin:0"></span><button class="btn ghost" id="ovPrev" type="button">‹</button><button class="btn ghost" id="ovNext" type="button">›</button></div>
     </div>
   </section>
@@ -386,7 +411,7 @@ body.locked #loginForm .btn { width: 100%; }
       <button class="btn ghost" type="button" id="incClear">Clear filters</button>
     </div>
     <div class="tbl-tools"><input type="search" id="incSearch" placeholder="Search CPR number, description, hospital, KA"><div class="pager"><button type="button" id="incCopy">Copy table</button><button type="button" id="incPrev" aria-label="Previous page">‹</button><span id="incPage"></span><button type="button" id="incNext" aria-label="Next page">›</button></div></div>
-    <div class="tbl-wrap"><table id="tblInc"></table></div>
+    <div class="tbl-wrap tall"><table id="tblInc"></table></div>
     </div>
   </section>
 
@@ -421,7 +446,7 @@ body.locked #loginForm .btn { width: 100%; }
       </div>
       <div class="sub" id="ioSub"></div>
       <div class="legend" id="lgIo"></div><div class="chart" id="chIo"></div>
-      <div class="tbl-wrap" style="margin-top:10px"><table id="tblIo"></table></div>
+      <div class="tbl-wrap tall" style="margin-top:10px"><table id="tblIo"></table></div>
       <p class="note" id="ioNote"></p>
     </div>
     <div hidden id="kaOld">
@@ -674,6 +699,7 @@ function toDay(v) {
   return isNaN(t) ? null : Math.floor(t / 864e5);
 }
 const dayToDate = (d) => new Date(d * 864e5);
+const G = { ka: "", per: "last90", applied: false };   // global filter (Key Account + period), set from the bar under the tabs
 function fmtDay(d) { if (d === null || d === undefined) return "–"; const x = dayToDate(d); return `${x.getUTCDate()} ${MONTHS[x.getUTCMonth()]} ${x.getUTCFullYear()}`; }
 function fmtShort(d) { const x = dayToDate(d); return `${x.getUTCDate()} ${MONTHS[x.getUTCMonth()]}`; }
 function dayToIso(d) { return dayToDate(d).toISOString().slice(0, 10); }
@@ -1380,7 +1406,7 @@ function renderOverview() {
     { key: "status", label: "Status", sortable: false, render: (x) => pill(x.status || "–", kind(x.status)) },
     { key: "stage", label: "Current position", sortable: false, render: (x) => el("div", { class: "cellwrap" }, /^approved$/i.test(x.status || "") ? (x.erp ? "Done · " + (/^po/i.test(x.erp) ? "PO" : "PR") + " created" : "Done · Fully approved") : x.pos || x.stage || (x.waiting ? "Waiting for " + x.waiting.split(",").join(", ") : "–")) },
     { key: "lastAct", label: "Last activity", sortable: false, render: (x) => fmtDay(x.lastAct) },
-    { key: "ka", label: "Key Account", sortable: false, render: (x) => (x.ka ? kaLabel(x.ka) : "–") },
+    { key: "ka", label: "Key Account", sortable: false, render: (x) => (x.ka ? kaLink(x.ka) : "–") },
     { key: "erp", label: "ERP ID (PR / PO)", sortable: false, render: (x) => x.erp || "–" }
   ], list.slice(OV.page * per, OV.page * per + per));
 }
@@ -2611,9 +2637,9 @@ function renderKaFromHistory(view) {
     { name: "Average Sequence 8 (days)", color: "var(--s2)", values: withWork.map((r) => r.r2avg) }
   ], { stacked: true, dec: 1, label: "Average Sequence 3 + Sequence 8 time per KA (in brackets: Seq 3 / Seq 8 approvals)" });
   const lv8Cell = (c) => { const box = el("div", { style: "display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap" }); for (const k of ["good", "warn", "bad"]) if (c[k]) box.append(pill(fmtInt(c[k]), k)); return box.childNodes.length ? box : "–"; };
-  const perf = rows.filter((r) => r.n + r.n8 > 0).sort((a, b) => (b.w8 ?? -1) - (a.w8 ?? -1));
+  const perf = rows.filter((r) => r.n + r.n8 > 0 && (!G.ka || r.ka === G.ka)).sort((a, b) => (b.w8 ?? -1) - (a.w8 ?? -1));
   renderTable($("tblKa"), [
-    { key: "name", label: "Key Account" },
+    { key: "name", label: "Key Account", render: (r) => kaLink(r.ka) },
     { key: "n", label: "Seq 3 done", num: true, render: (r) => fmtInt(r.n) },
     { key: "w3", label: "Seq 3 avg days", num: true, render: (r) => fmtNum(r.w3, 1) },
     { key: "on3", label: "Seq 3 ≤ 1 day", num: true, render: (r) => (r.on3 === null ? "–" : pill(fmtNum(r.on3, 0) + "%", r.on3 >= 80 ? "good" : r.on3 >= 60 ? "warn" : "bad")) },
@@ -3654,9 +3680,9 @@ function renderSpeed() {
   const rows = s.allocKas.map((k) => {
     const res = s.reserve[k] ? s.reserve[k].reserve : 0, h = held[k] || 0, sp = s.speed.perDay[k], rate = rr.rate[k] ?? rr.team, fx = s.fix.ka[k] ?? s.fix.team;
     return { ka: k, name: kaLabel(k), held: h, res, done: s.speed.done[k] || 0, days: s.speed.days[k] || 0, sp, rate, fx, hold: s.speed.holdDays[k], holdFrom: s.speed.holdFrom[k], fin: s.finishOf(k, h + res), within: h + res + 1 <= s.maxPerDay * capOf(k), given: s.assigned.filter((c) => c.ka === k && (c.isNewAssign || !c.locked)).length };
-  }).sort((a, b) => a.fin - b.fin);
+  }).filter((r) => !G.ka || r.ka === G.ka).sort((a, b) => a.fin - b.fin);
   renderTable($("tblSpeed"), [
-    { key: "name", label: "Key Account" },
+    { key: "name", label: "Key Account", render: (r) => kaLink(r.ka) },
     { key: "held", label: "Held (Seq 8 + rework)", num: true, render: (r) => fmtInt(r.held) },
     { key: "res", label: "Reserve", num: true, render: (r) => fmtNum(r.res, 1) },
     { key: "done", label: "Done last week", num: true, render: (r) => `${fmtInt(r.done)} in ${fmtInt(r.days)} days` },
@@ -3718,7 +3744,7 @@ function renderSim() {
   barChartH($("chKaCount"), kas.map(kaLabel), s.actual ? [
     { name: "DSS", color: "var(--s1)", values: kas.map((k) => s.dssCount[k] || 0) },
     { name: "Actual", color: "var(--s2)", values: kas.map((k) => s.actualCount[k] || 0) }
-  ] : [{ name: "Active", color: "var(--s1)", values: kas.map((k) => activeCount[k] || 0) }], { dec: 0, label: "Active CPRs per KA" });
+  ] : [{ name: "Active", color: "var(--s1)", values: kas.map((k) => activeCount[k] || 0) }], { dec: 0, label: "Active CPRs per KA", onClick: (i) => openKaPanel(kas[i]), tipRows: () => [{ value: "", label: "click for the KA's details" }] });
   const mtxt = (m, what) => (m ? `${m.chosen.family} (${m.chosen.setting})${m.chosen.valMae !== null && m.chosen.valMae !== undefined ? `, chosen by the lowest validation MAE (${fmtNum(m.chosen.valMae, 2)} days)` : ""}, trained on ${fmtInt(m.n)} CPRs from CPRHistory + CPRSummary` : `median per hospital, because fewer than 100 CPRs with ${what} are available in CPRHistory`);
   $("simNote").textContent = "";
   incState.page = 0; renderIncoming();
@@ -4068,7 +4094,7 @@ function renderIncoming() {
     { key: "s3", label: "② KA approves Sequence 3", sortable: false, render: (c) => s3Text(c) },
     { key: "ret", label: "③ Return to KA", sortable: false, render: (c) => returnText(c) },
     { key: "s8", label: "④ KA approves Sequence 8", sortable: false, render: (c) => s8Text(c) },
-    { key: "ka", label: "Key Account", sortable: false, render: (c) => kaLabel(c.ka) },
+    { key: "ka", label: "Key Account", sortable: false, render: (c) => kaLink(c.ka) },
     { key: "status", label: "Status", sortable: false, render: (c) => { const [t, k] = progressStatus(c); return pill(t, k); } },
     { key: "rule", label: "Why this KA", sortable: false, render: (c) => { const d = el("div"); d.append(pill(ruleLabel(c.rule), ruleKind[c.rule])); if (c.why) d.append(smallNote(c.why)); return d; } },
     ...(useLocks() ? [{ key: "lk", label: "Assignment", sortable: false, render: (c) => pill(assignLabel(c), c.isNewAssign ? "info" : c.locked ? "muted" : "warn") }] : []),
@@ -4199,7 +4225,7 @@ function renderSpv() {
   renderTable($("tblAct"), [
     { key: "cpr", label: "CPR number", code: true, sortable: false, render: (x) => cprLink(x.c.r.cpr) },
     { key: "unit", label: "Hospital", sortable: false, render: (x) => x.c.unit },
-    { key: "ka", label: "KA", sortable: false, render: (x) => kaLabel(x.c.ka) },
+    { key: "ka", label: "KA", sortable: false, render: (x) => kaLink(x.c.ka) },
     { key: "type", label: "Condition", sortable: false, render: (x) => pill(actLabel[x.type], actKind[x.type]) },
     { key: "status", label: "Details", sortable: false, render: (x) => x.status },
     { key: "where", label: "Current stage", sortable: false, render: (x) => x.where },
@@ -4742,7 +4768,111 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeInfo(
 window.addEventListener("scroll", closeInfo, { passive: true });
 window.addEventListener("resize", closeInfo);
 setupInfo();
-function renderAll() { renderEmptyState(); renderOverview(); renderKaChanges(); renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
+// ---------- global filter: one Key Account and one period for every tab ----------
+function globalRange() {
+  const D = dataDate(); if (D === null) return null;
+  const firstOf = (d) => { const x = dayToDate(d); return toDay(new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), 1)).toISOString()); };
+  switch (G.per) {
+    case "lastMonth": { const f = firstOf(firstOf(D) - 1); return { from: f, to: firstOf(D) - 1 }; }
+    case "thisWeek": return { from: D - weekday(D), to: D };
+    case "lastWeek": return { from: D - weekday(D) - 7, to: D - weekday(D) - 3 };
+    case "last90": return { from: D - 90, to: D };
+    case "custom": { const f = isoToDay($("gFrom").value), t = isoToDay($("gTo").value); return f !== null && t !== null ? { from: Math.min(f, t), to: Math.max(f, t) } : { from: firstOf(D), to: D }; }
+    default: return { from: firstOf(D), to: D };
+  }
+}
+function fillGlobalKa() {
+  const sel = $("gKa"), cur = sel.value, kas = currentKas(SIM ? SIM.kaList : META.kaList || []).slice().sort((a, b) => kaLabel(a).localeCompare(kaLabel(b)));
+  sel.replaceChildren(el("option", { value: "" }, "All Key Accounts"), ...kas.map((k) => el("option", { value: k }, kaLabel(k))));
+  sel.value = kas.includes(cur) ? cur : "";
+  const D = dataDate(), rg = globalRange();
+  $("gNote").textContent = D === null ? "" : `Data up to ${fmtDay(D)}${rg && G.applied ? ` · period ${fmtDay(rg.from)} – ${fmtDay(rg.to)}` : ""}`;
+}
+function applyGlobal() {
+  G.ka = $("gKa").value; G.per = $("gPer").value; G.applied = true;
+  $("gFromW").hidden = $("gToW").hidden = G.per !== "custom";
+  const rg = globalRange();
+  for (const id of ["incKa", "ioKa", "actKa", "lcKa"]) { const s = $(id); if (s && [...s.options].some((o) => o.value === G.ka)) s.value = G.ka; }
+  if (rg) {
+    $("poFrom").value = dayToIso(rg.from); $("poTo").value = dayToIso(rg.to);
+    if ($("incDateBy")) { $("incDateBy").value = "create"; $("incFrom").value = dayToIso(rg.from); $("incTo").value = dayToIso(rg.to); if ($("incMonth")) $("incMonth").value = ""; }
+    const week = G.per === "thisWeek" || G.per === "lastWeek";
+    $("ioBy").value = week ? "week" : "month";
+  }
+  renderAll();
+  if (rg) { const key = $("ioBy").value === "week" ? String(rg.from - weekday(rg.from)) : monthKey(rg.to); if ([...$("ioPer").options].some((o) => o.value === key)) { $("ioPer").value = key; renderIo(); } }
+  fillGlobalKa();
+  if (KA_PANEL) openKaPanel(KA_PANEL);
+}
+$("gKa").addEventListener("change", applyGlobal);
+$("gPer").addEventListener("change", applyGlobal);
+$("gFrom").addEventListener("change", applyGlobal);
+$("gTo").addEventListener("change", applyGlobal);
+
+// ---------- click a Key Account anywhere: one panel with everything about that KA ----------
+function kaLink(ka) { return ka ? Object.assign(el("button", { class: "kalink", type: "button", title: "Details of " + kaLabel(ka) }, kaLabel(ka)), { onclick: (e) => { e.stopPropagation(); openKaPanel(ka); } }) : "–"; }
+var KA_PANEL = null;
+function closeKaPanel() { KA_PANEL = null; for (const id of ["kaDrawer", "kaDrawerBg"]) { const x = $(id); if (x) x.remove(); } }
+function openKaPanel(ka) {
+  if (!ka) return; closeKaPanel(); KA_PANEL = ka;
+  const D = dataDate(), rg = globalRange() || { from: D ?? 0, to: D ?? 0 }, inR = (d) => d !== null && d !== undefined && d >= rg.from && d <= rg.to;
+  const ot = openTasks().filter((t) => t.ka === ka);
+  const n = (task) => ot.filter((t) => t.task === task).length;
+  const lv = { good: 0, warn: 0, bad: 0 }; for (const t of ot) if (t.task === "mat" && t.tat8) lv[tatLevel(8, t.tat8.d)]++;
+  const s = SIM, sp = s && s.speed ? s.speed.perDay[ka] : undefined, rr = reworkRates(), rate = rr.rate[ka] ?? rr.team;
+  const res = s && s.reserve && s.reserve[ka] ? s.reserve[ka].reserve : 0, held = n("mat") + n("rw");
+  const fin = s && s.finishOf ? s.finishOf(ka, held + res) : null;
+  // period: in / out, Seq 3 and Seq 8 working days, reworks (KA error)
+  const ev = ioEvents().filter((e) => e[1] === ka && inR(e[0]));
+  const ins = ev.filter((e) => e[2] === "in").length, outs = ev.filter((e) => e[2] === "out").length;
+  let nW = 0; for (let d = rg.from; d <= Math.min(rg.to, D ?? rg.to); d++) if (isWorkDay(d)) nW++;
+  const s3 = [], s8 = []; let rwK = 0, rwE = 0, n8 = 0;
+  for (const r of RECS) {
+    if (inR(r.kaOut) && r.kaIn !== null && recKa(r, r.ka3User) === ka) s3.push(workDaysBetween(r.kaIn, r.kaOut));
+    const a8 = r.backFirst ?? r.back, b8 = r.backOutFirst ?? r.backOut;
+    if (inR(b8) && a8 !== null && a8 !== undefined && recKa(r, r.ka8User) === ka) { s8.push(workDaysBetween(a8, b8)); n8++; }
+    if (recKa(r, r.ka8User || r.kaUser) === ka) for (const e of reworkList(r)) if (inR(e.start)) { if (e.cause === "E") rwE++; else rwK++; }
+  }
+  const pct = (a) => (s8.length ? Math.round((s8.filter(a).length / s8.length) * 100) + "%" : "–");
+  const bg = el("div", { class: "drawer-bg", id: "kaDrawerBg" }); bg.onclick = closeKaPanel;
+  const dr = el("div", { class: "drawer", id: "kaDrawer", role: "dialog", "aria-label": "Key Account " + kaLabel(ka) });
+  const head = el("div", { class: "dhead" });
+  const ttl = el("div"); ttl.append(el("h2", {}, kaLabel(ka)), el("div", { class: "sub" }, `Now = ${D !== null ? fmtDay(D) : "–"} · period ${fmtDay(rg.from)} – ${fmtDay(rg.to)} (${fmtInt(nW)} working days)`));
+  const x = el("button", { class: "btn ghost", type: "button" }, "Close"); x.onclick = closeKaPanel;
+  head.append(ttl, x); dr.append(head);
+  dr.append(el("h3", {}, "Now"));
+  const t1 = el("div", { class: "tiles" });
+  t1.append(
+    tile("Held (Seq 8 + rework)", fmtInt(held), "CPRs", `${fmtInt(n("mat"))} at Seq 8 · ${fmtInt(n("rw"))} in rework`),
+    tile("Waiting PH HO / Director", fmtInt(n("fin")), "CPRs", "may come back as rework"),
+    tile("Seq 8 days so far", `${lv.good} / ${lv.warn} / ${lv.bad}`, "", "≤5 · 6–14 · >14 working days"),
+    tile("Speed last week", sp === undefined ? "–" : fmtNum(sp, 1), "/day", "Seq 8 approved per working day"),
+    tile("Rework rate", fmtNum(rate * 100, 1), "%", "KA error, renego not counted"),
+    tile("Est. finish of one more CPR", fin === null ? "–" : fmtNum(fin, 1), "days", s ? `limit ${fmtNum(s.maxPerDay, 0)} · ${held + res + 1 <= s.maxPerDay * capOf(ka) ? "within" : "over"} the limit` : "")
+  );
+  dr.append(t1);
+  dr.append(el("h3", {}, "In the period"));
+  const t2 = el("div", { class: "tiles" });
+  t2.append(
+    tile("CPRs in / out", `${fmtInt(ins)} / ${fmtInt(outs)}`, "", `avg out ${fmtNum(outs / Math.max(1, nW), 1)} per working day`),
+    tile("Seq 3 avg", s3.length ? fmtNum(mean(s3), 1) : "–", "days", `${fmtInt(s3.length)} done · ${s3.length ? Math.round((s3.filter((d) => d <= TAT_LIMIT.s3).length / s3.length) * 100) : 0}% ≤ 1 day`),
+    tile("Seq 8 avg", s8.length ? fmtNum(mean(s8), 1) : "–", "days", `${fmtInt(s8.length)} done · ${pct((d) => d <= TAT_LIMIT.s8warn)} ≤ 5 days`),
+    tile("Reworks", fmtInt(rwK), "", `${n8 ? fmtNum((rwK / n8) * 100, 1) + "% of Seq 8 done" : "–"}${rwE ? ` · ${rwE} renego not counted` : ""}`)
+  );
+  dr.append(t2);
+  dr.append(el("h3", {}, `Open CPRs (${fmtInt(ot.length)})`));
+  const wrap = el("div", { class: "tbl-wrap tall" }), tb = el("table"); wrap.append(tb); dr.append(wrap);
+  const rows = ot.slice().sort((a, b) => (a.since ?? 0) - (b.since ?? 0));
+  renderTable(tb, [
+    { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (t) => cprLink(t.r.cpr) },
+    { key: "unit", label: "Hospital", sortable: false, render: (t) => t.r.unit || "–" },
+    { key: "task", label: "Task", sortable: false, render: (t) => TASK_LABEL[t.task] || t.task },
+    { key: "days", label: "Days", num: true, sortable: false, render: (t) => { const d = t.since !== null && t.since !== undefined && D !== null ? workDaysBetween(t.since, D) : null; if (d === null) return "–"; const l = t.task === "mat" ? tatLevel(8, d) : t.task === "rec" ? tatLevel(3, d) : null; return l ? pill(fmtInt(d), l) : fmtInt(d); } }
+  ], rows);
+  document.body.append(bg, dr);
+}
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && KA_PANEL) closeKaPanel(); });
+function renderAll() { try { fillGlobalKa(); } catch (e) {} renderEmptyState(); renderOverview(); renderKaChanges(); renderKa(); renderQuality(); renderSim(); renderSpv(); renderBukti(); }
 // before the CPR queue is uploaded: no sample data on screen, only what to upload
 function renderEmptyState() {
   // the setup page stays until the first allocation has been run (nothing is allocated automatically)
@@ -4977,7 +5107,7 @@ function renderTaskLoad() {
   const lvCell = (c, seq) => { const box = el("div", { style: "display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap" }); for (const k of seq === 3 ? ["good", "bad"] : ["good", "warn", "bad"]) if (c[k]) box.append(pill(fmtInt(c[k]), k)); return box.childNodes.length ? box : "–"; };
   for (const t of ot) { if (t.task === "rec" && t.tat3) (run3[t.ka] = run3[t.ka] || []).push(t.tat3.d); if (t.task === "mat" && t.tat8) (run8[t.ka] = run8[t.ka] || []).push(t.tat8.d); }
   for (const t of ot) { if (t.age !== null && t.age > 7) old[t.ka] = (old[t.ka] || 0) + 1; if (t.risk && t.risk.level === "High") high[t.ka] = (high[t.ka] || 0) + 1; }
-  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin, work: per[ka].mat + per[ka].rw, open: per[ka].mat + per[ka].rw + per[ka].fin, res: SIM.reserve && SIM.reserve[ka] ? SIM.reserve[ka] : null, lv3: lvCount(run3[ka], 3), lv8: lvCount(run8[ka], 8), tat3: mean(run3[ka] || []), tat8: mean(run8[ka] || []), max3: run3[ka] ? Math.max(...run3[ka]) : null, max8: run8[ka] ? Math.max(...run8[ka]) : null })).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.open - a.open || b.work - a.work));
+  const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin, work: per[ka].mat + per[ka].rw, open: per[ka].mat + per[ka].rw + per[ka].fin, res: SIM.reserve && SIM.reserve[ka] ? SIM.reserve[ka] : null, lv3: lvCount(run3[ka], 3), lv8: lvCount(run8[ka], 8), tat3: mean(run3[ka] || []), tat8: mean(run8[ka] || []), max3: run3[ka] ? Math.max(...run3[ka]) : null, max8: run8[ka] ? Math.max(...run8[ka]) : null })).filter((k) => !G.ka || k.ka === G.ka).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.open - a.open || b.work - a.work));
   const rr = reworkRates();
   $("subTask").textContent = `Data as of ${D !== null ? fmtDay(D) : "–"}. Open tasks = Sequence 8 not done + rework + waiting at Purchasing Head HO / Director (may still come back as rework). Seq 8 days so far: ≤ 5 green, 6–14 yellow, > 14 red (working days). Daily limit = limit − rework reserve (hover a number). Rework reserve uses each KA's rework rate as of ${rr.asOf !== undefined ? fmtDay(rr.asOf) : "–"}, next refresh ${rr.next !== undefined ? fmtDay(rr.next) : "–"}.`;
   $("lgTask").innerHTML = [["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"], ["Waiting at PH HO / Director", "var(--line-strong)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
@@ -4986,9 +5116,9 @@ function renderTaskLoad() {
     { name: "Sequence 8", color: "var(--s2)", values: kas.map((k) => (W ? k.wMat : k.mat)) },
     { name: "Rework", color: "var(--s3, #8e5bd8)", values: kas.map((k) => (W ? k.wRw : k.rw)) },
     { name: "Waiting at PH HO / Director", color: "var(--line-strong)", values: kas.map((k) => k.fin) }
-  ], { stacked: true, dec: 0, label: "Open tasks per KA", onClick: (i) => showOpenTasks(kas[i].ka), tipRows: () => [{ value: "", label: "click to see the open CPRs" }] });
+  ], { stacked: true, dec: 0, label: "Open tasks per KA", onClick: (i) => openKaPanel(kas[i].ka), tipRows: () => [{ value: "", label: "click for the KA's details" }] });
   renderTable($("tblTask"), [
-    { key: "name", label: "Key Account", render: (r) => Object.assign(el("button", { class: "linkbtn", type: "button", title: "Show the open CPRs of this KA" }, r.name), { onclick: () => showOpenTasks(r.ka) }) },
+    { key: "name", label: "Key Account", render: (r) => kaLink(r.ka) },
     { key: "mat", label: "Sequence 8", num: true, render: (r) => fmtInt(r.mat) + (TL_ON.weights && r.big ? ` (${r.big} > Rp1 M)` : "") },
     { key: "rw", label: "Rework", num: true, render: (r) => fmtInt(r.rw) },
     { key: "fin", label: "Waiting PH HO / Dir.", num: true, render: (r) => fmtInt(r.fin) },
