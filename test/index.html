@@ -282,7 +282,15 @@ body { background: var(--mint); }
 .subtabs button[aria-selected="true"] { background: var(--ward); border-color: var(--ward); color: #fff; }
 #tblAct td.stagecell { max-width: 230px; white-space: normal; }
 #incFilters:not(.open) .xf { display: none; }
-#tblInc .desc1 { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tblInc .desc1 { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+#tblInc .cprcell .linkbtn { font-weight: 600; }
+#tblInc td { padding-top: 10px; padding-bottom: 10px; vertical-align: middle; }
+#tblInc tbody tr:hover td { background: #f3f9fa; }
+#tblInc thead th { position: sticky; top: 0; z-index: 1; }
+.unitchip { display: inline-block; padding: 2px 8px; border-radius: 6px; background: var(--info-bg); color: var(--accent-ink); font-weight: 600; font-size: 12px; }
+#incSearch { min-width: 340px; padding-left: 34px; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%237a8a90' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 4 4'/%3E%3C/svg%3E") no-repeat 11px center; }
+.kacell { display: flex; align-items: center; gap: 8px; }
+.avatar { width: 26px; height: 26px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
 #tblInc .estdate { color: var(--muted); }
 #bkSpvTiles .tile .d, #bkPoTiles .tile .d { display: none; }
 #tblLog td:nth-child(3) { max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3864,6 +3872,7 @@ const ruleKind = { "Diproses KA": "muted", "Sudah di KA": "muted", "Vendor sama"
 // rule names are stored in Indonesian (saved allocations use them); this is how they are shown
 const RULE_LABEL = { "Diproses KA": "Processed by KA (from data)", "Sudah di KA": "Already at KA (hospital PIC presumed)", "Vendor sama": "Same vendor", "PIC unit": "Hospital PIC", "Beban terendah": "Fastest finish", "Dialihkan": "Reassigned", "Exception": "Exception" };
 const ruleLabel = (r) => RULE_LABEL[r] || r;
+const AVATAR_COLORS = ["#0f7f86", "#2a78d6", "#7a5bd0", "#c0631f", "#2f9e57", "#b2437a", "#5b6b7a", "#a0861a"];
 const SHORT_RULE = { "Diproses KA": "From data", "Sudah di KA": "Already at KA" };
 const byLabel = (b) => (b === "Otomatis" ? "Automatic" : b === "SPV" ? "Supervisor" : b);
 // short progress status of a CPR (details and follow-up notes stay in Supervisor Control)
@@ -4160,11 +4169,16 @@ function renderIncoming() {
   incState.page = Math.min(incState.page, pages - 1);
   $("incPage").textContent = `${incState.page + 1} / ${pages} · ${fmtInt(rows.length)} CPRs`;
   renderTable($("tblInc"), [
-    { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (c) => cprLink(c.r.cpr) },
-    { key: "unit", label: "Hospital", sortable: false },
-    { key: "desc", label: "Description", sortable: false, render: (c) => { const t = c.r.vendorName ? String(c.r.vendorName).replace(/\s+/g, " ").trim() : "–"; return el("div", { class: "desc1", title: t }, t); } },
+    { key: "cpr", label: "CPR", sortable: false, render: (c) => {
+      const t = c.r.vendorName ? String(c.r.vendorName).replace(/\s+/g, " ").trim() : "–";
+      const box = el("div", { class: "cprcell" }); box.append(cprLink(c.r.cpr), el("div", { class: "desc1", title: t }, t)); return box; } },
+    { key: "unit", label: "Hospital", sortable: false, render: (c) => el("span", { class: "unitchip" }, c.unit) },
     { key: "create", label: "Created", sortable: false, render: (c) => fmtDay(c.r.create) },
-    { key: "ka", label: "Key Account", sortable: false, render: (c) => kaLink(c.ka) },
+    { key: "ka", label: "Key Account", sortable: false, render: (c) => {
+      const name = kaLabel(c.ka) || "?", box = el("div", { class: "kacell" });
+      const av = el("span", { class: "avatar" }, name.charAt(0).toUpperCase());
+      const ix = SIM ? SIM.kaList.indexOf(c.ka) : -1; av.style.background = AVATAR_COLORS[(ix >= 0 ? ix : [...name].reduce((a, ch) => a + ch.charCodeAt(0), 0)) % AVATAR_COLORS.length];
+      box.append(av, kaLink(c.ka)); return box; } },
     { key: "status", label: "Status", sortable: false, render: (c) => { const [t, k] = progressStatus(c); return Object.assign(pill(t.replace(/^Rejected · auto.*$/, "Auto-rejected"), k), { title: t }); } },
     { key: "done", label: "KA finishes", sortable: false, render: (c) => {
       const a = c.r.backOutFirst ?? c.r.backOut; if (a !== null && a !== undefined) return fmtDay(a);
