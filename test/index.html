@@ -396,6 +396,10 @@ i.s3, .nowbar .s3 { background: var(--s1); } i.s8, .nowbar .s8 { background: var
 .nowbar span + span { margin-left: 2px; }
 .nowbar .avgline { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px dashed var(--head); opacity: .55; }
 .nownum b { font-size: 18px; color: var(--head); } .nownum small { color: var(--muted); font-size: 12px; }
+.nowmode { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(10,68,84,.08); margin: -2px 0 14px; flex-wrap: wrap; }
+.nowmode button { border: 0; background: transparent; padding: 7px 14px; border-radius: 999px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; }
+.nowmode button[aria-selected="true"] { background: var(--ward); color: #fff; }
+i.nx, .nowbar .nx { background: repeating-linear-gradient(135deg, #7fb9c2 0 5px, #a9d2d8 5px 10px); }
 .nowcoming b { font-size: 16px; color: var(--s1); } .nowcoming small { color: var(--muted); font-size: 12px; } .nowcoming.zero b { color: var(--faint); }
 .nowdiff { font-size: 12px; font-weight: 700; color: var(--muted); } .nowdiff.up { color: #b52f2f; } .nowdiff.down { color: #1c5cab; }
 .nowchips { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -675,9 +679,13 @@ tbody tr:hover td { background: var(--info-bg); }
   <!-- WORKLOAD NOW: straight from the uploaded data, who holds what today -->
   <section class="panel" id="panel-now" role="tabpanel" aria-labelledby="tab-now">
     <div class="section-title"><h2>Workload now</h2><p id="nowAsOf"></p></div>
+    <div class="nowmode" role="tablist">
+      <button type="button" data-mode="sim" aria-selected="true">Simulation: the system splits every open CPR</button>
+      <button type="button" data-mode="actual" aria-selected="false">Actual: who holds them in the data</button>
+    </div>
     <div class="tiles" id="nowTiles"></div>
     <div class="card" style="margin-top:14px">
-      <div class="now-legend"><span><i class="s3"></i>Sequence 3</span><span><i class="s8"></i>Sequence 8</span><span><i class="rw"></i>Rework</span><span><i class="fin"></i>Waiting PH HO / Director</span><span class="avgkey">┊ team average</span><span><b style="color:var(--s1)">coming</b> = given to the KA by the system, still at Seq 0–2</span><span style="margin-left:auto">Click a KA to see the CPRs they hold</span></div>
+      <div class="now-legend"><span><i class="s3"></i>Sequence 3</span><span><i class="s8"></i>Sequence 8</span><span><i class="rw"></i>Rework</span><span><i class="fin"></i>Waiting PH HO / Director</span><span class="avgkey">┊ team average</span><span><i class="nx"></i>Not at KA yet (Seq 0–2)</span><span style="margin-left:auto">Click a KA to see the CPRs they hold</span></div>
       <div id="nowList" class="nowlist"></div>
     </div>
     <div class="card" id="nowDetail" style="margin-top:14px" hidden>
@@ -1023,7 +1031,47 @@ function showTip(evt, title, rows) {
 const hideTip = () => { tip.hidden = true; };
 
 /* ---------- Workload Now tab: who holds which CPR according to the uploaded data (not the allocation plan) ---------- */
-let NOW_KA = null;
+let NOW_KA = null, NOW_MODE = "sim";
+// Simulation: every CPR that is open today (Seq 3, Seq 8, rework, and CPRs still at Seq 0–2) is split again by the system,
+// WITHOUT looking at the KA in the data. Same rule as the allocation: the fastest estimated finish among KAs within the limit;
+// when every KA is above the limit, the least loaded KA. The most urgent CPRs are placed first.
+// Then each KA works through their list at their own speed (CPRs per working day last week) -> expected late CPRs.
+// expected late / warning when each KA works through their own list (most urgent first) at their own speed
+function expectLate(list) {
+  const s = SIM, by = {}; let late = 0, warn = 0;
+  if (!s || !s.speed) return null;
+  for (const x of list) if (x.task !== "fin") (by[x.ka] = by[x.ka] || []).push(x);
+  for (const [k, arr] of Object.entries(by)) {
+    arr.sort((a, b) => (a.task === "next") - (b.task === "next") || (b.days ?? 0) - (a.days ?? 0));
+    const sp = Math.max(0.2, s.speed.perDay[k] ?? s.speed.team);
+    arr.forEach((x, i) => { const t = (x.days ?? 0) + Math.ceil((i + 1) / sp); if (x.task === "rec" && t > TAT_LIMIT.s3) late++; if (x.task === "mat") { if (t > TAT_LIMIT.s8bad) late++; else if (t > TAT_LIMIT.s8warn) warn++; } });
+  }
+  return { late, warn };
+}
+function simSplit(items) {
+  const s = SIM, D = dataDate();
+  if (!s || !s.speed) return null;
+  const kas = s.allocKas.filter((k) => isCurrentKa(k) && capOf(k) > 0 && !isAbsent(k, D));
+  if (!kas.length) return null;
+  const rank = { rec: 0, rw: 1, mat: 2, next: 3 };
+  const work = items.filter((x) => x.task !== "fin").sort((a, b) => (a.task === "next") - (b.task === "next") || (b.days ?? 0) - (a.days ?? 0) || rank[a.task] - rank[b.task]);
+  const load = {}, out = [];
+  for (const x of work) {
+    let best = null, bestFin = Infinity, over = null, overLoad = Infinity, overFin = Infinity;
+    for (const k of kas) {
+      const n = load[k] || 0, fin = s.finishOf(k, n), lim = s.maxPerDay * capOf(k);
+      if (n + 1 <= lim) { if (fin < bestFin) { best = k; bestFin = fin; } }
+      else if (n / capOf(k) < overLoad || (n / capOf(k) === overLoad && fin < overFin)) { over = k; overLoad = n / capOf(k); overFin = fin; }
+    }
+    const k = best || over; const pos = load[k] || 0; load[k] = pos + 1;
+    const sp = Math.max(0.2, s.speed.perDay[k] ?? s.speed.team), wait = Math.ceil((pos + 1) / sp), total = (x.days ?? 0) + wait;
+    let lv = x.lv;
+    if (x.task === "rec") lv = total > TAT_LIMIT.s3 ? "late" : "ok";
+    if (x.task === "mat") lv = total > TAT_LIMIT.s8bad ? "late" : total > TAT_LIMIT.s8warn ? "warn" : "ok";
+    out.push({ ...x, real: x.ka, ka: k, wait, lv });
+  }
+  return [...out, ...items.filter((x) => x.task === "fin")];   // waiting at PH HO / Director stays with the KA who approved Seq 8
+}
 function nowItems() {
   const D = dataDate(), out = [];
   if (D === null) return out;
@@ -1050,12 +1098,16 @@ function nowItems() {
   return out;
 }
 function renderNow() {
-  const D = dataDate(), items = nowItems();
-  $("nowAsOf").textContent = D !== null ? `From the uploaded data, as of ${fmtDay(D)}` : "";
+  const D = dataDate(), real = nowItems(), split = NOW_MODE === "sim" ? simSplit(real) : null;
+  const sim = !!split, items = split || real;
+  document.querySelectorAll(".nowmode button").forEach((b) => b.setAttribute("aria-selected", b.dataset.mode === (sim ? "sim" : "actual") ? "true" : "false"));
+  $("nowAsOf").textContent = D !== null ? `${sim ? "If the system split today's open CPRs" : "From the uploaded data"}, as of ${fmtDay(D)}` : "";
+  const lateNow = real.filter((x) => x.lv === "late").length, keep = sim ? expectLate(real) : null;
   const kas = [...new Set([...(META.kaList || []).filter(isCurrentKa), ...items.map((x) => x.ka)])];
   const per = kas.map((ka) => {
     const mine = items.filter((x) => x.ka === ka), n = (t) => mine.filter((x) => x.task === t).length;
-    return { ka, rec: n("rec"), mat: n("mat"), rw: n("rw"), fin: n("fin"), next: n("next"), work: n("rec") + n("mat") + n("rw"), total: mine.length - n("next"),
+    return { ka, rec: n("rec"), mat: n("mat"), rw: n("rw"), fin: n("fin"), next: n("next"), work: n("rec") + n("mat") + n("rw") + (sim ? n("next") : 0), total: mine.length - (sim ? 0 : n("next")),
+      clears: sim ? Math.ceil((n("rec") + n("mat") + n("rw") + n("next")) / Math.max(0.2, SIM.speed.perDay[ka] ?? SIM.speed.team)) : null,
       late: mine.filter((x) => x.lv === "late").length, warn: mine.filter((x) => x.lv === "warn").length, oldest: Math.max(0, ...mine.filter((x) => x.task !== "fin").map((x) => x.days || 0)) };
   }).sort((a, b) => b.work - a.work || b.total - a.total);
   // balance: how far apart the KAs are (work = Seq 3 + Seq 8 + rework)
@@ -1063,25 +1115,25 @@ function renderNow() {
   const cv = avg > 0 ? sd / avg : 0, busiest = per[0], least = per[per.length - 1];
   const verdict = cv < 0.35 ? ["Balanced", "good"] : cv < 0.6 ? ["Slightly uneven", "warn"] : ["Uneven", "bad"];
   const late = items.filter((x) => x.lv === "late").length, warn = items.filter((x) => x.lv === "warn").length;
-  const t1 = tile("Spread of work", verdict[0], "", busiest ? `busiest ${kaLabel(busiest.ka)} ${busiest.work} · least ${kaLabel(least.ka)} ${least.work}` : ""); t1.classList.add("now-" + verdict[1]);
-  const t2 = tile("CPRs held by KAs", fmtInt(items.filter((x) => x.task !== "fin" && x.task !== "next").length), "", `average ${fmtNum(avg, 1)} per KA · ${fmtInt(items.filter((x) => x.task === "next").length)} coming`);
-  const t3 = tile("Late", fmtInt(late), "CPRs", "Seq 3 > 1 day or Seq 8 > 14 days"); t3.classList.add(late ? "now-bad" : "now-good");
-  const t4 = tile("Warning", fmtInt(warn), "CPRs", "Seq 8 6–14 working days"); t4.classList.add(warn ? "now-warn" : "now-good");
+  const t1 = tile(sim ? "Spread after the split" : "Spread of work", verdict[0], "", busiest ? `busiest ${kaLabel(busiest.ka)} ${busiest.work} · least ${kaLabel(least.ka)} ${least.work}` : ""); t1.classList.add("now-" + verdict[1]);
+  const t2 = tile(sim ? "Open CPRs split" : "CPRs held by KAs", fmtInt(items.filter((x) => x.task !== "fin" && (sim || x.task !== "next")).length), "", sim ? `${fmtInt(items.filter((x) => x.task === "next").length)} of them not at KA yet` : `average ${fmtNum(avg, 1)} per KA · ${fmtInt(items.filter((x) => x.task === "next").length)} coming`);
+  const t3 = tile(sim ? "Expected late" : "Late", fmtInt(late), "CPRs", sim ? `with today's KAs: ${keep ? fmtInt(keep.late) : "–"} · late now ${fmtInt(lateNow)}` : "Seq 3 > 1 day or Seq 8 > 14 days"); t3.classList.add(late ? "now-bad" : "now-good");
+  const t4 = tile(sim ? "Expected warning" : "Warning", fmtInt(warn), "CPRs", sim ? `with today's KAs: ${keep ? fmtInt(keep.warn) : "–"}` : "Seq 8 6–14 working days"); t4.classList.add(warn ? "now-warn" : "now-good");
   $("nowTiles").replaceChildren(t1, t2, t3, t4);
   // one row per KA: stacked bar of what the KA holds, the team average as a dashed line
   const max = Math.max(1, ...per.map((k) => k.total));
   $("nowList").replaceChildren(...per.map((k) => {
     const row = el("div", { class: "nowrow" + (NOW_KA === k.ka ? " sel" : ""), role: "button", tabIndex: 0, title: "Show the CPRs " + kaLabel(k.ka) + " holds" });
     const bar = el("div", { class: "nowbar" });
-    for (const [key, v] of [["s3", k.rec], ["s8", k.mat], ["rw", k.rw], ["fin", k.fin]]) if (v) { const seg = el("span", { class: key, title: `${v}` }); seg.style.width = (v / max) * 100 + "%"; bar.append(seg); }
+    for (const [key, v] of [["s3", k.rec], ["s8", k.mat], ["rw", k.rw], ...(sim ? [["nx", k.next]] : []), ["fin", k.fin]]) if (v) { const seg = el("span", { class: key, title: `${v}` }); seg.style.width = (v / max) * 100 + "%"; bar.append(seg); }
     const line = el("i", { class: "avgline" }); line.style.left = (avg / max) * 100 + "%"; bar.append(line);
     const diff = avg > 0 ? (k.work - avg) / avg : 0;
     const chips = el("div", { class: "nowchips" });
     if (k.late) chips.append(el("span", { class: "nc late" }, `${k.late} late`));
     if (k.warn) chips.append(el("span", { class: "nc warn" }, `${k.warn} warning`));
     if (!k.late && !k.warn) chips.append(el("span", { class: "nc ok" }, "on time"));
-    row.append(kaCell(k.ka), bar, el("div", { class: "nownum" }, el("b", {}, fmtInt(k.work)), el("small", {}, ` held${k.fin ? ` + ${k.fin} waiting` : ""}`)),
-      el("div", { class: "nowcoming" + (k.next ? "" : " zero") }, el("b", {}, fmtInt(k.next)), el("small", {}, " coming")),
+    row.append(kaCell(k.ka), bar, el("div", { class: "nownum" }, el("b", {}, fmtInt(k.work)), el("small", {}, ` ${sim ? "to do" : "held"}${k.fin ? ` + ${k.fin} waiting` : ""}`)),
+      sim ? el("div", { class: "nowcoming" }, el("small", {}, "clears in "), el("b", {}, fmtInt(k.clears)), el("small", {}, " d")) : el("div", { class: "nowcoming" + (k.next ? "" : " zero") }, el("b", {}, fmtInt(k.next)), el("small", {}, " coming")),
       el("div", { class: "nowdiff " + (diff > 0.25 ? "up" : diff < -0.25 ? "down" : "") }, avg > 0 ? `${diff >= 0 ? "+" : ""}${fmtNum(diff * 100, 0)}% vs avg` : "–"), chips);
     const open = () => { NOW_KA = NOW_KA === k.ka ? null : k.ka; renderNow(); if (NOW_KA) $("nowDetail").scrollIntoView({ behavior: "smooth", block: "start" }); };
     row.onclick = (e) => { if (e.target.closest(".kalink")) return; open(); }; row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
@@ -1090,7 +1142,7 @@ function renderNow() {
   // the CPRs of the chosen KA
   $("nowDetail").hidden = !NOW_KA; if (!NOW_KA) return;
   const k = per.find((x) => x.ka === NOW_KA);
-  $("nowDTitle").replaceChildren(kaCell(NOW_KA), el("span", { class: "now-dsub" }, k ? `${k.work} held · ${k.rec} Seq 3 · ${k.mat} Seq 8 · ${k.rw} rework · ${k.fin} waiting PH HO / Director · ${k.next} coming` : ""));
+  $("nowDTitle").replaceChildren(kaCell(NOW_KA), el("span", { class: "now-dsub" }, k ? `${k.work} ${sim ? "to do" : "held"} · ${k.rec} Seq 3 · ${k.mat} Seq 8 · ${k.rw} rework · ${k.next} ${sim ? "not at KA yet" : "coming"} · ${k.fin} waiting PH HO / Director${sim ? ` · clears in ${k.clears} working days` : ""}` : ""));
   const f = $("nowShow").value, LV = { ok: ["On time", "good"], warn: ["Warning", "warn"], late: ["Late", "bad"], rw: ["In rework", "serious"], fin: ["Waiting", "muted"], next: ["Coming", "info"] };
   const rows = items.filter((x) => x.ka === NOW_KA && (!f || x.task === f || x.lv === f)).sort((a, b) => ({ late: 0, warn: 1, rw: 2, ok: 3, fin: 4, next: 5 }[a.lv] - { late: 0, warn: 1, rw: 2, ok: 3, fin: 4, next: 5 }[b.lv]) || (b.days ?? 0) - (a.days ?? 0));
   renderTable($("tblNow"), [
@@ -1099,10 +1151,13 @@ function renderNow() {
     { key: "task", label: "Step", sortable: false, render: (x) => (x.task === "next" ? el("div", { class: "poscell" }, el("div", {}, "Not at KA yet"), el("div", { class: "desc1" }, x.where)) : TASK_LABEL[x.task]) },
     { key: "since", label: "Since", sortable: false, render: (x) => fmtDay(x.since) },
     { key: "days", label: "Working days", num: true, sortable: false, render: (x) => (x.days === null ? "–" : fmtInt(x.days)) },
-    { key: "lv", label: "Status", sortable: false, render: (x) => pill(LV[x.lv][0], LV[x.lv][1]) }
+    ...(sim ? [{ key: "real", label: "In the data now", sortable: false, render: (x) => (x.task === "next" ? el("span", { class: "desc1" }, "not at KA yet") : x.real === x.ka ? el("span", { class: "desc1" }, "same KA") : kaCell(x.real)) },
+      { key: "wait", label: "Done in", num: true, sortable: false, render: (x) => (x.wait ? `${x.wait} d` : "–") }] : []),
+    { key: "lv", label: sim ? "Expected" : "Status", sortable: false, render: (x) => pill(LV[x.lv][0], LV[x.lv][1]) }
   ], rows);
 }
 $("nowShow").addEventListener("change", renderNow);
+document.querySelectorAll(".nowmode button").forEach((b) => b.addEventListener("click", () => { NOW_MODE = b.dataset.mode; NOW_KA = null; renderNow(); }));
 $("nowClose").addEventListener("click", () => { NOW_KA = null; renderNow(); });
 
 /* ---------- Shared table cells ---------- */
