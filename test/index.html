@@ -607,7 +607,7 @@ tbody tr:hover td { background: var(--info-bg); }
           <div class="field"><label for="sVendor">Same-vendor weight</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
           <label class="check" title="The hospital PIC receives the CPR only while the PIC's CPR count does not exceed the average of all KAs"><input type="checkbox" id="sPic"> Prioritize hospital PIC</label>
         </div>
-        <div class="sub">KA capacity (%): lower it for a KA with other work; 0% = no new CPRs.</div><div class="capgrid" id="capGrid"></div></details>
+        <div class="sub">KA capacity (%): saved right away and kept until changed. Used from the next Run allocation; 0% = no new CPRs.</div><div class="capgrid" id="capGrid"></div></details>
       <p class="note" id="runInfo" style="font-weight:500;color:var(--fg)"></p>
       <p class="note" id="simNote"></p>
     </div>
@@ -1403,9 +1403,7 @@ $("fileCpr").addEventListener("change", async (e) => {
     const nNew = RECS.filter((r) => !before.has(r.cpr)).length;
     const addNote = hadData ? ` Added to existing data: ${fmtInt(nNew)} new CPRs and ${fmtInt(inFile - nNew)} existing CPRs (updated, KA unchanged). Total: ${fmtInt(RECS.length)} CPRs; the allocation period has been extended to ${$("sFrom").value} – ${$("sTo").value}.` : "";
     const upMsg = `${warns.length ? "⚠ " + warns.join(" ⚠ ") + " " : ""}${fmtInt(inFile)} CPRs read from ${file.name}.${saved}${fmtNote}${addNote}`;
-    // live: after an upload the new CPRs are allocated and saved straight away (the first setup still waits for "Run allocation")
-    if (hadData && !fromSetup && !document.body.classList.contains("no-data") && canSave()) { setStatus(upMsg + " Allocating new CPRs …"); await runSimulation(); setStatus(upMsg + " " + $("status").textContent); }
-    else setStatus(upMsg + ` Select "Run allocation" to assign CPRs that do not yet have a KA.`);
+    setStatus(upMsg + ` Select "Run allocation" to assign CPRs that do not yet have a KA.`);
   } catch (err) { setStatus(`The file could not be read: ${err.message}. Please re-save it as .xlsx and upload it again.`); }
   e.target.value = "";
 });
@@ -3627,14 +3625,14 @@ $("sReset").addEventListener("click", async () => {
   catch (err) { setStatus("Failed: " + (err.message || err.code)); }
 });
 $("sRun").addEventListener("click", () => runSimulation());
-// live settings: a change re-runs the allocation by itself (new CPRs only; saved CPRs keep their KA)
-let AUTO_T = null;
-function autoRun() {
-  if (!canSave() || IS_SAMPLE || !SIM || document.body.classList.contains("no-data")) return;
-  clearTimeout(AUTO_T);
-  AUTO_T = setTimeout(async () => { if ($("sRun").disabled) return autoRun(); await runSimulation(); setStatus("Settings applied: allocation updated. " + $("status").textContent); }, 700);
+// KA capacity is a standing setting (like the Hospital PIC List): saved as soon as it is changed and kept until changed again.
+// It is used from the next "Run allocation" (new CPRs only).
+async function saveCapacity() {
+  try { renderSpeed(); } catch (e) {}   // preview: who would get the next CPR with the new capacity
+  if (!DB || !canSave()) { setStatus("Capacity changed for this session only (no permission to save)."); return; }
+  try { await saveParams(); setStatus("KA capacity saved. It stays like this until changed again; select \"Run allocation\" to use it for new CPRs."); }
+  catch (err) { setStatus("Capacity not saved: " + saveErrorText(err)); }
 }
-for (const id of ["sVendor", "sPic", "sMax", "sFrom", "sTo"]) $(id).addEventListener("change", autoRun);
 function simError() { try { simulate(); return ""; } catch (e) { return e.message; } }
 function syncLoadDates() {
   if (!SIM) return;
@@ -5505,7 +5503,7 @@ function capInputs(container) {
   const kas = (META.kaList || []).slice();
   container.replaceChildren(...kas.map((ka) => {
     const l = el("label", { class: CAPACITY[ka] !== undefined ? "low" : "" }, kaLabel(ka)); const i = el("input", { type: "number", min: "0", max: "100", step: "5" }); i.value = String(CAPACITY[ka] ?? 100);
-    i.onchange = () => { const v = Math.max(0, Math.min(100, Number(i.value))); if (Number.isFinite(v)) { if (v === 100) delete CAPACITY[ka]; else CAPACITY[ka] = v; } i.value = String(CAPACITY[ka] ?? 100); syncCap(); autoRun(); };
+    i.onchange = () => { const v = Math.max(0, Math.min(100, Number(i.value))); if (Number.isFinite(v)) { if (v === 100) delete CAPACITY[ka]; else CAPACITY[ka] = v; } i.value = String(CAPACITY[ka] ?? 100); syncCap(); saveCapacity(); };
     l.append(i); return l;
   }));
 }
