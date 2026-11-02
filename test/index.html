@@ -6,7 +6,7 @@
 :root {
   --bg: #f4f6f8; --panel: #ffffff; --fg: #141820; --muted: #566070; --faint: #8b93a0;
   --line: #e2e6eb; --line-strong: #c9cfd7; --accent: #2a78d6; --accent-ink: #1c5cab;
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s1: #0e7c8f; --s2: #e8833a; --s3: #7a5bd0; --s4: #d9a321;
   --good: #0ca30c; --warn: #b77a00; --serious: #c4592e; --bad: #d03b3b;
   --good-bg: #e6f5e6; --warn-bg: #fff4d6; --serious-bg: #fde9df; --bad-bg: #fbe6e6; --info-bg: #e7f0fb;
   --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -89,7 +89,7 @@ button, input, select { font: inherit; color: inherit; }
 .legend i.line { height: 2px; border-radius: 1px; width: 14px; vertical-align: 3px; }
 .axis text, .lbl { fill: var(--faint); font-size: 11px; font-family: var(--font-ui); }
 .vlbl { fill: var(--muted); font-size: 11px; font-family: var(--font-ui); font-variant-numeric: tabular-nums; }
-.grid line { stroke: var(--line); }
+.grid line { stroke: var(--line); stroke-dasharray: 2 4; }
 .base { stroke: var(--line-strong); }
 .empty { color: var(--faint); font-size: 13px; padding: 24px 0; text-align: center; }
 
@@ -282,11 +282,33 @@ body { background: var(--mint); }
 .subtabs button[aria-selected="true"] { background: var(--ward); border-color: var(--ward); color: #fff; }
 #tblAct td.stagecell { max-width: 230px; white-space: normal; }
 #incFilters:not(.open) .xf { display: none; }
-#tblInc .desc1 { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
-#tblInc .cprcell .linkbtn { font-weight: 600; }
-#tblInc td { padding-top: 10px; padding-bottom: 10px; vertical-align: middle; }
-#tblInc tbody tr:hover td { background: #f3f9fa; }
-#tblInc thead th { position: sticky; top: 0; z-index: 1; }
+.desc1 { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.poscell .desc1 { font-size: 12px; }
+.iconbtn { width: 28px; height: 28px; margin-left: 4px; border-radius: 50%; border: 1px solid var(--line-strong); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px; line-height: 1; }
+.iconbtn:hover { background: #fcecec; border-color: #e3a3a3; color: #b52f2f; }
+.empty { color: var(--muted); }
+.empty::before { content: ""; display: block; width: 34px; height: 34px; margin: 0 auto 8px; border-radius: 50%;
+  background: #e6f0f2 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237aa3ab' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 13h4l2 3h4l2-3h4'/%3E%3Cpath d='M5 13 7 6h10l2 7v5H5z'/%3E%3C/svg%3E") no-repeat center / 18px; }
+body.loading .tile .v, body.loading .tbl-wrap tbody td, body.loading .chart { color: transparent !important; border-radius: 6px;
+  background: linear-gradient(90deg, #e9f0f2 25%, #f5f9fa 50%, #e9f0f2 75%) 0 0 / 200% 100%; animation: shimmer 1.2s linear infinite; }
+body.loading .tile .v * , body.loading .tbl-wrap tbody td * { visibility: hidden; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { body.loading .tile .v, body.loading .tbl-wrap tbody td, body.loading .chart { animation: none; } }
+.barnum { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.bn-track { width: 64px; height: 6px; border-radius: 3px; background: #e8eff1; overflow: hidden; flex: none; }
+.bn-fill { display: block; height: 100%; border-radius: 3px; }
+#tblIo .heat { display: inline-block; min-width: 34px; padding: 2px 8px; border-radius: 6px; font-weight: 600; color: var(--head); text-align: center; }
+#tblIo .io2 { display: inline-flex; gap: 4px; }
+#tblIo .io2 span { min-width: 22px; padding: 1px 6px; border-radius: 5px; font-size: 12px; font-weight: 600; text-align: center; }
+#tblIo .io2 .i { background: #e2f1f3; color: #0b6273; }
+#tblIo .io2 .o { background: #fcebdd; color: #a4531a; }
+#tblIo tr.wkrow td { color: var(--faint); background: #f6f9f9; font-size: 12px; padding-top: 4px; padding-bottom: 4px; }
+#tblIo tr.avgrow td { background: #eef6f7; }
+.cprcell .linkbtn { font-weight: 600; }
+td { vertical-align: middle; }
+#tblInc td, #tblOv td, #tblAct td { padding-top: 10px; padding-bottom: 10px; }
+tbody tr:hover td { background: #f3f9fa; }
+thead th { position: sticky; top: 0; z-index: 1; }
 .unitchip { display: inline-block; padding: 2px 8px; border-radius: 6px; background: var(--info-bg); color: var(--accent-ink); font-weight: 600; font-size: 12px; }
 #incSearch { min-width: 340px; padding-left: 34px; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%237a8a90' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 4 4'/%3E%3C/svg%3E") no-repeat 11px center; }
 .kacell { display: flex; align-items: center; gap: 8px; }
@@ -869,6 +891,22 @@ function showTip(evt, title, rows) {
 }
 const hideTip = () => { tip.hidden = true; };
 
+/* ---------- Shared table cells ---------- */
+var AVATAR_COLORS = ["#0f7f86", "#2a78d6", "#7a5bd0", "#c0631f", "#2f9e57", "#b2437a", "#5b6b7a", "#a0861a"];
+function cprCell(cpr, desc) {
+  const t = desc ? String(desc).replace(/\s+/g, " ").trim() : "";
+  const box = el("div", { class: "cprcell" }); box.append(cprLink(cpr)); if (t) box.append(el("div", { class: "desc1", title: t }, t)); return box;
+}
+function unitChip(u) { return u ? el("span", { class: "unitchip" }, u) : "–"; }
+function kaCell(ka) {
+  if (!ka) return "–";
+  const name = kaLabel(ka) || "?", box = el("div", { class: "kacell" });
+  const av = el("span", { class: "avatar" }, name.charAt(0).toUpperCase());
+  const ix = typeof SIM !== "undefined" && SIM ? SIM.kaList.indexOf(ka) : -1;
+  av.style.background = AVATAR_COLORS[(ix >= 0 ? ix : [...name].reduce((a, ch) => a + ch.charCodeAt(0), 0)) % AVATAR_COLORS.length];
+  box.append(av, kaLink(ka)); return box;
+}
+
 /* ---------- Charts (hand-drawn SVG) ---------- */
 function niceStep(v) { if (!v || v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; }
 function niceMax(v) { if (!v || v <= 0) return 1; const s = niceStep(v / 5); return Math.ceil(v / s - 1e-9) * s; }
@@ -917,7 +955,8 @@ function lineChart(container, xs, series, opts = {}) {
   for (const s of series) {
     let d = "", pen = false;
     s.values.forEach((v, i) => { if (v === null || isNaN(v)) { pen = false; return; } d += (pen ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1); pen = true; });
-    svg.append(svgEl("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    if (series.length <= 2 && d && !s.values.some((v) => v === null || isNaN(v))) svg.append(svgEl("path", { d: d + `L${X(s.values.length - 1).toFixed(1)},${m.t + ih}L${X(0).toFixed(1)},${m.t + ih}Z`, fill: s.color, "fill-opacity": 0.07, stroke: "none" }));
+    svg.append(svgEl("path", { d, fill: "none", stroke: s.color, "stroke-width": 2.25, "stroke-linejoin": "round", "stroke-linecap": "round" }));
     if (xs.length <= 16) s.values.forEach((v, i) => { if (v !== null && !isNaN(v)) svg.append(svgEl("circle", { cx: X(i), cy: Y(v), r: 3.5, fill: s.color, stroke: "var(--panel)", "stroke-width": 2 })); });
   }
   const cross = svgEl("line", { y1: m.t, y2: m.t + ih, stroke: "var(--line-strong)", "stroke-width": 1, visibility: "hidden" });
@@ -937,9 +976,10 @@ function lineChart(container, xs, series, opts = {}) {
 /* Horizontal bars: grouped (side by side) or stacked */
 function barChartH(container, cats, series, opts = {}) {
   container.replaceChildren();
-  if (!cats.length) { container.append(el("div", { class: "empty" }, "No data available.")); return; }
+  if (!cats.length) { container.append(el("div", { class: "empty" }, "Nothing to show here yet")); return; }
   const stacked = !!opts.stacked, n = series.length;
-  const rowH = stacked ? 26 : 12 * n + 10, labelW = opts.labelW || 130;
+  const one = !stacked && n === 1;
+  const rowH = stacked ? 28 : one ? 28 : 12 * n + 10, labelW = opts.labelW || 130;
   const W = Math.max(320, container.clientWidth || 600), m = { t: 4, r: 52, b: 22, l: labelW };
   const H = m.t + m.b + cats.length * rowH, iw = W - m.l - m.r;
   const totals = cats.map((_, i) => stacked ? series.reduce((s, se) => s + (se.values[i] || 0), 0) : Math.max(...series.map((se) => se.values[i] || 0)));
@@ -955,10 +995,11 @@ function barChartH(container, cats, series, opts = {}) {
     let acc = 0;
     series.forEach((s, k) => {
       const v = s.values[i] || 0, w = X(v);
-      const bh = stacked ? rowH - 8 : 10, y = stacked ? y0 + 4 : y0 + 5 + k * 12;
+      const bh = stacked ? rowH - 10 : one ? 14 : 10, y = stacked ? y0 + 5 : one ? y0 + 7 : y0 + 5 + k * 12;
       const x = m.l + (stacked ? X(acc) : 0);
-      if (w > 0) svg.append(svgEl("rect", { x: x + (stacked && k > 0 ? 1 : 0), y, width: Math.max(1, w - (stacked && k > 0 ? 1 : 0)), height: bh, rx: 3, fill: s.color }));
-      if (!stacked) { const t = svgEl("text", { x: m.l + w + 5, y: y + 9, class: "vlbl" }); t.textContent = fmtNum(v, opts.dec ?? 0); svg.append(t); }
+      if (one) svg.append(svgEl("rect", { x: m.l, y, width: iw, height: bh, rx: bh / 2, fill: "var(--track, #edf3f4)" }));
+      if (w > 0) svg.append(svgEl("rect", { x: x + (stacked && k > 0 ? 2 : 0), y, width: Math.max(1, w - (stacked && k > 0 ? 2 : 0)), height: bh, rx: one ? bh / 2 : 4, fill: s.color }));
+      if (!stacked) { const t = svgEl("text", { x: m.l + w + 6, y: y + bh / 2 + 4, class: "vlbl", "font-weight": one ? 600 : 400 }); t.textContent = fmtNum(v, opts.dec ?? 0); svg.append(t); }
       acc += v;
     });
     if (stacked) { const t = svgEl("text", { x: m.l + X(acc) + 6, y: y0 + rowH / 2 + 4, class: "vlbl" }); t.textContent = fmtNum(acc, opts.dec ?? 1); svg.append(t); }
@@ -996,7 +1037,7 @@ function renderTable(table, columns, rows, state = {}) {
     }
     tbody.append(row);
   }
-  if (!data.length) { const row = el("tr"); const td = el("td", { colspan: columns.length, class: "empty" }, "No data available."); row.append(td); tbody.append(row); }
+  if (!data.length) { const row = el("tr"); const td = el("td", { colspan: columns.length, class: "empty" }, "Nothing to show here yet"); row.append(td); tbody.append(row); }
   table.replaceChildren(thead, tbody);
 }
 const pill = (text, kind) => el("span", { class: "pill " + kind }, text);
@@ -1526,15 +1567,16 @@ function renderOverview() {
   $("ovPage").textContent = `${OV.page + 1} / ${pages}`; $("ovPrev").disabled = OV.page === 0; $("ovNext").disabled = OV.page >= pages - 1;
   const kind = (st) => (/^approved$/i.test(st || "") ? "good" : /reject|cancel/i.test(st || "") ? "bad" : /draft/i.test(st || "") ? "muted" : "info");
   renderTable($("tblOv"), [
-    { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (x) => cprLink(x.cpr) },
-    { key: "unit", label: "Hospital", sortable: false },
-    { key: "subject", label: "Description", sortable: false, render: (x) => el("div", { class: "cellwrap" }, x.subject || "–") },
+    { key: "cpr", label: "CPR", sortable: false, render: (x) => cprCell(x.cpr, x.subject) },
+    { key: "unit", label: "Hospital", sortable: false, render: (x) => unitChip(x.unit) },
     { key: "create", label: "Created", sortable: false, render: (x) => fmtDay(x.create) },
     { key: "status", label: "Status", sortable: false, render: (x) => pill(x.status || "–", kind(x.status)) },
-    { key: "stage", label: "Current position", sortable: false, render: (x) => el("div", { class: "cellwrap" }, /^approved$/i.test(x.status || "") ? (x.erp ? "Done · " + (/^po/i.test(x.erp) ? "PO" : "PR") + " created" : "Done · Fully approved") : x.pos || x.stage || (x.waiting ? "Waiting for " + x.waiting.split(",").join(", ") : "–")) },
-    { key: "lastAct", label: "Last activity", sortable: false, render: (x) => fmtDay(x.lastAct) },
-    { key: "ka", label: "Key Account", sortable: false, render: (x) => (x.ka ? kaLink(x.ka) : "–") },
-    { key: "erp", label: "ERP ID (PR / PO)", sortable: false, render: (x) => x.erp || "–" }
+    { key: "stage", label: "Current position", sortable: false, render: (x) => {
+      const pos = /^approved$/i.test(x.status || "") ? (x.erp ? "Done · " + (/^po/i.test(x.erp) ? "PO" : "PR") + " created" : "Done · Fully approved") : x.pos || x.stage || (x.waiting ? "Waiting for " + x.waiting.split(",").join(", ") : "–");
+      const box = el("div", { class: "poscell" }); box.append(el("div", {}, pos));
+      const sub = [x.lastAct !== null && x.lastAct !== undefined ? "last activity " + fmtDay(x.lastAct) : "", x.erp || ""].filter(Boolean).join(" · ");
+      if (sub) box.append(el("div", { class: "desc1" }, sub)); return box; } },
+    { key: "ka", label: "Key Account", sortable: false, render: (x) => kaCell(x.ka) }
   ], list.slice(OV.page * per, OV.page * per + per));
 }
 $("ovSearch").addEventListener("input", () => { OV.page = 0; renderOverview(); });
@@ -2038,6 +2080,7 @@ function renderSaveBadge() {
   else if (!IS_SAMPLE) { text = "Not yet saved"; kind = "warn"; }
   else { text = PIC_LIST ? "Hospital PIC List saved · no CPR data yet" : "No stored data yet"; kind = "muted"; }
   b.className = "pill " + kind; b.textContent = text;
+  document.body.classList.toggle("loading", !DB_READY);
 }
 // ---------- SPV data: transfers ("spv/transfers") and KA absences ("spv/absences") ----------
 let TRANSFERS = [], ABSENCES = [], IGNORED = {}; // IGNORED: cpr -> { at, by, note }
@@ -2560,8 +2603,21 @@ function renderIo() {
   const estIn = inP.filter((e) => e[2] === "in" && !e[3] && (ksel.value ? e[1] === ksel.value : kas.includes(e[1]))).length;
   if ($("ioView").value === "day") {
     const t = ioDayTable(from, to, ksel.value ? [ksel.value] : kas, !ksel.value, ev);
+    // heat colour: busier days get a darker background (In = teal, Out = orange)
+    const maxI = Math.max(1, ...t.days.map((r) => r.i)), maxO = Math.max(1, ...t.days.map((r) => r.o));
+    const heat = (v, max, rgb) => Object.assign(el("span", { class: "heat" }, String(v)), { style: `background:rgba(${rgb},${(0.08 + 0.42 * v / max).toFixed(2)})` });
+    const kk = t.kk;
     renderTable($("tblIo"), t.header.map((h, k) => ({ key: k, label: h, num: k > 0, sortable: false,
-      render: (r) => (k === 0 ? (r.avg ? el("b", {}, r.cells[0]) : el("span", { style: r.wk ? "color:var(--muted)" : "" }, r.cells[0])) : r.avg && r.cells[k] !== "" ? el("b", {}, r.cells[k]) : r.cells[k]) })), t.rows);
+      render: (r) => {
+        if (r.avg) return r.cells[k] !== "" ? el("b", {}, r.cells[k]) : "";
+        if (k === 0) return r.cells[0];
+        if (r.wk && k > 0) return r.cells[k] === "0" ? "–" : r.cells[k];
+        if (k === 1) return heat(r.i, maxI, "14,124,143");
+        if (k === 2) return heat(r.o, maxO, "232,131,58");
+        if (k >= 4) { const v = r.byKa[kk[k - 4]]; if (!v || (!v[0] && !v[1])) return "–";
+          const box = el("span", { class: "io2" }); box.append(el("span", { class: "i" }, String(v[0])), el("span", { class: "o" }, String(v[1]))); return box; }
+        return r.cells[k]; } })), t.rows);
+    [...$("tblIo").tBodies[0].rows].forEach((tr, i) => { if (t.rows[i] && t.rows[i].wk) tr.classList.add("wkrow"); if (t.rows[i] && t.rows[i].avg) tr.classList.add("avgrow"); });
   } else
   renderTable($("tblIo"), [
     { key: "name", label: "Key Account", sortable: false, render: (r) => (r.all || r.avg ? el("b", {}, r.name) : Object.assign(el("button", { class: "linkbtn", type: "button" }, r.name), { onclick: () => { $("ioKa").value = r.ka; renderIo(); } })) },
@@ -2765,15 +2821,18 @@ function renderKaFromHistory(view) {
   ], { stacked: true, dec: 1, label: "Average Sequence 3 + Sequence 8 time per KA (in brackets: Seq 3 / Seq 8 approvals)" });
   const lv8Cell = (c) => { const box = el("div", { style: "display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap" }); for (const k of ["good", "warn", "bad"]) if (c[k]) box.append(pill(fmtInt(c[k]), k)); return box.childNodes.length ? box : "–"; };
   const perf = rows.filter((r) => r.n + r.n8 > 0 && (!G.ka || r.ka === G.ka)).sort((a, b) => (b.w8 ?? -1) - (a.w8 ?? -1));
+  const maxW8 = Math.max(1, ...perf.map((r) => r.w8 || 0)), maxRw = Math.max(1, ...perf.map((r) => r.reworkRate || 0));
+  // number + small bar so KAs can be compared at a glance
+  const barNum = (txt, v, max, color) => { const box = el("div", { class: "barnum" }); const tr = el("span", { class: "bn-track" }); const f = el("span", { class: "bn-fill" }); f.style.width = Math.max(2, (v / max) * 100) + "%"; f.style.background = color; tr.append(f); box.append(tr, txt instanceof Node ? txt : el("span", {}, txt)); return box; };
   renderTable($("tblKa"), [
-    { key: "name", label: "Key Account", render: (r) => kaLink(r.ka) },
+    { key: "name", label: "Key Account", render: (r) => kaCell(r.ka) },
     { key: "n", label: "Seq 3 done", num: true, render: (r) => fmtInt(r.n) },
     { key: "w3", label: "Seq 3 avg days", num: true, render: (r) => fmtNum(r.w3, 1) },
     { key: "on3", label: "Seq 3 ≤ 1 day", num: true, render: (r) => (r.on3 === null ? "–" : pill(fmtNum(r.on3, 0) + "%", r.on3 >= 80 ? "good" : r.on3 >= 60 ? "warn" : "bad")) },
     { key: "n8", label: "Seq 8 done", num: true, render: (r) => fmtInt(r.n8) },
-    { key: "w8", label: "Seq 8 avg days", num: true, render: (r) => fmtNum(r.w8, 1) },
+    { key: "w8", label: "Seq 8 avg days", num: true, render: (r) => (r.w8 === null || r.w8 === undefined ? "–" : barNum(fmtNum(r.w8, 1), r.w8, maxW8, "var(--s2)")) },
     { key: "lv8", label: "Seq 8 days", num: true, sortable: false, render: (r) => lv8Cell(r.lv8) },
-    { key: "reworkRate", label: "Rework", num: true, render: (r) => { const t = (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 1) + "%") + ` (${fmtInt(r.rwCprs)}/${fmtInt(r.n8)})`; return r.rwEvents.length ? Object.assign(el("button", { class: "linkbtn", type: "button", title: "Show the reworked CPRs" }, t), { onclick: () => showReworkList(r) }) : t; } },
+    { key: "reworkRate", label: "Rework", num: true, render: (r) => { const t = (r.reworkRate === null ? "–" : fmtNum(r.reworkRate, 1) + "%") + ` (${fmtInt(r.rwCprs)}/${fmtInt(r.n8)})`; const inner = r.rwEvents.length ? Object.assign(el("button", { class: "linkbtn", type: "button", title: "Show the reworked CPRs" }, t), { onclick: () => showReworkList(r) }) : t; return r.reworkRate === null ? inner : barNum(inner, r.reworkRate, maxRw, "var(--s3)"); } },
     { key: "fixAvg", label: "Fix days", num: true, render: (r) => fmtNum(r.fixAvg, 1) }
   ], perf, perfSort);
   renderRework(rows);
@@ -3809,7 +3868,7 @@ function renderSpeed() {
     return { ka: k, name: kaLabel(k), held: h, res, done: s.speed.done[k] || 0, days: s.speed.days[k] || 0, sp, rate, fx, hold: s.speed.holdDays[k], holdFrom: s.speed.holdFrom[k], fin: s.finishOf(k, h + res), within: h + res + 1 <= s.maxPerDay * capOf(k), given: s.assigned.filter((c) => c.ka === k && (c.isNewAssign || !c.locked)).length };
   }).filter((r) => !G.ka || r.ka === G.ka).sort((a, b) => a.fin - b.fin);
   renderTable($("tblSpeed"), [
-    { key: "name", label: "Key Account", render: (r) => kaLink(r.ka) },
+    { key: "name", label: "Key Account", render: (r) => kaCell(r.ka) },
     { key: "held", label: "Held now", num: true, render: (r) => fmtInt(r.held) },
     { key: "sp", label: "Speed /day", num: true, render: (r) => (r.sp === undefined ? el("span", { title: "No Seq 8 approval last week: team average used" }, fmtNum(s.speed.team, 1) + "*") : fmtNum(r.sp, 1)) },
     { key: "rate", label: "Rework", num: true, render: (r) => fmtNum(r.rate * 100, 1) + "%" },
@@ -3914,7 +3973,6 @@ const ruleKind = { "Diproses KA": "muted", "Sudah di KA": "muted", "Vendor sama"
 // rule names are stored in Indonesian (saved allocations use them); this is how they are shown
 const RULE_LABEL = { "Diproses KA": "Processed by KA (from data)", "Sudah di KA": "Already at KA (hospital PIC presumed)", "Vendor sama": "Same vendor", "PIC unit": "Hospital PIC", "Beban terendah": "Fastest finish", "Dialihkan": "Reassigned", "Exception": "Exception" };
 const ruleLabel = (r) => RULE_LABEL[r] || r;
-const AVATAR_COLORS = ["#0f7f86", "#2a78d6", "#7a5bd0", "#c0631f", "#2f9e57", "#b2437a", "#5b6b7a", "#a0861a"];
 const SHORT_RULE = { "Diproses KA": "From data", "Sudah di KA": "Already at KA" };
 const byLabel = (b) => (b === "Otomatis" ? "Automatic" : b === "SPV" ? "Supervisor" : b);
 // short progress status of a CPR (details and follow-up notes stay in Supervisor Control)
@@ -4211,16 +4269,10 @@ function renderIncoming() {
   incState.page = Math.min(incState.page, pages - 1);
   $("incPage").textContent = `${incState.page + 1} / ${pages} · ${fmtInt(rows.length)} CPRs`;
   renderTable($("tblInc"), [
-    { key: "cpr", label: "CPR", sortable: false, render: (c) => {
-      const t = c.r.vendorName ? String(c.r.vendorName).replace(/\s+/g, " ").trim() : "–";
-      const box = el("div", { class: "cprcell" }); box.append(cprLink(c.r.cpr), el("div", { class: "desc1", title: t }, t)); return box; } },
-    { key: "unit", label: "Hospital", sortable: false, render: (c) => el("span", { class: "unitchip" }, c.unit) },
+    { key: "cpr", label: "CPR", sortable: false, render: (c) => cprCell(c.r.cpr, c.r.vendorName) },
+    { key: "unit", label: "Hospital", sortable: false, render: (c) => unitChip(c.unit) },
     { key: "create", label: "Created", sortable: false, render: (c) => fmtDay(c.r.create) },
-    { key: "ka", label: "Key Account", sortable: false, render: (c) => {
-      const name = kaLabel(c.ka) || "?", box = el("div", { class: "kacell" });
-      const av = el("span", { class: "avatar" }, name.charAt(0).toUpperCase());
-      const ix = SIM ? SIM.kaList.indexOf(c.ka) : -1; av.style.background = AVATAR_COLORS[(ix >= 0 ? ix : [...name].reduce((a, ch) => a + ch.charCodeAt(0), 0)) % AVATAR_COLORS.length];
-      box.append(av, kaLink(c.ka)); return box; } },
+    { key: "ka", label: "Key Account", sortable: false, render: (c) => kaCell(c.ka) },
     { key: "status", label: "Status", sortable: false, render: (c) => { const [t, k] = progressStatus(c); return Object.assign(pill(t.replace(/^Rejected · auto.*$/, "Auto-rejected"), k), { title: t }); } },
     { key: "done", label: "KA finishes", sortable: false, render: (c) => {
       const a = c.r.backOutFirst ?? c.r.backOut; if (a !== null && a !== undefined) return fmtDay(a);
@@ -4358,9 +4410,9 @@ function renderSpv() {
   $("actIgnoreAll").textContent = `Dismiss all shown (${fmtInt(rows.length)})`;
   ACT_ROWS = rows;
   renderTable($("tblAct"), [
-    { key: "cpr", label: "CPR number", code: true, sortable: false, render: (x) => cprLink(x.c.r.cpr) },
-    { key: "unit", label: "Hospital", sortable: false, render: (x) => x.c.unit },
-    { key: "ka", label: "KA", sortable: false, render: (x) => kaLink(x.c.ka) },
+    { key: "cpr", label: "CPR", sortable: false, render: (x) => cprCell(x.c.r.cpr, x.c.r.vendorName) },
+    { key: "unit", label: "Hospital", sortable: false, render: (x) => unitChip(x.c.unit) },
+    { key: "ka", label: "KA", sortable: false, render: (x) => kaCell(x.c.ka) },
     { key: "type", label: "Condition", sortable: false, render: (x) => pill(actLabel[x.type], actKind[x.type]) },
     { key: "days", label: "Waiting", sortable: false, render: (x) => x.type === "ignored" ? "–" : el("span", { title: x.status }, `${fmtInt(x.days)} ${x.type === "stale" ? "days" : "working days"}`) },
     { key: "where", label: "Current stage", sortable: false, cls: "stagecell", render: (x) => el("div", { class: "cellwrap", style: "max-width:230px" }, x.where) },
@@ -4370,7 +4422,7 @@ function renderSpv() {
       const box = el("span");
       if (x.canMove && !(x.c.lock && x.c.lock.fixed)) box.append(btn("Reassign", () => openTransfer(x.c.r.cpr)));
       if (x.type === "ignored") box.append(btn("Restore", () => setIgnored([x.c.r.cpr], false)));
-      else box.append(btn("Dismiss", () => setIgnored([x.c.r.cpr], true)));
+      else box.append(Object.assign(el("button", { class: "iconbtn", type: "button", title: "Dismiss", "aria-label": "Dismiss" }, "✕"), { onclick: () => setIgnored([x.c.r.cpr], true) }));
       return box;
     } }
   ], rows);
@@ -5256,7 +5308,7 @@ function renderTaskLoad() {
     { name: "Waiting at PH HO / Director", color: "var(--line-strong)", values: kas.map((k) => k.fin) }
   ], { stacked: true, dec: 0, label: "Open tasks per KA", onClick: (i) => openKaPanel(kas[i].ka), tipRows: () => [{ value: "", label: "click for the KA's details" }] });
   renderTable($("tblTask"), [
-    { key: "name", label: "Key Account", render: (r) => kaLink(r.ka) },
+    { key: "name", label: "Key Account", render: (r) => kaCell(r.ka) },
     { key: "mat", label: "Sequence 8", num: true, render: (r) => fmtInt(r.mat) + (TL_ON.weights && r.big ? ` (${r.big} > Rp1 M)` : "") },
     { key: "rw", label: "Rework", num: true, render: (r) => fmtInt(r.rw) },
     { key: "fin", label: "Waiting PH HO / Dir.", num: true, render: (r) => fmtInt(r.fin) },
