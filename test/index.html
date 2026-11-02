@@ -308,7 +308,7 @@ body { background: var(--mint); }
 #simTiles .tile:nth-child(4) { border-left-color: #d0573b; }
 .top { background: linear-gradient(180deg, var(--ward) 0%, var(--ward-2) 100%); border-bottom: 0; color: #fff; }
 .top::before { content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='760' height='120' viewBox='0 0 760 120'><g fill='none' stroke='%23ffffff' stroke-opacity='0.16' stroke-width='1.5'><path d='M0 78 H180 C220 78 230 40 270 40 H430 C470 40 480 78 520 78 H760'/><path d='M270 40 C300 40 310 98 350 98 H450' stroke-dasharray='3 5'/></g><g fill='%23ffffff' fill-opacity='0.22'><circle cx='60' cy='78' r='4'/><circle cx='130' cy='78' r='4'/><circle cx='300' cy='40' r='5'/><circle cx='400' cy='40' r='4'/><circle cx='560' cy='78' r='5'/><circle cx='660' cy='78' r='4'/><circle cx='740' cy='78' r='6'/></g></svg>") right -40px top 0 / 760px 120px no-repeat; }
+  background: radial-gradient(600px 220px at 85% -40px, rgba(120,214,214,.22), transparent 70%), radial-gradient(400px 160px at 10% 130%, rgba(255,255,255,.06), transparent 70%); }
 .top .wrap { position: relative; padding-bottom: 0; }
 .brand h1 { color: #fff; }
 .brand span, .top .note { color: rgba(255,255,255,.78); }
@@ -335,7 +335,25 @@ tbody tr:hover td { background: #f1f8f6; }
 .btn.ghost { background: #fff; color: var(--accent-ink); }
 .kalink { color: var(--accent-ink); }
 .alertbar { border-color: #e7b866; }
-@media (max-width: 560px) { .top::before { background-position: right -260px top 0; } }
+.top { position: sticky; }
+.brandwrap { display: flex; align-items: center; gap: 14px; margin-right: auto; min-width: 0; }
+.brandwrap .brand { margin-right: 0; }
+.logo { width: 44px; height: 44px; border-radius: 12px; flex: none; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(145deg, rgba(255,255,255,.22), rgba(255,255,255,.06)); border: 1px solid rgba(255,255,255,.25); }
+.logo svg { width: 24px; height: 24px; }
+.brand h1 { font-size: 20px; letter-spacing: -0.015em; }
+.brand .meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 3px; }
+.top #saveBadge { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.18); font-weight: 600; }
+.top #saveBadge.good { color: #c9f3dc; } .top #saveBadge.good::before { background: #54d98c; }
+.top #saveBadge.warn { color: #ffe1a6; } .top #saveBadge.warn::before { background: #f0b43a; }
+.top #saveBadge.bad { color: #ffc4b8; } .top #saveBadge.bad::before { background: #ff7a5c; }
+#authBox:not([hidden]) { display: inline-flex; align-items: center; gap: 4px; padding: 3px 3px 3px 12px; border-radius: 999px; background: rgba(0,0,0,.14); border: 1px solid rgba(255,255,255,.14); }
+#authBox .note { font-size: 12.5px; }
+#authBox .file-btn { border-radius: 999px; padding: 6px 14px; }
+.top .file-btn.primary { border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.18); font-weight: 600; }
+#picKeepWrap { border-radius: 999px; background: transparent; border-style: dashed; }
+.uploads { align-items: center; }
+@media (max-width: 560px) { .logo { display: none; } }
 
 /* global filter bar, KA drill-down panel, tidier tables */
 .gbar[hidden] { display: none; }
@@ -361,9 +379,12 @@ tbody tr:hover td { background: var(--info-bg); }
 <div class="top">
   <div class="wrap">
     <div class="top-row">
+      <div class="brandwrap">
+      <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 4v16M5 20h14M6 8h12"/><path d="M6 8l-3 6h6zM18 8l-3 6h6z"/></svg></div>
       <div class="brand">
         <h1>CPR Allocation &amp; Workload Balancing</h1>
-        <span id="dataLabel">Decision Support System for Key Account HO</span> <span class="pill muted" id="saveBadge">Checking storage …</span>
+        <div class="meta"><span id="dataLabel">Decision Support System for Key Account HO</span><span class="pill muted" id="saveBadge">Checking storage …</span></div>
+      </div>
       </div>
       <div class="uploads">
         <span id="authBox" hidden><span class="note" id="authUser" style="margin:0 6px 0 0"></span><button class="file-btn" type="button" id="btnLogin">Login</button></span>
