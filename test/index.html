@@ -274,6 +274,13 @@ body { background: var(--mint); }
 /* tile colour = what the number means */
 .tile { border-left: 4px solid var(--line-strong); }
 .ovtiles .tile .d, #simTiles .tile .d { display: none; }
+#spvTiles .tile { cursor: pointer; }
+#spvTiles .tile:hover { box-shadow: 0 2px 8px rgba(10,68,84,.12); }
+#spvTiles .tile.sel { box-shadow: inset 0 0 0 2px var(--accent); }
+.subtabs { display: flex; gap: 6px; margin: 28px 0 10px; flex-wrap: wrap; }
+.subtabs button { border: 1px solid var(--line-strong); background: #fff; color: var(--head); padding: 7px 14px; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer; }
+.subtabs button[aria-selected="true"] { background: var(--ward); border-color: var(--ward); color: #fff; }
+#tblAct td.stagecell { max-width: 230px; white-space: normal; }
 .tile.k-all, #simTiles .tile:nth-child(1) { border-left-color: var(--accent); }
 .tile.k-approved { border-left-color: #2f9e57; } .tile.k-approved .v { color: #1f7a42; }
 .tile.k-review { border-left-color: #2a78d6; } .tile.k-review .v { color: #1c5cab; }
@@ -556,9 +563,14 @@ tbody tr:hover td { background: var(--info-bg); }
       </div>
       <p class="note" id="trMsg"></p>
     </div>
-    <div style="margin-top:10px"><button class="btn ghost" type="button" id="trOpen">Reassign another CPR (enter number)</button></div>
+    <div style="margin-top:10px"><button class="btn ghost" type="button" id="trOpen">Reassign by CPR number</button></div>
 
-    <div class="section-title"><h2>KA absences</h2></div>
+    <div class="subtabs" role="tablist">
+      <button type="button" data-sub="subAbs" aria-selected="true">KA absences</button>
+      <button type="button" data-sub="subChg" aria-selected="false">KA left the team</button>
+      <button type="button" data-sub="subLog" aria-selected="false">Reassignment log</button>
+    </div>
+    <div id="subAbs">
     <div class="card">
       <div class="filters" style="border:0;padding:0;margin:0" id="absForm">
         <div class="field"><label for="absKa">KA</label><select id="absKa"></select></div>
@@ -569,8 +581,9 @@ tbody tr:hover td { background: var(--info-bg); }
       </div>
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblAbs"></table></div>
     </div>
+    </div>
 
-    <details class="more" style="margin-top:16px"><summary>KA replaced (left the team)</summary>
+    <div id="subChg" hidden>
     <div class="card">
       <div class="filters" style="border:0;padding:0;margin:0" id="chgForm">
         <div class="field"><label for="chgUser">Former KA (username)</label><input type="text" id="chgUser" list="chgUsers" placeholder="e.g. maria.nugraheni"><datalist id="chgUsers"></datalist></div>
@@ -578,13 +591,14 @@ tbody tr:hover td { background: var(--info-bg); }
         <div class="field"><label for="chgTo">Replaced by (if the unit has no PIC)</label><select id="chgTo"></select></div>
         <button class="btn" type="button" id="chgAdd">Save</button>
       </div>
-      <p class="sub" style="margin:8px 0 0">Open CPRs of a KA who left (Sequence 3, Sequence 8, rework, or waiting at Purchasing Head HO / Director) move to the Hospital PIC of each unit. A KA who is no longer in the Hospital PIC List is treated the same way.</p>
+      <p class="sub" style="margin:8px 0 0">Their open CPRs move to the Hospital PIC of each unit.</p>
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblChg"></table></div>
     </div>
 
-    </details>
-    <div class="section-title"><h2>Reassignment log</h2></div>
+    </div>
+    <div id="subLog" hidden>
     <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="tblTr"></table></div>
+    </div>
   </section>
 
   <!-- BUKTI -->
@@ -4273,6 +4287,12 @@ function renderSpv() {
     tile("In rework", fmtInt(items.filter((x) => x.type === "rework").length), "CPRs", ""),
     tile("Auto-rejected", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `no progress > ${STALE_DAYS} days`),
   );
+  // click a tile = show only those CPRs in the table (click again = show all)
+  ["", "late", "warn8", "late8", "rework", "stale"].forEach((key, i) => {
+    const t = $("spvTiles").children[i];
+    t.classList.toggle("sel", $("actFilter").value === key && key !== "");
+    t.onclick = () => { $("actFilter").value = $("actFilter").value === key ? "" : key; renderSpv(); };
+  });
   const f = $("actFilter").value, fk = $("actKa").value;
   // "All active items" hides CPRs that are probably not active and CPRs the SPV ignored
   const rows = items.filter((x) => (f ? x.type === f : x.type !== "stale" && x.type !== "ignored") && (!fk || x.c.ka === fk));
@@ -4284,8 +4304,8 @@ function renderSpv() {
     { key: "unit", label: "Hospital", sortable: false, render: (x) => x.c.unit },
     { key: "ka", label: "KA", sortable: false, render: (x) => kaLink(x.c.ka) },
     { key: "type", label: "Condition", sortable: false, render: (x) => pill(actLabel[x.type], actKind[x.type]) },
-    { key: "status", label: "Details", sortable: false, render: (x) => x.status },
-    { key: "where", label: "Current stage", sortable: false, render: (x) => x.where },
+    { key: "days", label: "Waiting", sortable: false, render: (x) => x.type === "ignored" ? "–" : el("span", { title: x.status }, `${fmtInt(x.days)} ${x.type === "stale" ? "days" : "working days"}`) },
+    { key: "where", label: "Current stage", sortable: false, cls: "stagecell", render: (x) => el("div", { class: "cellwrap", style: "max-width:230px" }, x.where) },
     { key: "act", label: "", sortable: false, render: (x) => {
       if (!editable) return "";
       const btn = (label, fn) => Object.assign(el("button", { class: "btn ghost", type: "button", style: "padding:4px 10px;margin-left:4px" }, label), { onclick: fn });
@@ -4384,6 +4404,10 @@ async function removeAbsence(a) {
   try { await saveAbsences(); await logEvent({ type: "Absence", note: `deleted: ${kaLabel(a.ka)} ${fmtDay(a.from)} – ${fmtDay(a.to)}` }); await runSimulation(); } catch (err) { setStatus("Not saved: " + saveErrorText(err)); }
 }
 for (const id of ["actFilter", "actKa"]) $(id).addEventListener("change", renderSpv);
+// small tabs under the action list: absences / KA left / log
+document.querySelectorAll(".subtabs button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll(".subtabs button").forEach((x) => { x.setAttribute("aria-selected", x === b ? "true" : "false"); $(x.dataset.sub).hidden = x !== b; });
+}));
 let ACT_ROWS = [];
 // mark CPRs as not processed any more (on = true) or bring them back (on = false)
 async function setIgnored(cprs, on) {
