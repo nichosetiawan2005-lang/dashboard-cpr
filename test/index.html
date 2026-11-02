@@ -282,6 +282,8 @@ body { background: var(--mint); }
 .subtabs button[aria-selected="true"] { background: var(--ward); border-color: var(--ward); color: #fff; }
 #tblAct td.stagecell { max-width: 230px; white-space: normal; }
 #incFilters:not(.open) .xf { display: none; }
+#tblInc .desc1 { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tblInc .estdate { color: var(--muted); }
 #bkSpvTiles .tile .d, #bkPoTiles .tile .d { display: none; }
 #tblLog td:nth-child(3) { max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile.k-all, #simTiles .tile:nth-child(1) { border-left-color: var(--accent); }
@@ -3862,6 +3864,7 @@ const ruleKind = { "Diproses KA": "muted", "Sudah di KA": "muted", "Vendor sama"
 // rule names are stored in Indonesian (saved allocations use them); this is how they are shown
 const RULE_LABEL = { "Diproses KA": "Processed by KA (from data)", "Sudah di KA": "Already at KA (hospital PIC presumed)", "Vendor sama": "Same vendor", "PIC unit": "Hospital PIC", "Beban terendah": "Fastest finish", "Dialihkan": "Reassigned", "Exception": "Exception" };
 const ruleLabel = (r) => RULE_LABEL[r] || r;
+const SHORT_RULE = { "Diproses KA": "From data", "Sudah di KA": "Already at KA" };
 const byLabel = (b) => (b === "Otomatis" ? "Automatic" : b === "SPV" ? "Supervisor" : b);
 // short progress status of a CPR (details and follow-up notes stay in Supervisor Control)
 function progressStatus(c) {
@@ -4159,17 +4162,15 @@ function renderIncoming() {
   renderTable($("tblInc"), [
     { key: "cpr", label: "CPR Number", code: true, sortable: false, render: (c) => cprLink(c.r.cpr) },
     { key: "unit", label: "Hospital", sortable: false },
-    { key: "desc", label: "Description", wrap: true, sortable: false, render: (c) => c.r.vendorName ? String(c.r.vendorName).replace(/\s+/g, " ").trim().slice(0, 60) : "–" },
-    { key: "create", label: "Created", sortable: false, render: (c) => (c.r.createAt ? fmtStampShort(c.r.createAt) : fmtDay(c.r.create)) },
-    { key: "est", label: "① Arrival at KA (estimate)", sortable: false, render: (c) => arrivalText(c) },
-    { key: "act", label: "① Arrival at KA (actual)", sortable: false, render: (c) => (actualArrival(c.r) !== null ? fmtDay(actualArrival(c.r)) : "–") },
-    { key: "s3", label: "② KA approves Sequence 3", sortable: false, render: (c) => s3Text(c) },
-    { key: "ret", label: "③ Return to KA", sortable: false, render: (c) => returnText(c) },
-    { key: "s8", label: "④ KA approves Sequence 8", sortable: false, render: (c) => s8Text(c) },
+    { key: "desc", label: "Description", sortable: false, render: (c) => { const t = c.r.vendorName ? String(c.r.vendorName).replace(/\s+/g, " ").trim() : "–"; return el("div", { class: "desc1", title: t }, t); } },
+    { key: "create", label: "Created", sortable: false, render: (c) => fmtDay(c.r.create) },
     { key: "ka", label: "Key Account", sortable: false, render: (c) => kaLink(c.ka) },
-    { key: "status", label: "Status", sortable: false, render: (c) => { const [t, k] = progressStatus(c); return pill(t, k); } },
-    { key: "rule", label: "Why this KA", sortable: false, render: (c) => { const d = el("div"); d.append(pill(ruleLabel(c.rule), ruleKind[c.rule])); if (c.why) d.append(smallNote(c.why)); return d; } },
-    ...(useLocks() ? [{ key: "lk", label: "Assignment", sortable: false, render: (c) => pill(assignLabel(c), c.isNewAssign ? "info" : c.locked ? "muted" : "warn") }] : []),
+    { key: "status", label: "Status", sortable: false, render: (c) => { const [t, k] = progressStatus(c); return Object.assign(pill(t.replace(/^Rejected · auto.*$/, "Auto-rejected"), k), { title: t }); } },
+    { key: "done", label: "KA finishes", sortable: false, render: (c) => {
+      const a = c.r.backOutFirst ?? c.r.backOut; if (a !== null && a !== undefined) return fmtDay(a);
+      if (/^(Done|Rejected|Dismissed)/.test(progressStatus(c)[0])) return "–";
+      return Object.assign(el("span", { class: "estdate" }, "≈ " + fmtDay(estS8(c))), { title: "Estimate (Forecast 4)" }); } },
+    { key: "rule", label: "Why this KA", sortable: false, render: (c) => Object.assign(pill(SHORT_RULE[c.rule] || ruleLabel(c.rule), ruleKind[c.rule]), { title: c.why || ruleLabel(c.rule) }) },
   ], rows.slice(incState.page * per, incState.page * per + per));
 }
 for (const [id] of INC_FILTERS) $(id).addEventListener("change", () => { incState.page = 0; renderIncoming(); });
