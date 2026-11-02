@@ -264,10 +264,28 @@ body.locked #loginForm .btn { width: 100%; }
 
 /* ---------- look: ward-teal header with the approval route drawn behind it, mint page, white working surfaces ---------- */
 :root {
-  --ward: #0d4f57; --ward-2: #0a3f46; --mint: #eaf2ef; --line: #d3e2dd; --line-strong: #b7cdc7;
-  --accent: #0f7f86; --accent-ink: #0b5f65; --head: #12302f; --bg: var(--mint); --info-bg: #e3f1ef;
+  --ward: #0f5b70; --ward-2: #157a8c; --mint: #eef5f6; --line: #d6e5e8; --line-strong: #b9d1d6;
+  --accent: #0e7c8f; --accent-ink: #0b6273; --head: #133f4a; --bg: var(--mint); --info-bg: #e2f1f4;
 }
+html, body { margin: 0; }
 body { background: var(--mint); }
+#saveBadge { align-self: flex-start; }
+.top { background: linear-gradient(115deg, var(--ward) 0%, var(--ward-2) 100%); }
+/* tile colour = what the number means */
+.tile { border-left: 4px solid var(--line-strong); }
+.ovtiles .tile .d, #simTiles .tile .d { display: none; }
+.tile.k-all, #simTiles .tile:nth-child(1) { border-left-color: var(--accent); }
+.tile.k-approved { border-left-color: #2f9e57; } .tile.k-approved .v { color: #1f7a42; }
+.tile.k-review { border-left-color: #2a78d6; } .tile.k-review .v { color: #1c5cab; }
+.tile.k-rejected { border-left-color: #d0573b; } .tile.k-rejected .v { color: #b2432b; }
+.tile.k-completed { border-left-color: #7a5bd0; } .tile.k-completed .v { color: #5d42ad; }
+#spvTiles .tile:nth-child(1) { border-left-color: var(--accent); }
+#spvTiles .tile:nth-child(2), #spvTiles .tile:nth-child(4) { border-left-color: #d03b3b; }
+#spvTiles .tile:nth-child(2) .v, #spvTiles .tile:nth-child(4) .v { color: #b52f2f; }
+#spvTiles .tile:nth-child(3) { border-left-color: #e0a100; } #spvTiles .tile:nth-child(3) .v { color: #9a6c00; }
+#spvTiles .tile:nth-child(5) { border-left-color: #7a5bd0; } #spvTiles .tile:nth-child(5) .v { color: #5d42ad; }
+#spvTiles .tile:nth-child(6) { border-left-color: #9aa7ad; } #spvTiles .tile:nth-child(6) .v { color: #66747a; }
+#simTiles .tile:nth-child(4) { border-left-color: #d0573b; }
 .top { background: linear-gradient(180deg, var(--ward) 0%, var(--ward-2) 100%); border-bottom: 0; color: #fff; }
 .top::before { content: ""; position: absolute; inset: 0; pointer-events: none;
   background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='760' height='120' viewBox='0 0 760 120'><g fill='none' stroke='%23ffffff' stroke-opacity='0.16' stroke-width='1.5'><path d='M0 78 H180 C220 78 230 40 270 40 H430 C470 40 480 78 520 78 H760'/><path d='M270 40 C300 40 310 98 350 98 H450' stroke-dasharray='3 5'/></g><g fill='%23ffffff' fill-opacity='0.22'><circle cx='60' cy='78' r='4'/><circle cx='130' cy='78' r='4'/><circle cx='300' cy='40' r='5'/><circle cx='400' cy='40' r='4'/><circle cx='560' cy='78' r='5'/><circle cx='660' cy='78' r='4'/><circle cx='740' cy='78' r='6'/></g></svg>") right -40px top 0 / 760px 120px no-repeat; }
@@ -1410,7 +1428,7 @@ function renderLateAlert() {
   const go = (f) => { showTab("spv"); $("actFilter").value = f; renderSpv(); };
   const link = (t, f) => { const a = el("a", { role: "button", tabIndex: 0 }, t); a.onclick = () => go(f); a.onkeydown = (e) => { if (e.key === "Enter") go(f); }; return a; };
   bar.replaceChildren(el("b", {}, `${fmtInt(items.length)} CPRs need attention`), ...[["late", "Sequence 3 overdue"], ["late8", "Sequence 8 overdue"], ["warn8", "Sequence 8 warning"], ["rework", "in rework"]].filter(([t]) => n(t)).map(([t, l]) => link(`${n(t)} ${l}`, t)),
-    el("span", { class: "grow" }), el("span", { class: "note", style: "margin:0" }, `data as of ${fmtDay(dataDate())}`));
+    el("span", { class: "grow" }));
 }
 function renderOverview() {
   if (!$("ovTiles")) return;
@@ -1421,7 +1439,7 @@ function renderOverview() {
   $("ovTiles").replaceChildren(...OV_GROUPS.map((g) => {
     const noErp = g.key === "completed" && !hasErp;
     const t = tile(g.label, noErp ? "–" : fmtInt(rows.filter(g.test).length), "", noErp ? "upload the CPRSummary to see this (ERP ID is only in CPRSummary)" : g.desc);
-    t.classList.toggle("sel", OV.group === g.key);
+    t.classList.toggle("sel", OV.group === g.key); t.classList.add("k-" + g.key);
     t.tabIndex = 0; t.setAttribute("role", "button");
     const pick = () => { OV = { group: g.key, page: 0 }; renderOverview(); };
     t.onclick = pick; t.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
@@ -1756,7 +1774,7 @@ const STORE_PREFIX = "test/";   // "" = live dashboard; "test/" = test copy with
 if (STORE_PREFIX) {
   const b = document.createElement("div");
   b.style.cssText = "background:var(--warn-bg);color:var(--fg);border-bottom:1px solid var(--warn);padding:8px 16px;font-size:13px;text-align:center";
-  b.innerHTML = "<b>TEST VERSION</b> · data here is separate from the live dashboard. Changes are tried here first and moved to the live dashboard only after approval.";
+  b.innerHTML = "<b>TEST VERSION</b> · separate from the live dashboard";
   document.body.prepend(b); document.title = "[TEST] " + document.title;
 } // key: "Publishable key" (sb_publishable_...) or legacy "anon public"
 const SB = !!(CONFIG.supabaseUrl && CONFIG.supabaseKey);
@@ -3343,7 +3361,7 @@ function showRunInfo() {
   if (!SIM) { info.textContent = ""; return; }
   const now = new Date(), t = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
   const locked = SIM.assigned.filter((c) => c.locked && !c.isNewAssign).length;
-  info.textContent = `Allocation run at ${t}: ${fmtInt(SIM.n)} CPRs, limit ${fmtNum(SIM.maxPerDay)} CPRs per KA per day.`;
+  info.textContent = `Last run ${t} · limit ${fmtNum(SIM.maxPerDay)} CPRs per KA per day`;
   const tiles = $("simTiles"); tiles.classList.remove("flash"); void tiles.offsetWidth; tiles.classList.add("flash");
 }
 $("sReset").addEventListener("click", async () => {
@@ -4248,12 +4266,12 @@ function renderSpv() {
   const items = actionItems();
   const week = Date.now() - 7 * 864e5;
   $("spvTiles").replaceChildren(
-    tile("At KA now", fmtInt(SIM ? SIM.assigned.filter((c) => ["rec", "mat", "rw"].includes(taskOf(c.r))).length : 0), "CPRs", "Sequence 3, Sequence 8 or rework"),
+    tile("At KA now", fmtInt(SIM ? SIM.assigned.filter((c) => ["rec", "mat", "rw"].includes(taskOf(c.r))).length : 0), "CPRs", ""),
     tile("Sequence 3 overdue", fmtInt(items.filter((x) => x.type === "late").length), "CPRs", `more than ${TAT_LIMIT.s3} working day`),
     tile("Sequence 8 warning", fmtInt(items.filter((x) => x.type === "warn8").length), "CPRs", `${TAT_LIMIT.s8warn + 1}–${TAT_LIMIT.s8bad} working days`),
     tile("Sequence 8 overdue", fmtInt(items.filter((x) => x.type === "late8").length), "CPRs", `more than ${TAT_LIMIT.s8bad} working days`),
-    tile("In rework", fmtInt(items.filter((x) => x.type === "rework").length), "CPRs", "sent back, not approved again"),
-    tile("Auto-rejected", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `no progress > ${STALE_DAYS} days at Sequence 3, 8 or rework`),
+    tile("In rework", fmtInt(items.filter((x) => x.type === "rework").length), "CPRs", ""),
+    tile("Auto-rejected", fmtInt(items.filter((x) => x.type === "stale").length), "CPRs", `no progress > ${STALE_DAYS} days`),
   );
   const f = $("actFilter").value, fk = $("actKa").value;
   // "All active items" hides CPRs that are probably not active and CPRs the SPV ignored
