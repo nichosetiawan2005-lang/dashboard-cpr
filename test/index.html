@@ -259,6 +259,16 @@ body.locked #loginCard { display: block !important; width: 100%; max-width: 440p
 .landing-text { font-size: 13.5px; color: var(--muted); margin: 14px 0 22px; line-height: 1.55; }
 body.locked #loginForm { flex-direction: column; align-items: stretch; }
 body.locked #loginForm .btn { width: 100%; }
+.landing-name { color: var(--head); }
+#loginMsg:not(:empty) { color: #b52f2f; }
+.rolepick { display: grid; gap: 10px; margin-top: 10px; }
+.rolepick .role { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 16px; border-radius: 14px; border: 1.5px solid var(--line); background: #fff; cursor: pointer; text-align: left; font: inherit; transition: border-color .15s, box-shadow .15s, background .15s; }
+.rolepick .role:hover { border-color: var(--accent); }
+.rolepick .role[aria-checked="true"] { border-color: var(--ward); background: #f2f5fd; box-shadow: 0 0 0 3px rgba(31,67,168,.12); }
+.rolepick .ri { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: #edf1fb; color: var(--ward); flex: none; }
+.rolepick .role[aria-checked="true"] .ri { background: var(--ward); color: var(--siloam-yellow); }
+.rolepick .ri svg { width: 22px; height: 22px; }
+.rolepick .rt { display: flex; flex-direction: column; } .rolepick .rt b { color: var(--head); font-size: 15px; } .rolepick .rt small { color: var(--muted); font-size: 12.5px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 @media (max-width: 560px) { .tile .v { font-size: 22px; } .brand h1 { font-size: 17px; } }
 
@@ -641,9 +651,19 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
     <div class="landing-name">CPR Allocation &amp; Workload Balancing</div>
     <div class="landing-full">Decision Support System for Key Account HO</div>
     <p class="landing-text">This dashboard forecasts when each CPR will reach Key Account HO, allocates CPRs evenly across Key Accounts, and tracks their progress until they are converted into purchase orders.</p>
-    <h3>Sign in</h3><div class="sub">Enter the access code provided by the dashboard administrator. The code will be remembered in this browser.</div>
-    <form id="loginForm" class="filters" style="border:0;padding:0;margin:8px 0 0">
-      <div class="field"><label for="loginCode">Code</label><input type="password" id="loginCode" autocomplete="off" required></div>
+    <h3>Sign in as</h3>
+    <div class="rolepick" role="radiogroup" aria-label="Sign in as">
+      <button type="button" class="role" data-role="admin" role="radio" aria-checked="false">
+        <span class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span>
+        <span class="rt"><b>Administrator</b><small>Upload data, run the allocation, all tabs</small></span>
+      </button>
+      <button type="button" class="role" data-role="view" role="radio" aria-checked="false">
+        <span class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg></span>
+        <span class="rt"><b>Key Account</b><small>See the allocation and the workload</small></span>
+      </button>
+    </div>
+    <form id="loginForm" class="filters" style="border:0;padding:0;margin:14px 0 0" hidden>
+      <div class="field"><label for="loginCode" id="loginCodeLabel">Access code</label><input type="password" id="loginCode" autocomplete="off" required></div>
       <button class="btn" type="submit">Sign in</button>
     </form>
     <p class="note" id="loginMsg"></p>
@@ -2226,6 +2246,9 @@ const SB = !!(CONFIG.supabaseUrl && CONFIG.supabaseKey);
 let ACCESS_CODE = "", ACCESS = "none", IS_ADMIN = false; // ACCESS: "none" | "view" | "admin"
 function loadCode() { try { ACCESS_CODE = localStorage.getItem("cprCode") || ""; } catch { ACCESS_CODE = ""; } }
 function storeCode(c) { ACCESS_CODE = c; try { c ? localStorage.setItem("cprCode", c) : localStorage.removeItem("cprCode"); } catch {} }
+// the role chosen on the sign-in page; an administrator code used as "Key Account" opens the view-only dashboard
+let ROLE = ""; try { ROLE = localStorage.getItem("cprRole") || ""; } catch {}
+function storeRole(r) { ROLE = r; try { r ? localStorage.setItem("cprRole", r) : localStorage.removeItem("cprRole"); } catch {} }
 const sbHeaders = (extra = {}) => ({ apikey: CONFIG.supabaseKey, "Content-Type": "application/json", "x-access-code": ACCESS_CODE || "", ...extra });
 // ask Supabase which level the current code gives
 async function checkAccess() {
@@ -2235,6 +2258,7 @@ async function checkAccess() {
     const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/rpc/cpr_access_level`, { method: "POST", headers: sbHeaders(), body: "{}" });
     if (res.ok) ACCESS = (await res.json()) || "none";
   } catch { ACCESS = "none"; }
+  if (ROLE === "view" && ACCESS === "admin") ACCESS = "view";
   IS_ADMIN = ACCESS === "admin";
 }
 // same shape as the Claude db: doc(path).get/set/update/delete and collection(path).get
@@ -2271,9 +2295,9 @@ function renderAuth() {
   // no valid code yet: show only the landing page with the sign-in form
   document.body.classList.remove("checking");
   document.body.classList.toggle("locked", ACCESS === "none");
-  if (ACCESS === "none") setTimeout(() => $("loginCode").focus(), 0);
+  if (ACCESS === "none" && !$("loginForm").hidden) setTimeout(() => $("loginCode").focus(), 0);
   $("authBox").hidden = false;
-  $("authUser").textContent = ACCESS === "admin" ? "Access: administrator" : ACCESS === "view" ? "Access: view only" : "";
+  $("authUser").textContent = ACCESS === "admin" ? "Access: administrator" : ACCESS === "view" ? "Access: Key Account" : "";
   $("btnLogin").textContent = ACCESS !== "none" ? "Sign out" : "Enter access code";
   // only admins upload
   $("lblCpr").hidden = !IS_ADMIN; $("lblPic").hidden = !IS_ADMIN; renderPicControl();
@@ -2284,16 +2308,26 @@ function renderAuth() {
   if (viewOnly && VIEW_HIDDEN_TABS.includes(currentTab)) showTab("distribusi");
 }
 const VIEW_HIDDEN_TABS = ["spv", "bukti", "kualitas"];
+let PICK_ROLE = "";
 if (SB) {
   $("btnLogin").addEventListener("click", () => {
-    if (ACCESS !== "none") { storeCode(""); location.reload(); return; }
+    if (ACCESS !== "none") { storeCode(""); storeRole(""); location.reload(); return; }
     $("loginCode").focus();
   });
+  // step 1: choose the role, step 2: the code
+  document.querySelectorAll("#loginCard .role").forEach((b) => b.addEventListener("click", () => {
+    PICK_ROLE = b.dataset.role;
+    document.querySelectorAll("#loginCard .role").forEach((x) => x.setAttribute("aria-checked", x === b ? "true" : "false"));
+    $("loginForm").hidden = false; $("loginMsg").textContent = "";
+    $("loginCodeLabel").textContent = PICK_ROLE === "admin" ? "Administrator code" : "Key Account code";
+    $("loginCode").focus();
+  }));
   $("loginForm").addEventListener("submit", async (e) => {
-    e.preventDefault(); $("loginMsg").textContent = "Verifying code …";
-    storeCode($("loginCode").value.trim());
+    e.preventDefault(); if (!PICK_ROLE) return; $("loginMsg").textContent = "Verifying code …";
+    storeCode($("loginCode").value.trim()); storeRole(PICK_ROLE);
     await checkAccess();
-    if (ACCESS === "none") { storeCode(""); $("loginMsg").textContent = "The code was not recognized. Please check the capitalization and try again."; return; }
+    if (ACCESS === "none") { storeCode(""); storeRole(""); $("loginMsg").textContent = "The code was not recognized. Please check the capitalization and try again."; return; }
+    if (PICK_ROLE === "admin" && ACCESS !== "admin") { storeCode(""); storeRole(""); ACCESS = "none"; IS_ADMIN = false; $("loginMsg").textContent = "This is a Key Account code. Choose Key Account, or enter the administrator code."; return; }
     location.reload();
   });
 }
