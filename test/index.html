@@ -1,6 +1,6 @@
 <title>CPR Allocation & Workload Balancing</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
 <style>
 /* Layout: sticky header with upload + tabs; one working panel per tab; filters in one row above charts */
 :root {
@@ -9,7 +9,7 @@
   --s1: #0e7c8f; --s2: #e8833a; --s3: #7a5bd0; --s4: #d9a321;
   --good: #0ca30c; --warn: #b77a00; --serious: #c4592e; --bad: #d03b3b;
   --good-bg: #e6f5e6; --warn-bg: #fff4d6; --serious-bg: #fde9df; --bad-bg: #fbe6e6; --info-bg: #e7f0fb;
-  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-ui: "Plus Jakarta Sans", "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --radius: 10px;
 }
@@ -294,6 +294,87 @@ body.loading .tile .v, body.loading .tbl-wrap tbody td, body.loading .chart { co
 body.loading .tile .v * , body.loading .tbl-wrap tbody td * { visibility: hidden; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { body.loading .tile .v, body.loading .tbl-wrap tbody td, body.loading .chart { animation: none; } }
+/* Overview pipeline */
+.ovpipe { margin-top: 14px; }
+.pipe { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.15fr); gap: 0; background: #fff; border-radius: 16px; box-shadow: 0 1px 2px rgba(10,68,84,.06), 0 6px 18px rgba(10,68,84,.06); overflow: hidden; }
+.pstep { position: relative; padding: 16px 18px 14px 26px; cursor: pointer; background: rgba(14,124,143,var(--fill, .06)); min-width: 0; }
+.pstep:first-child { padding-left: 18px; }
+.pstep { border-right: 2px solid #fff; }
+.pstep:not(:last-child)::after { content: "›"; position: absolute; right: -14px; top: 50%; width: 26px; height: 26px; transform: translateY(-50%); border-radius: 50%; background: #fff; color: var(--accent); display: grid; place-items: center; font-size: 18px; font-weight: 800; line-height: 1; box-shadow: 0 1px 4px rgba(10,68,84,.15); z-index: 3; }
+.pstep > * { position: relative; z-index: 2; }
+.pstep .pl { font-size: 12.5px; font-weight: 700; color: var(--head); }
+.pstep.ka .pl::after { content: "KA"; margin-left: 6px; padding: 1px 6px; border-radius: 4px; background: var(--ward); color: #fff; font-size: 10px; vertical-align: 1px; }
+.pstep .pv { font-size: 28px; font-weight: 800; color: var(--ward); letter-spacing: -0.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.pstep .ps { font-size: 11.5px; color: var(--muted); }
+.pstep .pbar { height: 4px; border-radius: 2px; background: rgba(255,255,255,.7); margin-top: 8px; overflow: hidden; }
+.pstep .pbar span { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.pstep.busiest .pv { color: #b2432b; }
+.pstep.busiest .pbar span { background: #d0573b; }
+.pstep.done { background: linear-gradient(135deg, #eaf7ef, #d7f0e0); }
+.pstep.done .pv { color: #1f7a42; }
+.pstep.done .pbar { display: none; }
+.pstep.sel { box-shadow: inset 0 -3px 0 var(--ward); }
+.pstep:hover { filter: brightness(.97); }
+.pside { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.pchip { display: inline-flex; align-items: center; gap: 2px; padding: 6px 12px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(10,68,84,.08); cursor: pointer; font-size: 13px; color: var(--muted); }
+.pchip b { color: var(--head); font-variant-numeric: tabular-nums; }
+.pchip.c-rej b { color: #b2432b; } .pchip.c-done b { color: #5d42ad; } .pchip.c-review b { color: #1c5cab; }
+.pchip.sel { background: var(--ward); color: #e3f1ef; } .pchip.sel b { color: #fff; }
+@media (max-width: 900px) { .pipe { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pstep::after { display: none; } .pstep { padding-left: 18px; } }
+/* attention chips */
+.alertbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: #fff; border: 0; border-radius: 14px; padding: 10px 14px; box-shadow: 0 1px 2px rgba(10,68,84,.06), 0 6px 18px rgba(10,68,84,.06); }
+.alertbar .alabel { font-weight: 700; color: var(--head); margin-right: 4px; }
+.achip { border: 0; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.achip b { font-weight: 800; }
+.a-late, .a-late8 { background: #fcecec; color: #b52f2f; } .a-warn8 { background: #fdf3dc; color: #8a6200; } .a-rework { background: #f1edfb; color: #5d42ad; }
+.achip:hover { filter: brightness(.95); }
+/* KA cards */
+.kacards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.kacard { background: #fff; border-radius: 16px; padding: 14px 16px; cursor: pointer; box-shadow: 0 1px 2px rgba(10,68,84,.06), 0 6px 18px rgba(10,68,84,.06); border-top: 4px solid #2f9e57; transition: box-shadow .15s; }
+.kacard:hover { box-shadow: 0 2px 4px rgba(10,68,84,.08), 0 12px 26px rgba(10,68,84,.1); }
+.kacard.lv-near { border-top-color: #e0a100; } .kacard.lv-over { border-top-color: #d03b3b; }
+.kc-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kc-top .kalink { font-weight: 700; }
+.kc-st { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #eaf7ef; color: #1f7a42; }
+.lv-near .kc-st { background: #fdf3dc; color: #8a6200; } .lv-over .kc-st { background: #fcecec; color: #b52f2f; }
+.kc-mid { display: flex; align-items: center; gap: 14px; margin: 12px 0 10px; }
+.kc-ringwrap { position: relative; width: 72px; height: 72px; flex: none; }
+.kc-ring { width: 72px; height: 72px; }
+.kc-arc { stroke: #2f9e57; } .lv-near .kc-arc { stroke: #e0a100; } .lv-over .kc-arc { stroke: #d03b3b; }
+.kc-held { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; }
+.kc-held b { font-size: 20px; font-weight: 800; color: var(--head); }
+.kc-held small { font-size: 10.5px; color: var(--muted); }
+.kc-list { flex: 1; display: grid; gap: 4px; font-size: 12.5px; }
+.kc-list div { display: flex; align-items: center; gap: 6px; }
+.kc-list span { color: var(--muted); flex: 1; }
+.kc-list i { width: 8px; height: 8px; border-radius: 2px; }
+.kc-list i.s8 { background: var(--s2); } .kc-list i.rw { background: var(--s3); } .kc-list i.fin { background: var(--line-strong); }
+.kc-foot { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 8px; font-size: 12px; color: var(--muted); }
+.kc-foot b { color: var(--head); }
+/* ranked KA choice */
+.rank { display: grid; gap: 6px; margin-top: 10px; }
+.rk { display: grid; grid-template-columns: 150px 1fr 150px 150px; align-items: center; gap: 14px; padding: 6px 10px; border-radius: 10px; }
+.rk.next { background: #e6f4f3; }
+.rk-bar { height: 12px; border-radius: 6px; background: #edf3f4; overflow: hidden; }
+.rk-bar span { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--accent), #3fb0b4); }
+.rk.over .rk-bar span { background: repeating-linear-gradient(135deg, #c4d2d6 0 6px, #d8e2e5 6px 12px); }
+.rk.over .kalink, .rk.over .rk-info b { color: var(--muted); }
+.rk-info { display: flex; flex-direction: column; line-height: 1.2; }
+.rk-info b { color: var(--head); font-variant-numeric: tabular-nums; }
+.rk-info small { color: var(--muted); font-size: 11.5px; }
+.rk-tag { justify-self: start; font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+.rk.next .rk-tag { background: var(--ward); color: #fff; }
+.rk-tag.ok { background: #eaf7ef; color: #1f7a42; } .rk-tag.no { background: #f1f4f5; color: var(--muted); }
+@media (max-width: 760px) { .rk { grid-template-columns: 1fr 1fr; } .rk-bar { grid-column: 1 / -1; order: 3; } }
+/* tab icons */
+.tab { display: inline-flex; align-items: center; gap: 8px; }
+.tab::before { content: ""; width: 16px; height: 16px; background: currentColor; opacity: .85; -webkit-mask: var(--ic) no-repeat center / contain; mask: var(--ic) no-repeat center / contain; }
+.tab[data-tab="overview"] { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='3' width='7' height='9' rx='1.5'/%3E%3Crect x='14' y='3' width='7' height='5' rx='1.5'/%3E%3Crect x='14' y='12' width='7' height='9' rx='1.5'/%3E%3Crect x='3' y='16' width='7' height='5' rx='1.5'/%3E%3C/svg%3E"); }
+.tab[data-tab="distribusi"] { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v6M12 9 5 15M12 9l7 6M12 9v6'/%3E%3Ccircle cx='5' cy='18' r='2.5'/%3E%3Ccircle cx='12' cy='18' r='2.5'/%3E%3Ccircle cx='19' cy='18' r='2.5'/%3E%3C/svg%3E"); }
+.tab[data-tab="ka"] { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='9' cy='8' r='3.5'/%3E%3Cpath d='M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5'/%3E%3Cpath d='M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.9.8 3.1 2.5 3.5 5.2'/%3E%3C/svg%3E"); }
+.tab[data-tab="spv"] { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6z'/%3E%3Cpath d='m8.5 12 2.5 2.5 4.5-5'/%3E%3C/svg%3E"); }
+.tab[data-tab="bukti"] { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 20V10M10 20V4M16 20v-7M22 20H2'/%3E%3C/svg%3E"); }
+.tab[data-tab="kualitas"] { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Cellipse cx='12' cy='5.5' rx='8' ry='3'/%3E%3Cpath d='M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3'/%3E%3C/svg%3E"); }
 .barnum { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .bn-track { width: 64px; height: 6px; border-radius: 3px; background: #e8eff1; overflow: hidden; flex: none; }
 .bn-fill { display: block; height: 100%; border-radius: 3px; }
@@ -495,7 +576,7 @@ tbody tr:hover td { background: var(--info-bg); }
   <section class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
     <div class="section-title" style="margin-top:16px"><h2>All CPRs</h2><p id="ovNote"></p></div>
     <div class="alertbar" id="ovAlert" hidden></div>
-    <div class="tiles ovtiles" id="ovTiles"></div>
+    <div class="ovpipe" id="ovTiles"></div>
     <div class="card" style="margin-top:12px"><h3 id="ovTitle">All CPRs</h3>
       <div class="filters" style="border:0;padding:0;margin:8px 0">
         <div class="field" style="flex:1 1 260px"><label for="ovSearch">Search</label><input type="search" id="ovSearch" placeholder="CPR number, hospital, description, approver …"></div>
@@ -527,7 +608,7 @@ tbody tr:hover td { background: var(--info-bg); }
     </div>
     <div class="banner warn" id="histWarn" hidden></div>
     <div class="tiles" id="simTiles"></div>
-    <div class="card" id="speedCard" style="margin-top:12px" hidden><h3>How the KA is chosen</h3><div class="tbl-wrap"><table id="tblSpeed"></table></div><p class="note" id="speedNote"></p></div>
+    <div class="card" id="speedCard" style="margin-top:12px" hidden><h3>How the KA is chosen</h3><div class="rank" id="speedViz"></div><details class="more" style="margin-top:10px"><summary>Show the numbers</summary><div class="tbl-wrap" style="margin-top:8px"><table id="tblSpeed"></table></div></details><p class="note" id="speedNote"></p></div>
     <p class="note" id="simCompare"></p>
     <div id="simResults"><div class="card" style="margin-top:12px"><h3 id="hKaCount">Number of CPRs per KA</h3><div class="sub" id="subKaCount"></div><div class="legend" id="lgKaCount"></div><div class="chart" id="chKaCount"></div></div>
     <div class="card" style="margin-top:12px;display:none" id="cardKaDone" hidden><h3>Completed CPRs per KA</h3><div class="chart" id="chKaDone"></div></div>
@@ -559,7 +640,7 @@ tbody tr:hover td { background: var(--info-bg); }
 
   <!-- KINERJA KA -->
   <section class="panel" id="panel-ka" role="tabpanel" aria-labelledby="tab-ka">
-    <div class="section-title"><h2>Open tasks now</h2></div>    <div class="card" id="cardTask" hidden><div class="sub" id="subTask"></div><div class="legend" id="lgTask"></div><div class="chart" id="chTask"></div><div class="tbl-wrap" style="margin-top:10px"><table id="tblTask"></table></div><p class="note">Click a Key Account to see its CPRs.</p>
+    <div class="section-title"><h2>Open tasks now</h2></div>    <div id="cardTask" hidden><div class="sub" id="subTask" hidden></div><div class="kacards" id="kaCards"></div><div class="legend" id="lgTask" hidden></div><div class="chart" id="chTask" hidden></div><details class="more" style="margin-top:12px"><summary>Numbers per KA</summary><div class="tbl-wrap" style="margin-top:8px"><table id="tblTask"></table></div></details>
       <div id="otDetail" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="otTitle"></h3><div class="sub" id="otSub"></div></div><button class="btn ghost" type="button" id="otClose">Close</button></div>
         <div class="tbl-wrap" style="max-height:520px;overflow:auto"><table id="tblOt"></table></div></div>
       <details class="capbox" id="twBox" hidden><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Sequence 8 about 2.4–3× Sequence 3, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
@@ -867,7 +948,10 @@ function mean(arr) { const a = arr.filter((x) => x !== null && !isNaN(x)); retur
 function stdev(a) { if (a.length < 2) return 0; const m = mean(a); return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length - 1)); }
 function mode(arr) { const c = new Map(); let best = null, n = 0; for (const x of arr) { if (x === null || x === undefined) continue; const k = (c.get(x) || 0) + 1; c.set(x, k); if (k > n) { n = k; best = x; } } return best; }
 function diff(a, b) { if (a === null || b === null) return null; const d = a - b; return d < 0 ? null : d; }
-function el(tag, attrs = {}, text) { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === "class") e.className = v; else if (k === "style") e.style.cssText = v; else e.setAttribute(k, v); } if (text !== undefined) e.textContent = text; return e; }
+function el(tag, attrs = {}, text, ...more) { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === "class") e.className = v; else if (k === "style") e.style.cssText = v; else e.setAttribute(k, v); }
+  if (!more.length && !(text instanceof Node)) { if (text !== undefined) e.textContent = text; }
+  else for (const k of [text, ...more]) if (k !== undefined && k !== null) e.append(k instanceof Node ? k : String(k));   // text and/or child elements
+  return e; }
 function svgEl(tag, attrs = {}) { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; }
 function setStatus(msg) { $("status").textContent = msg || ""; }
 
@@ -1523,6 +1607,22 @@ const OV_GROUPS = [
   { key: "completed", label: "Completed", desc: "PR / PO created in ERP (ERP ID)", test: (x) => !!x.erp }
 ];
 let OV = { group: "all", page: 0 };
+// where an In Review CPR is now, as one step of the CPR journey (Overview pipeline)
+const PIPE = [
+  { key: "p0", label: "Before KA", sub: "Seq 0–2", ka: false },
+  { key: "p3", label: "KA · Seq 3", sub: "first KA review", ka: true },
+  { key: "p4", label: "Other approvers", sub: "Seq 4–7", ka: false },
+  { key: "p8", label: "KA · Seq 8", sub: "incl. rework", ka: true },
+  { key: "p9", label: "Final approval", sub: "PH HO / Director", ka: false }
+];
+function pipeStep(x) {
+  if (!/review|draft/i.test(x.status || "")) return null;
+  const t = String(x.pos || x.stage || ""), m = t.match(/Sequence\s*(\d+)/i), n = m ? Number(m[1]) : null;
+  if (/rework|revise/i.test(t)) return "p8";
+  if (n === null || n <= 2) return "p0";
+  return n === 3 ? "p3" : n <= 7 ? "p4" : n === 8 ? "p8" : "p9";
+}
+for (const st of PIPE) OV_GROUPS.push({ key: st.key, label: st.label, hidden: true, test: (x) => pipeStep(x) === st.key });
 function ovRows() {
   // the catalogue, or (for data uploaded before it existed) the queue records
   const base = CATALOG.size ? [...CATALOG.values()] : RECS.filter((r) => r.hstatus).map((r) => ({ cpr: r.cpr, unit: r.unit, subject: r.vendorName, status: r.hstatus, create: r.create, lastAct: r.lastAct, stage: r.stage, erp: r.erp, waiting: r.waiting }));
@@ -1537,9 +1637,8 @@ function renderLateAlert() {
   const bar = $("ovAlert"); bar.hidden = !items.length; if (!items.length) return;
   const n = (t) => items.filter((x) => x.type === t).length;
   const go = (f) => { showTab("spv"); $("actFilter").value = f; renderSpv(); };
-  const link = (t, f) => { const a = el("a", { role: "button", tabIndex: 0 }, t); a.onclick = () => go(f); a.onkeydown = (e) => { if (e.key === "Enter") go(f); }; return a; };
-  bar.replaceChildren(el("b", {}, `${fmtInt(items.length)} CPRs need attention`), ...[["late", "Sequence 3 overdue"], ["late8", "Sequence 8 overdue"], ["warn8", "Sequence 8 warning"], ["rework", "in rework"]].filter(([t]) => n(t)).map(([t, l]) => link(`${n(t)} ${l}`, t)),
-    el("span", { class: "grow" }));
+  const link = (t, f) => { const a = el("button", { type: "button", class: "achip a-" + f }); a.append(el("b", {}, String(n(f))), " " + t); a.onclick = () => go(f); return a; };
+  bar.replaceChildren(el("span", { class: "alabel" }, `${fmtInt(items.length)} CPRs need attention`), ...[["late", "Sequence 3 overdue"], ["late8", "Sequence 8 overdue"], ["warn8", "Sequence 8 warning"], ["rework", "in rework"]].filter(([t]) => n(t)).map(([t, l]) => link(l, t)));
 }
 function renderOverview() {
   if (!$("ovTiles")) return;
@@ -1547,15 +1646,28 @@ function renderOverview() {
   const rows = ovRows();
   // the ERP ID (PR / PO number) is only in CPRSummary: without it "Completed" cannot be counted
   const hasErp = rows.some((x) => x.erp);
-  $("ovTiles").replaceChildren(...OV_GROUPS.map((g) => {
-    const noErp = g.key === "completed" && !hasErp;
-    const t = tile(g.label, noErp ? "–" : fmtInt(rows.filter(g.test).length), "", noErp ? "upload the CPRSummary to see this (ERP ID is only in CPRSummary)" : g.desc);
-    t.classList.toggle("sel", OV.group === g.key); t.classList.add("k-" + g.key);
-    t.tabIndex = 0; t.setAttribute("role", "button");
-    const pick = () => { OV = { group: g.key, page: 0 }; renderOverview(); };
-    t.onclick = pick; t.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
-    return t;
-  }));
+  // pipeline: In Review CPRs per step of the journey, then Done; the busiest step gets the strongest colour
+  const pick = (key) => { OV = { group: OV.group === key ? "all" : key, page: 0 }; renderOverview(); };
+  const clickable = (node, key) => { node.tabIndex = 0; node.setAttribute("role", "button"); node.classList.toggle("sel", OV.group === key); node.onclick = () => pick(key); node.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(key); } }; return node; };
+  const cnt = {}; for (const x of rows) { const k = pipeStep(x); if (k) cnt[k] = (cnt[k] || 0) + 1; }
+  const maxStep = Math.max(1, ...PIPE.map((st) => cnt[st.key] || 0)), inReview = PIPE.reduce((a, st) => a + (cnt[st.key] || 0), 0);
+  const pipe = el("div", { class: "pipe" });
+  PIPE.forEach((st) => {
+    const n = cnt[st.key] || 0, share = n / maxStep;
+    const box = el("div", { class: "pstep" + (st.ka ? " ka" : "") + (n === maxStep && n > 0 ? " busiest" : "") });
+    box.style.setProperty("--fill", (0.06 + 0.3 * share).toFixed(2));
+    box.append(el("div", { class: "pl" }, st.label), el("div", { class: "pv" }, fmtInt(n)), el("div", { class: "ps" }, st.sub));
+    const bar = el("div", { class: "pbar" }); const f = el("span"); f.style.width = (inReview ? (n / inReview) * 100 : 0).toFixed(1) + "%"; bar.append(f); box.append(bar);
+    pipe.append(clickable(box, st.key));
+  });
+  const done = rows.filter(OV_GROUPS[1].test).length;
+  const end = el("div", { class: "pstep done" }); end.append(el("div", { class: "pl" }, "Approved"), el("div", { class: "pv" }, fmtInt(done)), el("div", { class: "ps" }, hasErp ? `${fmtInt(rows.filter(OV_GROUPS[4].test).length)} with PR / PO` : "fully approved"));
+  pipe.append(clickable(end, "approved"));
+  const side = el("div", { class: "pside" });
+  const chip = (key, label, n, cls) => clickable(el("span", { class: "pchip " + cls }, el("b", {}, fmtInt(n)), " " + label), key);
+  side.append(chip("all", "total CPRs", rows.length, "c-all"), chip("review", "in review", inReview, "c-review"), chip("rejected", "rejected", rows.filter(OV_GROUPS[3].test).length, "c-rej"));
+  if (hasErp) side.append(chip("completed", "PR / PO created", rows.filter(OV_GROUPS[4].test).length, "c-done"));
+  $("ovTiles").replaceChildren(pipe, side);
   const units = [...new Set(rows.map((x) => x.unit).filter(Boolean))].sort();
   const uSel = $("ovUnit"), cur = uSel.value; uSel.replaceChildren(el("option", { value: "" }, "All hospitals"), ...units.map((u) => el("option", { value: u }, u))); if (units.includes(cur)) uSel.value = cur;
   const g = OV_GROUPS.find((x) => x.key === OV.group) || OV_GROUPS[0];
@@ -3888,6 +4000,15 @@ function renderSpeed() {
     const res = s.reserve[k] ? s.reserve[k].reserve : 0, h = held[k] || 0, sp = s.speed.perDay[k], rate = rr.rate[k] ?? rr.team, fx = s.fix.ka[k] ?? s.fix.team;
     return { ka: k, name: kaLabel(k), held: h, res, done: s.speed.done[k] || 0, days: s.speed.days[k] || 0, sp, rate, fx, hold: s.speed.holdDays[k], holdFrom: s.speed.holdFrom[k], fin: s.finishOf(k, h + res), within: h + res + 1 <= s.maxPerDay * capOf(k), given: s.assigned.filter((c) => c.ka === k && (c.isNewAssign || !c.locked)).length };
   }).filter((r) => !G.ka || r.ka === G.ka).sort((a, b) => a.fin - b.fin);
+  // ranked bars: estimated finish (working days), fastest first; the first KA within the limit gets the next CPR
+  const maxFin = Math.max(1, ...rows.map((r) => r.fin)), next = rows.find((r) => r.within);
+  $("speedViz").replaceChildren(...rows.map((r) => {
+    const row = el("div", { class: "rk" + (r.within ? "" : " over") + (r === next ? " next" : "") });
+    const bar = el("div", { class: "rk-bar" }); const f = el("span"); f.style.width = Math.max(3, (r.fin / maxFin) * 100) + "%"; bar.append(f);
+    const info = el("div", { class: "rk-info" }); info.append(el("b", {}, fmtNum(r.fin, 1) + " days"), el("small", {}, `${fmtInt(r.held)} held · ${fmtNum(r.sp ?? s.speed.team, 1)}/day`));
+    row.append(kaCell(r.ka), bar, info, r === next ? el("span", { class: "rk-tag" }, "Next CPR goes here") : el("span", { class: "rk-tag " + (r.within ? "ok" : "no") }, r.within ? "Within limit" : "Over limit"));
+    return row;
+  }));
   renderTable($("tblSpeed"), [
     { key: "name", label: "Key Account", render: (r) => kaCell(r.ka) },
     { key: "held", label: "Held now", num: true, render: (r) => fmtInt(r.held) },
@@ -5336,6 +5457,24 @@ function renderTaskLoad() {
   $("subTask").textContent = `Data as of ${D !== null ? fmtDay(D) : "–"}. Open tasks = Sequence 8 not done + rework + waiting at Purchasing Head HO / Director (may still come back as rework). Seq 8 days so far: ≤ 5 green, 6–14 yellow, > 14 red (working days). Daily limit = limit − rework reserve (hover a number). Rework reserve uses each KA's rework rate as of ${rr.asOf !== undefined ? fmtDay(rr.asOf) : "–"}, next refresh ${rr.next !== undefined ? fmtDay(rr.next) : "–"}.`;
   $("lgTask").innerHTML = [["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"], ["Waiting at PH HO / Director", "var(--line-strong)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
   const W = TL_ON.weights;
+  // one card per KA: CPRs held (Seq 8 + rework) against the daily limit, speed and rework rate
+  $("kaCards").replaceChildren(...kas.map((k) => {
+    const held = k.mat + k.rw, lim = SIM.maxPerDay * capOf(k.ka) - (k.res ? k.res.reserve : 0), ratio = lim > 0 ? held / lim : 0;
+    const lv = ratio >= 1 ? "over" : ratio >= 0.8 ? "near" : "ok";
+    const sp = SIM.speed && SIM.speed.perDay ? SIM.speed.perDay[k.ka] ?? SIM.speed.team : null, rw = rr.rate[k.ka] ?? rr.team;
+    const card = el("div", { class: "kacard lv-" + lv, role: "button", tabIndex: 0, title: "Show this KA's CPRs" });
+    const top = el("div", { class: "kc-top" }); top.append(kaCell(k.ka), el("span", { class: "kc-st" }, lv === "over" ? "Over limit" : lv === "near" ? "Near limit" : "OK")); card.append(top);
+    const C = 2 * Math.PI * 26, ring = svgEl("svg", { viewBox: "0 0 64 64", class: "kc-ring" });
+    ring.append(svgEl("circle", { cx: 32, cy: 32, r: 26, fill: "none", stroke: "#e6eef0", "stroke-width": 7 }));
+    ring.append(svgEl("circle", { cx: 32, cy: 32, r: 26, fill: "none", class: "kc-arc", "stroke-width": 7, "stroke-linecap": "round", "stroke-dasharray": `${(Math.min(1, ratio) * C).toFixed(1)} ${C.toFixed(1)}`, transform: "rotate(-90 32 32)" }));
+    const mid = el("div", { class: "kc-mid" }); const rw2 = el("div", { class: "kc-ringwrap" }); rw2.append(ring, el("div", { class: "kc-held" }, el("b", {}, fmtInt(held)), el("small", {}, "of " + fmtNum(lim, 0))));
+    const list = el("div", { class: "kc-list" });
+    for (const [lab, v, cls] of [["Seq 8", k.mat, "s8"], ["Rework", k.rw, "rw"], ["Waiting PH / Dir.", k.fin, "fin"]]) { const r = el("div"); r.append(el("i", { class: cls }), el("span", {}, lab), el("b", {}, fmtInt(v))); list.append(r); }
+    mid.append(rw2, list); card.append(mid);
+    const foot = el("div", { class: "kc-foot" }); foot.append(el("span", {}, el("b", {}, sp === null ? "–" : fmtNum(sp, 1)), " / day"), el("span", {}, el("b", {}, fmtNum(rw * 100, 1) + "%"), " rework")); card.append(foot);
+    card.onclick = () => openKaPanel(k.ka); card.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openKaPanel(k.ka); } };
+    return card;
+  }));
   barChartH($("chTask"), kas.map((k) => `${k.name} (${k.open})`), [
     { name: "Sequence 8", color: "var(--s2)", values: kas.map((k) => (W ? k.wMat : k.mat)) },
     { name: "Rework", color: "var(--s3, #8e5bd8)", values: kas.map((k) => (W ? k.wRw : k.rw)) },
