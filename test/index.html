@@ -2435,14 +2435,14 @@ function ioDayTable(from, to, kk, perKa, ev) {
   let run = kk.reduce((a, k) => a + Math.max(0, openBefore(k)), 0);
   const dname = (d) => `${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][weekday(d)]} ${fmtDay(d)}${HOLIDAYS.has(dayToIso(d)) ? " (holiday)" : ""}`;
   const rows = dates.map((d) => { const i = cntOf(d, "in"), o = cntOf(d, "out"); run += i - o - cntOf(d, "close");
-    const cells = [dname(d), String(i), String(o), String(Math.max(0, run))];
-    if (perKa) for (const k of kk) { const a = cntOf(d, "in", k), b = cntOf(d, "out", k); cells.push(a || b ? `${a} / ${b}` : "–"); }
-    return { d, wk: !isWorkDay(d), i, o, cells }; });
+    const cells = [dname(d), String(i), String(o), String(Math.max(0, run))], byKa = {};
+    if (perKa) for (const k of kk) { const a = cntOf(d, "in", k), b = cntOf(d, "out", k); byKa[k] = [a, b]; cells.push(a || b ? `${a} / ${b}` : "–"); }
+    return { d, wk: !isWorkDay(d), i, o, open: Math.max(0, run), byKa, cells }; });
   // weekend movements are included, spread over the working days
   const nWd = Math.max(1, rows.filter((r) => !r.wk).length);
   const avg = { avg: true, cells: ["Average per working day", fmtNum(rows.reduce((a, r) => a + r.i, 0) / nWd, 1), fmtNum(rows.reduce((a, r) => a + r.o, 0) / nWd, 1), "", ...(perKa ? kk.map(() => "") : [])] };
   const header = ["Date", "In", "Out", "Open at end of day", ...(perKa ? kk.map((k) => kaLabel(k) + " in / out") : [])];
-  return { header, rows: [avg, ...rows] };
+  return { header, rows: [avg, ...rows], days: rows, nWd, kk };
 }
 // ---- monthly report per KA (Excel): summary, daily in/out, CPR list ----
 function monthlyReport(mk) {
@@ -2452,10 +2452,23 @@ function monthlyReport(mk) {
   const ev = ioEvents().filter((e) => e[0] <= D);
   const kas = [...new Set(ev.filter((e) => e[0] >= from && e[0] <= to).map((e) => e[1]))].filter(isCurrentKa).sort((a, b) => kaLabel(a).localeCompare(kaLabel(b)));
   const t = ioDayTable(from, to, kas, true, ev);
-  const num = (v) => (/^-?\d+(\.\d+)?$/.test(String(v).replace(",", ".")) && !String(v).includes("/") ? Number(String(v).replace(",", ".")) : v);
-  const aoa = [t.header, ...t.rows.map((r) => r.cells.map((v, k) => (k > 0 && k < 4 ? num(v) : v)))];
+  // one column for "in" and one for "out" per KA; average per working day at the top, totals at the bottom
+  const header = ["Date", "In", "Out", "Open at end of day", ...kas.flatMap((k) => [kaLabel(k) + " in", kaLabel(k) + " out"])];
+  const r1 = 3, rN = 2 + t.days.length;   // Excel rows of the first and the last date
+  const col = (k) => XLSX.utils.encode_col(k);
+  const avg = ["Average per working day", ...Array.from({ length: header.length - 1 }, (_, k) => (k === 2 ? "" : { f: `ROUND(${col(k + 1)}${rN + 1}/${t.nWd},1)` }))];
+  const body = t.days.map((r) => [r.cells[0], r.i, r.o, r.open, ...kas.flatMap((k) => r.byKa[k])]);
+  const total = ["Total", ...Array.from({ length: header.length - 1 }, (_, k) => (k === 2 ? "" : { f: `SUM(${col(k + 1)}${r1}:${col(k + 1)}${rN})` }))];
+  const aoa = [header, avg, ...body, total];
   const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"] = t.header.map((h, k) => ({ wch: k === 0 ? 24 : k < 4 ? 10 : Math.max(12, h.length + 2) }));
+  // formulas also get a value, so the file shows numbers even before Excel recalculates
+  const sum = (k) => t.days.reduce((a, r) => a + (k === 0 ? r.i : k === 1 ? r.o : (() => { const idx = k - 3, ka = kas[Math.floor(idx / 2)]; return r.byKa[ka][idx % 2]; })()), 0);
+  for (let k = 0; k < header.length - 1; k++) {
+    if (k === 2) continue;
+    const tot = sum(k), cT = ws[col(k + 1) + (rN + 1)], cA = ws[col(k + 1) + 2];
+    if (cT) { cT.t = "n"; cT.v = tot; } if (cA) { cA.t = "n"; cA.v = Math.round((tot / t.nWd) * 10) / 10; }
+  }
+  ws["!cols"] = header.map((h, k) => ({ wch: k === 0 ? 24 : k < 4 ? 10 : Math.max(10, h.length + 2) }));
   XLSX.utils.book_append_sheet(wb, ws, "CPRs in and out");
   XLSX.writeFile(wb, `CPR_in_out_${mk}.xlsx`);
   setStatus(`Report ${monthText(mk)} downloaded.`);
