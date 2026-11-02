@@ -3956,21 +3956,30 @@ function simulate() {
   // estimated working days until one more CPR is finished by KA k, from the data only:
   //   finish = (CPRs held + 1) ÷ CPRs the KA approved per working day last week + rework rate × days to fix a rework
   const finishOf = (k, held) => (held + 1) / Math.max(0.2, SPEED.perDay[k] ?? SPEED.team) + riskOf(k);
+  // load used when choosing a KA for a CPR that has not reached any KA yet ("coming"):
+  // what the KA really holds now (Seq 3 + Seq 8 + rework in the data) + CPRs already given to the KA that are still coming.
+  // A forecast that the KA will be free later is not trusted: a KA who is busy now does not get more.
+  const isComing = (r) => !r.done && (r.kaIn === null || r.kaIn === undefined) && !isInactive(r) && !IGNORED[r.cpr] && !/reject|cancel/i.test(r.hstatus || "") && !dataKaUser(r);
+  const nowHeld = {}, coming = {};
+  for (const r of RECS) { const t = taskOf(r); if (t === "rec" || t === "mat" || t === "rw") { const k = dataKa(r); if (k) nowHeld[k] = (nowHeld[k] || 0) + 1; } }
+  const loadOf = (k, c, days, extra = 0) => { const pk = peak(L, k, days, extra); return c && c.r && isComing(c.r) ? Math.max(pk, (nowHeld[k] || 0) + (coming[k] || 0) + extra) : pk; };
+  const countComing = (c, k, d) => { if (k && isComing(c.r)) coming[k] = (coming[k] || 0) + d; };
   const bestKa = (c, days, exclude) => {
     // 1) KAs that are present and stay within the limit with this CPR; 2) the fastest estimated finish among them
-    // nobody within the limit: the fastest one anyway (Exception for the supervisor)
+    // nobody within the limit: the least loaded one (Exception for the supervisor)
     let best = null, bestFin = Infinity, bestPeak = Infinity, over = null, overFin = Infinity, overPeak = Infinity;
     for (const k of allocKas) {
       if (k === exclude || absent(k, days) || capOf(k) <= 0) continue;
-      const held = peak(L, k, days, 0) + reserveOf(k), fin = finishOf(k, held, c), pk = (held + (c.weight || 1)) / capOf(k);
+      const held = loadOf(k, c, days) + reserveOf(k), fin = finishOf(k, held, c), pk = (held + (c.weight || 1)) / capOf(k);
       if (pk <= maxPerDay) { if (fin < bestFin || (fin === bestFin && pk < bestPeak)) { best = k; bestFin = fin; bestPeak = pk; } }
-      else if (fin < overFin) { over = k; overFin = fin; overPeak = pk; }
+      // everybody above the limit: the KA with the LEAST load gets it (a fast but very busy KA is not loaded even more)
+      else if (pk < overPeak || (pk === overPeak && fin < overFin)) { over = k; overFin = fin; overPeak = pk; }
     }
     return best ? { best, bestPeak, fin: bestFin, over: false } : { best: over, bestPeak: over ? overPeak : Infinity, fin: overFin, over: !!over };
   };
   const moveTo = (c, to, reason) => {
-    add(L, c, -1); cnt[c.ka] = (cnt[c.ka] || 1) - 1;
-    const from = c.ka; c.ka = to; add(L, c, 1); cnt[to] = (cnt[to] || 0) + 1;
+    add(L, c, -1); cnt[c.ka] = (cnt[c.ka] || 1) - 1; countComing(c, c.ka, -1);
+    const from = c.ka; c.ka = to; add(L, c, 1); cnt[to] = (cnt[to] || 0) + 1; countComing(c, to, 1);
     c.rule = "Dialihkan"; c.moved = { from, to, reason, by: "Automatic" }; c.why = "Moved: " + reason;
     const prev = transferMap.get(c.r.cpr);
     if (!prev || prev.to !== to) autoTransfers.push({ cpr: c.r.cpr, unit: c.unit, from, to, reason, by: "Automatic" });
@@ -4044,21 +4053,21 @@ function simulate() {
         // already assigned in an earlier upload: the KA never changes
         c.ka = c.lock.ka; c.weight = c.lock.weight; c.rule = c.lock.rule; c.locked = true; planHold(c);
         c.why = c.lock.rule === "Diproses KA" ? "Already taken by this KA (CPRHistory)" : c.lock.rule === "Dialihkan" ? "Reassigned" + (c.transfer && c.transfer.reason ? ": " + c.transfer.reason : "") : "Fixed from an earlier allocation";
-        add(L, c, 1); assigned.push(c); cnt[c.ka] = (cnt[c.ka] || 0) + 1;
+        add(L, c, 1); assigned.push(c); cnt[c.ka] = (cnt[c.ka] || 0) + 1; countComing(c, c.ka, 1);
         if (!byVendor.has(c.vendor)) byVendor.set(c.vendor, []); byVendor.get(c.vendor).push(c);
         checkAbsence(c); rules[c.rule] = (rules[c.rule] || 0) + 1;
         continue;
       }
       const hv = vendorHolder(c.vendor, c.s1);
-      if (hv && !absent(hv, days) && capOf(hv) > 0 && peak(L, hv, days, vf) + reserveOf(hv) <= maxPerDay * capOf(hv)) { ka = hv; weight = vf; rule = "Vendor sama"; }
+      if (hv && !absent(hv, days) && capOf(hv) > 0 && loadOf(hv, c, days, vf) + reserveOf(hv) <= maxPerDay * capOf(hv)) { ka = hv; weight = vf; rule = "Vendor sama"; }
       if (!ka && usePic) {
         const p = pic[c.unit];
         const fair = assigned.length / kaList.length + 1; // fair share so far (average per KA)
-        if (p && kaIdx.has(p) && !absent(p, days) && capOf(p) > 0 && (cnt[p] || 0) <= fair * capOf(p) && peak(L, p, days, 1) + reserveOf(p) <= maxPerDay * capOf(p)) { ka = p; rule = "PIC unit"; }
+        if (p && kaIdx.has(p) && !absent(p, days) && capOf(p) > 0 && (cnt[p] || 0) <= fair * capOf(p) && loadOf(p, c, days, 1) + reserveOf(p) <= maxPerDay * capOf(p)) { ka = p; rule = "PIC unit"; }
       }
       if (!ka) {
         let { best, bestPeak, fin, over } = bestKa({ ...c, weight: 1 }, days, null);
-        if (!best) { for (const k of allocKas) { if (capOf(k) <= 0) continue; const held = peak(L, k, days, 0) + reserveOf(k), f = finishOf(k, held, c); if (!best || f < fin) { fin = f; best = k; bestPeak = held + 1; over = bestPeak > maxPerDay; } } } // everyone absent
+        if (!best) { for (const k of allocKas) { if (capOf(k) <= 0) continue; const held = loadOf(k, c, days) + reserveOf(k), f = finishOf(k, held, c); if (!best || f < fin) { fin = f; best = k; bestPeak = held + 1; over = bestPeak > maxPerDay; } } } // everyone absent
         ka = best; rule = over ? "Exception" : "Beban terendah";
         const sp = SPEED.perDay[ka] ?? SPEED.team;
         c.why = `${over ? "All KAs above the limit; " : ""}fastest finish: ${fmtNum(fin, 1)} working days (${fmtNum(bestPeak - 1, 0)} held, ${fmtNum(sp, 1)}/day last week, rework ${fmtNum((RW.rate[ka] ?? RW.team) * 100, 0)}%)`;
@@ -4066,7 +4075,7 @@ function simulate() {
       if (rule === "Vendor sama") c.why = "Same vendor as a CPR this KA holds";
       if (rule === "PIC unit") c.why = "Hospital PIC, within the limit";
       c.ka = ka; c.weight = weight; c.rule = rule; rules[rule]++; planHold(c);
-      add(L, c, 1); assigned.push(c); cnt[ka] = (cnt[ka] || 0) + 1;
+      add(L, c, 1); assigned.push(c); cnt[ka] = (cnt[ka] || 0) + 1; countComing(c, ka, 1);
       if (!byVendor.has(c.vendor)) byVendor.set(c.vendor, []); byVendor.get(c.vendor).push(c);
     }
     for (const c of byArrive.get(day) || []) {
@@ -4097,7 +4106,7 @@ function simulate() {
   for (const c of assigned) rules[c.rule] = (rules[c.rule] || 0) + 1;
   SIM_KA = new Map(assigned.map((c) => [c.r.cpr, c.ka]));
   return {
-    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, reserve, teamRate: RW.team, speed: SPEED, fix, allocKas, finishOf,
+    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, reserve, teamRate: RW.team, speed: SPEED, fix, allocKas, finishOf, nowHeld, coming,
     histCount: useModels && MODELS.f1 ? MODELS.f1.n : 0, models: useModels ? MODELS : null,
     f1Method: useModels && MODELS.f1 ? `${MODELS.f1.chosen.family} (${MODELS.f1.chosen.setting})` : "median per hospital",
     f2Method: useModels && MODELS.f2 ? `${MODELS.f2.chosen.family} (${MODELS.f2.chosen.setting})` : "median per hospital",
@@ -4120,7 +4129,8 @@ let incState = { page: 0, q: "" };
 function renderSpeed() {
   const card = $("speedCard"); const s = SIM;
   if (!s || !s.speed || s.actual) { card.hidden = true; return; } card.hidden = false;
-  const held = {}; for (const t of openTasks()) if (t.task === "mat" || t.task === "rw") held[t.ka] = (held[t.ka] || 0) + 1;
+  // held = what the KA really holds now (Seq 3 + Seq 8 + rework) + CPRs already given to the KA that are still coming
+  const held = {}; for (const k of s.allocKas) held[k] = (s.nowHeld[k] || 0) + (s.coming[k] || 0);
   const rr = reworkRates();
   const rows = s.allocKas.map((k) => {
     const res = s.reserve[k] ? s.reserve[k].reserve : 0, h = held[k] || 0, sp = s.speed.perDay[k], rate = rr.rate[k] ?? rr.team, fx = s.fix.ka[k] ?? s.fix.team;
@@ -4132,13 +4142,13 @@ function renderSpeed() {
     const row = el("div", { class: "rk" + (r.within ? "" : " over") + (r === next ? " next" : "") });
     const bar = el("div", { class: "rk-bar" }); const f = el("span"); f.style.width = Math.max(3, (r.fin / maxFin) * 100) + "%"; bar.append(f);
     const cp = capOf(r.ka) * 100;
-    const info = el("div", { class: "rk-info" }); info.append(el("b", {}, fmtNum(r.fin, 1) + " days"), el("small", {}, `${fmtInt(r.held)} held · ${fmtNum(r.sp ?? s.speed.team, 1)}/day${cp < 100 ? ` · ${fmtNum(cp, 0)}% capacity` : ""}`));
+    const info = el("div", { class: "rk-info" }); info.append(el("b", {}, fmtNum(r.fin, 1) + " days"), el("small", {}, `${fmtInt(s.nowHeld[r.ka] || 0)} held + ${fmtInt(s.coming[r.ka] || 0)} coming · ${fmtNum(r.sp ?? s.speed.team, 1)}/day${cp < 100 ? ` · ${fmtNum(cp, 0)}% capacity` : ""}`));
     row.append(kaCell(r.ka), bar, info, r === next ? el("span", { class: "rk-tag" }, "Next CPR goes here") : el("span", { class: "rk-tag " + (r.within ? "ok" : "no") }, r.within ? "Within limit" : capOf(r.ka) <= 0 ? "No new CPRs (0%)" : "Over limit"));
     return row;
   }));
   renderTable($("tblSpeed"), [
     { key: "name", label: "Key Account", render: (r) => kaCell(r.ka) },
-    { key: "held", label: "Held now", num: true, render: (r) => fmtInt(r.held) },
+    { key: "held", label: "Held + coming", num: true, render: (r) => fmtInt(r.held) },
     { key: "sp", label: "Speed /day", num: true, render: (r) => (r.sp === undefined ? el("span", { title: "No Seq 8 approval last week: team average used" }, fmtNum(s.speed.team, 1) + "*") : fmtNum(r.sp, 1)) },
     { key: "rate", label: "Rework", num: true, render: (r) => fmtNum(r.rate * 100, 1) + "%" },
     { key: "fin", label: "Est. finish (days)", num: true, render: (r) => el("b", { title: `Reserve ${fmtNum(r.res, 1)} · done last week ${fmtInt(r.done)} in ${fmtInt(r.days)} days · fix days ${fmtNum(r.fx, 1)}` }, fmtNum(r.fin, 1)) },
