@@ -948,7 +948,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
       <button type="button" data-sub="subLog" aria-selected="false">Reassignment log</button>
     </div>
     <div id="subSpd">
-      <div class="card"><div class="sub" style="margin-bottom:10px">Seq 8 approvals per working day, week by week. The allocation uses last week, unless it is more than 1.5× or less than ⅔ of the KA's 3-month average: then the 3-month average is used until you review the week.</div>
+      <div class="card"><div class="sub" style="margin-bottom:10px">Number of CPRs each KA approved at Seq 8, week by week. The allocation uses last week, unless it is more than 1.5× or less than ⅔ of the KA's usual week (3-month average): then the usual week is used until you review it.</div>
       <div class="tbl-wrap"><table id="tblSpd"></table></div></div>
     </div>
     <div id="subAbs" hidden>
@@ -4011,6 +4011,8 @@ function trainingPool() {
   return [...m.values()];
 }
 // CPRs each KA approved at Sequence 8 in the last full working week before the data date (Mon–Fri), per working day present
+// speed is kept per working day inside; it is SHOWN as whole CPRs per week (5 working days), easier to read
+const perWeek = (x) => (x === undefined || x === null || isNaN(x) ? "–" : fmtInt(Math.round(x * 5)));
 let SPEED_REVIEW = {};   // ka -> { mon, use: "last" | "usual", by, at } : the supervisor's decision for an unusual week
 async function saveSpeedReview() { if (DB && canSave()) await DB.doc("settings/speedReview").set({ list: SPEED_REVIEW }); }
 function kaSpeeds(kaList) {
@@ -4345,7 +4347,7 @@ function simulate() {
         if (!best) { for (const k of allocKas) { if (capOf(k) <= 0) continue; const held = loadOf(k, c, days) + reserveOf(k), f = finishOf(k, held, c); if (!best || f < fin) { fin = f; best = k; bestPeak = held + 1; over = bestPeak > maxPerDay; } } } // everyone absent
         ka = best; rule = over ? "Exception" : "Beban terendah";
         const sp = SPEED.perDay[ka] ?? SPEED.team;
-        c.why = `${over ? "All KAs above the limit; " : ""}fastest finish: ${fmtNum(fin, 1)} working days (${fmtNum(bestPeak - 1, 0)} held, ${fmtNum(sp, 1)}/day (${SPEED.basis[ka] || "team average"}), rework ${fmtNum((RW.rate[ka] ?? RW.team) * 100, 0)}%)`;
+        c.why = `${over ? "All KAs above the limit; " : ""}fastest finish: ${fmtNum(fin, 1)} working days (${fmtNum(bestPeak - 1, 0)} held, ${perWeek(sp)} CPR/week (${SPEED.basis[ka] || "team average"}), rework ${fmtNum((RW.rate[ka] ?? RW.team) * 100, 0)}%)`;
       }
       if (rule === "Vendor sama") c.why = "Same vendor as a CPR this KA holds";
       if (rule === "PIC unit") c.why = "Hospital PIC, within the limit";
@@ -4419,14 +4421,14 @@ function renderSpeed() {
     const row = el("div", { class: "rk" + (r.within ? "" : " over") + (r === next ? " next" : "") });
     const bar = el("div", { class: "rk-bar" }); const f = el("span"); f.style.width = Math.max(3, (r.fin / maxFin) * 100) + "%"; bar.append(f);
     const cp = capOf(r.ka) * 100;
-    const info = el("div", { class: "rk-info" }); info.append(el("b", {}, fmtNum(r.fin, 1) + " days"), el("small", {}, `${fmtInt(s.nowHeld[r.ka] || 0)} held + ${fmtInt(s.coming[r.ka] || 0)} coming · ${fmtNum(r.sp ?? s.speed.team, 1)}/day${/unusual|absent/.test(s.speed.basis[r.ka] || "") ? " (usual)" : ""}${cp < 100 ? ` · ${fmtNum(cp, 0)}% capacity` : ""}`));
+    const info = el("div", { class: "rk-info" }); info.append(el("b", {}, fmtNum(r.fin, 1) + " days"), el("small", {}, `${fmtInt(s.nowHeld[r.ka] || 0)} held + ${fmtInt(s.coming[r.ka] || 0)} coming · ${perWeek(r.sp ?? s.speed.team)} CPR/week${/unusual|absent/.test(s.speed.basis[r.ka] || "") ? " (usual)" : ""}${cp < 100 ? ` · ${fmtNum(cp, 0)}% capacity` : ""}`));
     row.append(kaCell(r.ka), bar, info, r === next ? el("span", { class: "rk-tag" }, "Next CPR goes here") : el("span", { class: "rk-tag " + (r.within ? "ok" : "no") }, r.within ? "Within limit" : capOf(r.ka) <= 0 ? "No new CPRs (0%)" : "Over limit"));
     return row;
   }));
   renderTable($("tblSpeed"), [
     { key: "name", label: "Key Account", render: (r) => kaCell(r.ka) },
     { key: "held", label: "Held + coming", num: true, render: (r) => fmtInt(r.held) },
-    { key: "sp", label: "Speed /day", num: true, render: (r) => (r.sp === undefined ? el("span", { title: "No Seq 8 approval in the last 4 weeks: team average used" }, fmtNum(s.speed.team, 1) + "*") : el("span", { title: `${s.speed.basis[r.ka]} · last week ${s.speed.lastWeek[r.ka] !== undefined ? fmtNum(s.speed.lastWeek[r.ka], 1) : "–"} · usual ${fmtNum(s.speed.usual[r.ka], 1)}` }, fmtNum(r.sp, 1) + (/unusual|absent/.test(s.speed.basis[r.ka] || "") ? " ⓜ" : ""))) },
+    { key: "sp", label: "CPR / week", num: true, render: (r) => (r.sp === undefined ? el("span", { title: "No Seq 8 approval in the last 4 weeks: team average used" }, perWeek(s.speed.team) + "*") : el("span", { title: `${s.speed.basis[r.ka]} · last week ${perWeek(s.speed.lastWeek[r.ka])} · usual ${perWeek(s.speed.usual[r.ka])} CPR/week` }, perWeek(r.sp) + (/unusual|absent/.test(s.speed.basis[r.ka] || "") ? " ⓜ" : ""))) },
     { key: "rate", label: "Rework", num: true, render: (r) => fmtNum(r.rate * 100, 1) + "%" },
     { key: "fin", label: "Est. finish (days)", num: true, render: (r) => el("b", { title: `Reserve ${fmtNum(r.res, 1)} · done in 4 weeks ${fmtInt(r.done)} in ${fmtInt(r.days)} days · fix days ${fmtNum(r.fx, 1)}` }, fmtNum(r.fin, 1)) },
     { key: "within", label: "Within limit", sortable: false, render: (r) => pill(r.within ? "Yes" : "No", r.within ? "good" : "bad") },
@@ -5028,9 +5030,9 @@ function renderSpeedCheck(editable) {
     { key: "ka", label: "Key Account", sortable: false, render: (k) => kaCell(k) },
     ...weeks.map((w, i) => ({ key: "w" + i, label: fmtShort(w.mon), num: true, sortable: false, render: (k) => {
       const x = sp.series[k][i]; if (!x || x.rate === null) return el("span", { class: "desc1" }, "absent");
-      const last = i === weeks.length - 1; return el("span", { class: "spdcell" + (last && sp.flag[k] ? " flag-" + sp.flag[k] : "") + (last ? " last" : ""), title: `${x.done} approved in ${x.n} working days` }, fmtNum(x.rate, 1)); } })),
-    { key: "usual", label: "3-month avg", num: true, sortable: false, render: (k) => el("b", {}, sp.usual[k] !== undefined ? fmtNum(sp.usual[k], 1) : "–") },
-    { key: "used", label: "Used now", num: true, sortable: false, render: (k) => el("b", { title: sp.basis[k] || "" }, sp.perDay[k] !== undefined ? fmtNum(sp.perDay[k], 1) : "–") },
+      const last = i === weeks.length - 1; return el("span", { class: "spdcell" + (last && sp.flag[k] ? " flag-" + sp.flag[k] : "") + (last ? " last" : ""), title: `${x.done} CPRs approved in ${x.n} working days` }, fmtInt(x.done) + (x.n < 5 ? ` (${x.n}d)` : "")); } })),
+    { key: "usual", label: "Usual week (3-month avg)", num: true, sortable: false, render: (k) => el("b", {}, perWeek(sp.usual[k])) },
+    { key: "used", label: "Used now (per week)", num: true, sortable: false, render: (k) => el("b", { title: sp.basis[k] || "" }, perWeek(sp.perDay[k])) },
     { key: "st", label: "Last week", sortable: false, render: (k) => {
       if (!sp.flag[k]) return pill(sp.lastWeek[k] === undefined ? "Absent" : "Normal", sp.lastWeek[k] === undefined ? "muted" : "good");
       const ch = sp.usual[k] ? Math.round((sp.lastWeek[k] / sp.usual[k] - 1) * 100) : 0;
@@ -5641,7 +5643,7 @@ function openKaPanel(ka) {
   const rw = el("div", { class: "kd-ringwrap" }); rw.append(ring, el("div", { class: "kd-ringtxt" }, el("b", {}, fmtInt(load)), el("small", {}, lim === null ? "" : "of " + fmtNum(lim, 0))));
   const stats = el("div", { class: "kd-stats" });
   const stat = (label, val, unit, note) => { const d = el("div", { class: "kd-stat" }); d.append(el("small", {}, label), el("div", {}, el("b", {}, val), unit ? el("span", {}, " " + unit) : ""), note ? el("em", {}, note) : ""); return d; };
-  stats.append(stat("Speed", sp === undefined ? "–" : fmtNum(sp, 1), "/ day", s && s.speed.basis && s.speed.basis[ka] ? (s.speed.basis[ka] === "last week" ? `last week · usual ${fmtNum(s.speed.usual[ka], 1)}` : `usual speed used · last week ${s.speed.lastWeek[ka] !== undefined ? fmtNum(s.speed.lastWeek[ka], 1) : "–"}`) : "team average"), stat("Rework rate", fmtNum(rate * 100, 1), "%", "KA error only"), stat("One more CPR done in", fin === null ? "–" : fmtNum(fin, 1), "days", "estimate"));
+  stats.append(stat("Speed", sp === undefined ? "–" : perWeek(sp), "CPR / week", s && s.speed.basis && s.speed.basis[ka] ? (s.speed.basis[ka] === "last week" ? `last week · usual ${perWeek(s.speed.usual[ka])} / week` : `usual week used · last week ${perWeek(s.speed.lastWeek[ka])}`) : "team average"), stat("Rework rate", fmtNum(rate * 100, 1), "%", "KA error only"), stat("One more CPR done in", fin === null ? "–" : fmtNum(fin, 1), "days", "estimate"));
   now.append(rw, stats);
   // what the load is made of
   const parts = el("div", { class: "kd-parts" });
@@ -5943,7 +5945,7 @@ function renderTaskLoad() {
     const list = el("div", { class: "kc-list" });
     for (const [lab, v, cls] of [["Seq 3", k.rec, "s3"], ["Seq 8", k.mat, "s8"], ["Rework", k.rw, "rw"], ["Coming", cm, "nx"], ["Waiting PH / Dir.", k.fin, "fin"]]) { const r = el("div"); r.append(el("i", { class: cls }), el("span", {}, lab), el("b", {}, fmtInt(v))); list.append(r); }
     mid.append(rw2, list); card.append(mid);
-    const foot = el("div", { class: "kc-foot" }); foot.append(el("span", {}, el("b", {}, sp === null ? "–" : fmtNum(sp, 1)), " / day"), el("span", {}, el("b", {}, fmtNum(rw * 100, 1) + "%"), " rework")); card.append(foot);
+    const foot = el("div", { class: "kc-foot" }); foot.append(el("span", {}, el("b", {}, sp === null ? "–" : perWeek(sp)), " CPR / week"), el("span", {}, el("b", {}, fmtNum(rw * 100, 1) + "%"), " rework")); card.append(foot);
     card.onclick = () => openKaPanel(k.ka); card.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openKaPanel(k.ka); } };
     return card;
   }));
