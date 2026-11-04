@@ -1155,7 +1155,7 @@ const hideTip = () => { tip.hidden = true; };
 let NOW_KA = null, NOW_MODE = "sim";
 // Simulation: every CPR that is open today (Seq 3, Seq 8, rework, and CPRs still at Seq 0–2) is split again by the system,
 // WITHOUT looking at the KA in the data. Same rule as the allocation: the fastest estimated finish among KAs within the limit;
-// when every KA is above the limit, the least loaded KA. The most urgent CPRs are placed first.
+// when every KA is above the limit, the KA with the least days of work (load × days the KA usually keeps one CPR). The most urgent CPRs are placed first.
 // Then each KA works through their list at their own speed (CPRs per working day last week) -> expected late CPRs.
 // expected late / warning when each KA works through their own list (most urgent first) at their own speed
 function expectLate(list) {
@@ -1182,7 +1182,7 @@ function simSplit(items) {
     for (const k of kas) {
       const n = load[k] || 0, fin = s.finishOf(k, n), lim = s.maxPerDay * capOf(k);
       if (n + 1 <= lim) { if (fin < bestFin) { best = k; bestFin = fin; } }
-      else if (n / capOf(k) < overLoad || (n / capOf(k) === overLoad && fin < overFin)) { over = k; overLoad = n / capOf(k); overFin = fin; }
+      else { const dw = ((n + 1) / capOf(k)) * (s.speed.holdDays[k] ?? s.speed.holdTeam); if (dw < overLoad || (dw === overLoad && fin < overFin)) { over = k; overLoad = dw; overFin = fin; } }
     }
     const k = best || over; const pos = load[k] || 0; load[k] = pos + 1;
     const sp = Math.max(0.2, s.speed.perDay[k] ?? s.speed.team), wait = Math.ceil((pos + 1) / sp), total = (x.days ?? 0) + wait;
@@ -3991,7 +3991,8 @@ function kaSpeeds(kaList) {
   const held = (from, to) => { const m = {}; for (const r of RECS) { const a = r.backFirst ?? r.back, b = r.backOutFirst ?? r.backOut; if (a == null || b == null || b < from || b > to || b < a) continue; const k = recKa(r, r.ka8User); if (k) (m[k] = m[k] || []).push(workDaysBetween(a, b)); } return m; };
   const wk = held(monday, friday), w4 = held(monday - 21, friday), all = Object.values(w4).flat();
   out.holdDays = {}; out.holdFrom = {}; out.holdTeam = all.length ? mean(all) : 2;
-  for (const k of kaList) { if ((wk[k] || []).length >= 3) { out.holdDays[k] = mean(wk[k]); out.holdFrom[k] = "last week"; } else if ((w4[k] || []).length >= 3) { out.holdDays[k] = mean(w4[k]); out.holdFrom[k] = "last 4 weeks"; } }
+  // how long the KA usually keeps one CPR at Sequence 8: average of the last 4 weeks (stable; one odd week does not move it much)
+  for (const k of kaList) { if ((w4[k] || []).length >= 3) { out.holdDays[k] = mean(w4[k]); out.holdFrom[k] = "last 4 weeks"; } else if ((wk[k] || []).length >= 3) { out.holdDays[k] = mean(wk[k]); out.holdFrom[k] = "last week"; } }
   return out;
 }
 // average working days to fix a rework (sent back by Purchasing Head HO / Director until the KA approves again), last 90 days
@@ -4162,7 +4163,11 @@ function simulate() {
   // estimated days until a new CPR is finished by KA k: (CPRs held + 1) ÷ CPRs finished per day + rework risk
   // estimated working days until one more CPR is finished by KA k, from the data only:
   //   finish = (CPRs held + 1) ÷ CPRs the KA approved per working day last week + rework rate × days to fix a rework
-  const finishOf = (k, held) => (held + 1) / Math.max(0.2, SPEED.perDay[k] ?? SPEED.team) + riskOf(k);
+  // estimated working days until a NEW CPR given to KA k is approved at Sequence 8:
+  //   wait for the CPRs already held (held ÷ CPRs the KA finishes per day) + the days the KA usually keeps one CPR + rework risk
+  // so a KA who approves many CPRs but keeps each one long (slow per CPR) is not treated as fast
+  const holdOf = (k) => SPEED.holdDays[k] ?? SPEED.holdTeam;
+  const finishOf = (k, held) => held / Math.max(0.2, SPEED.perDay[k] ?? SPEED.team) + holdOf(k) + riskOf(k);
   // load used when choosing a KA for a CPR that has not reached any KA yet ("coming"):
   // what the KA really holds now (Seq 3 + Seq 8 + rework in the data) + CPRs already given to the KA that are still coming.
   // A forecast that the KA will be free later is not trusted: a KA who is busy now does not get more.
@@ -4174,13 +4179,14 @@ function simulate() {
   const bestKa = (c, days, exclude) => {
     // 1) KAs that are present and stay within the limit with this CPR; 2) the fastest estimated finish among them
     // nobody within the limit: the least loaded one (Exception for the supervisor)
-    let best = null, bestFin = Infinity, bestPeak = Infinity, over = null, overFin = Infinity, overPeak = Infinity;
+    let best = null, bestFin = Infinity, bestPeak = Infinity, over = null, overFin = Infinity, overPeak = Infinity, overDw = Infinity;
     for (const k of allocKas) {
       if (k === exclude || absent(k, days) || capOf(k) <= 0) continue;
       const held = loadOf(k, c, days) + reserveOf(k), fin = finishOf(k, held, c), pk = (held + (c.weight || 1)) / capOf(k);
       if (pk <= maxPerDay) { if (fin < bestFin || (fin === bestFin && pk < bestPeak)) { best = k; bestFin = fin; bestPeak = pk; } }
-      // everybody above the limit: the KA with the LEAST load gets it (a fast but very busy KA is not loaded even more)
-      else if (pk < overPeak || (pk === overPeak && fin < overFin)) { over = k; overFin = fin; overPeak = pk; }
+      // everybody above the limit: the KA with the least "days of work" gets it = load × days the KA usually keeps one CPR,
+      // so a busy KA, or one who keeps each CPR long (slow per CPR), is not given even more
+      else { const dw = pk * holdOf(k); if (dw < overDw || (dw === overDw && fin < overFin)) { over = k; overFin = fin; overPeak = pk; overDw = dw; } }
     }
     return best ? { best, bestPeak, fin: bestFin, over: false } : { best: over, bestPeak: over ? overPeak : Infinity, fin: overFin, over: !!over };
   };
