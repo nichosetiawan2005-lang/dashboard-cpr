@@ -358,6 +358,7 @@ body.loading .tile .v * , body.loading .tbl-wrap tbody td * { visibility: hidden
 .kc-list div { display: flex; align-items: center; gap: 6px; }
 .kc-list span { color: var(--muted); flex: 1; }
 .kc-list i { width: 8px; height: 8px; border-radius: 2px; }
+.kc-list i.s3 { background: var(--s1); } .kc-list i.nx { background: repeating-linear-gradient(135deg, #8ea6e6 0 3px, #b9c9f0 3px 6px); }
 .kc-list i.s8 { background: var(--s2); } .kc-list i.rw { background: var(--s3); } .kc-list i.fin { background: var(--line-strong); }
 .kc-foot { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 8px; font-size: 12px; color: var(--muted); }
 .kc-foot b { color: var(--head); }
@@ -606,6 +607,48 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
 .drawer h3 { font-size: 15px; font-weight: 800; color: var(--head); }
 .tile .k { padding-right: 18px; }
 @media (max-width: 520px) { .drawer .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* KA side panel v2 */
+.drawer.kd { background: var(--mint); padding: 0 0 40px; }
+.kd-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px; padding: 18px 22px; color: #fff; background: linear-gradient(120deg, #0a2470, #1b3f9e); }
+.kd-who { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; }
+.kd-who h2 { color: #fff !important; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+.kd-sub { font-size: 12px; color: rgba(255,255,255,.75); margin-top: 2px; }
+.avatar.big { width: 46px; height: 46px; font-size: 19px; box-shadow: 0 0 0 3px rgba(255,255,255,.25); }
+.kd-st { font-size: 12px; font-weight: 800; padding: 5px 12px; border-radius: 999px; background: #d9f2e3; color: #1f7a42; white-space: nowrap; }
+.lv-near .kd-st { background: #fdf3dc; color: #8a6200; } .lv-over .kd-st { background: #fcdede; color: #b52f2f; }
+.kd-x { width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(255,255,255,.14); color: #fff; cursor: pointer; font-size: 14px; }
+.kd-x:hover { background: rgba(255,255,255,.26); }
+.drawer.kd > h3 { margin: 20px 22px 8px; font-size: 13px; font-weight: 800; color: var(--muted) !important; letter-spacing: .02em; }
+.kd-card { background: #fff; border-radius: 16px; box-shadow: 0 1px 2px rgba(12,42,130,.05), 0 6px 18px rgba(12,42,130,.05); }
+.kd-now { margin: 0 22px; padding: 18px; display: grid; grid-template-columns: 120px 1fr; gap: 16px 20px; align-items: center; }
+.kd-ringwrap { position: relative; width: 120px; height: 120px; }
+.kd-ring { width: 120px; height: 120px; }
+.kd-arc { stroke: #2f9e57; } .lv-near .kd-arc { stroke: #e0a100; } .lv-over .kd-arc { stroke: #d03b3b; }
+.kd-ringtxt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; }
+.kd-ringtxt b { font-size: 30px; font-weight: 800; color: var(--head); } .kd-ringtxt small { font-size: 11.5px; color: var(--muted); }
+.kd-stats { display: grid; gap: 10px; }
+.kd-stat small, .kd-p small { display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.kd-stat b, .kd-p b { font-size: 20px; font-weight: 800; color: var(--head); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.kd-stat span, .kd-p span { font-size: 12px; color: var(--muted); font-weight: 600; }
+.kd-stat em, .kd-p em { display: block; font-style: normal; font-size: 11.5px; color: var(--faint); }
+.kd-parts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.kd-part { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #f2f5fc; font-size: 12px; color: var(--muted); }
+.kd-part b { color: var(--head); } .kd-part i { width: 8px; height: 8px; border-radius: 2px; }
+.kd-part i.s3 { background: var(--s1); } .kd-part i.s8 { background: var(--s2); } .kd-part i.rw { background: var(--s3); } .kd-part i.fin { background: #c5cfe4; }
+.kd-part i.nx { background: repeating-linear-gradient(135deg, #8ea6e6 0 3px, #b9c9f0 3px 6px); }
+.kd-segbox { grid-column: 1 / -1; border-top: 1px solid #edf1f8; padding-top: 12px; }
+.kd-segbox small { display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.kd-seg { display: flex; gap: 3px; height: 10px; } .kd-seg span { border-radius: 5px; }
+.kd-seg .good { background: #2f9e57; } .kd-seg .warn { background: #e0a100; } .kd-seg .bad { background: #d03b3b; }
+.kd-seglg { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; font-size: 11.5px; font-weight: 600; }
+.kd-seglg .good { color: #1f7a42; } .kd-seglg .warn { color: #8a6200; } .kd-seglg .bad { color: #b52f2f; }
+.kd-period { margin: 0 22px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.kd-p { padding: 14px 16px; }
+.kd-pbar { height: 5px; border-radius: 3px; background: #e9eef8; margin-top: 8px; overflow: hidden; } .kd-pbar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.drawer.kd > .tbl-wrap { margin: 0 22px; }
+.drawer.kd .desc1 { max-width: 230px; }
+@media (max-width: 520px) { .kd-now { grid-template-columns: 1fr; justify-items: center; } .kd-period { grid-template-columns: 1fr; } }
 </style>
 
 <div class="top">
@@ -5445,8 +5488,12 @@ function openKaPanel(ka) {
   const n = (task) => ot.filter((t) => t.task === task).length;
   const lv = { good: 0, warn: 0, bad: 0 }; for (const t of ot) if (t.task === "mat" && t.tat8) lv[tatLevel(8, t.tat8.d)]++;
   const s = SIM, sp = s && s.speed ? s.speed.perDay[ka] : undefined, rr = reworkRates(), rate = rr.rate[ka] ?? rr.team;
-  const res = s && s.reserve && s.reserve[ka] ? s.reserve[ka].reserve : 0, held = n("mat") + n("rw");
-  const fin = s && s.finishOf ? s.finishOf(ka, held + res) : null;
+  const res = s && s.reserve && s.reserve[ka] ? s.reserve[ka].reserve : 0;
+  // same numbers as Workload Now and "How the KA is chosen": held = Seq 3 + Seq 8 + rework, plus CPRs still coming
+  const held = n("rec") + n("mat") + n("rw"), coming = s && s.coming ? s.coming[ka] || 0 : 0;
+  const lim = s ? s.maxPerDay * capOf(ka) - res : null, load = held + coming;
+  const fin = s && s.finishOf ? s.finishOf(ka, (s.nowHeld ? s.nowHeld[ka] || 0 : held) + coming + res) : null;
+  const lvl = lim === null ? "ok" : load >= lim ? "over" : load >= 0.8 * lim ? "near" : "ok";
   // period: in / out, Seq 3 and Seq 8 working days, reworks (KA error)
   const ev = ioEvents().filter((e) => e[1] === ka && inR(e[0]));
   const ins = ev.filter((e) => e[2] === "in").length, outs = ev.filter((e) => e[2] === "out").length;
@@ -5458,40 +5505,61 @@ function openKaPanel(ka) {
     if (inR(b8) && a8 !== null && a8 !== undefined && recKa(r, r.ka8User) === ka) { s8.push(workDaysBetween(a8, b8)); n8++; }
     if (recKa(r, r.ka8User || r.kaUser) === ka) for (const e of reworkList(r)) if (inR(e.start)) { if (e.cause === "E") rwE++; else rwK++; }
   }
-  const pct = (a) => (s8.length ? Math.round((s8.filter(a).length / s8.length) * 100) + "%" : "–");
+  const pctOf = (arr, f) => (arr.length ? Math.round((arr.filter(f).length / arr.length) * 100) : null);
   const bg = el("div", { class: "drawer-bg", id: "kaDrawerBg" }); bg.onclick = closeKaPanel;
-  const dr = el("div", { class: "drawer", id: "kaDrawer", role: "dialog", "aria-label": "Key Account " + kaLabel(ka) });
-  const head = el("div", { class: "dhead" });
-  const ttl = el("div"); ttl.append(el("h2", {}, kaLabel(ka)), el("div", { class: "sub" }, `Now = ${D !== null ? fmtDay(D) : "–"} · period ${fmtDay(rg.from)} – ${fmtDay(rg.to)} (${fmtInt(nW)} working days)`));
-  const x = el("button", { class: "btn ghost", type: "button" }, "Close"); x.onclick = closeKaPanel;
-  head.append(ttl, x); dr.append(head);
-  dr.append(el("h3", {}, "Now"));
-  const t1 = el("div", { class: "tiles" });
-  t1.append(
-    tile("Held (Seq 8 + rework)", fmtInt(held), "CPRs", `${fmtInt(n("mat"))} at Seq 8 · ${fmtInt(n("rw"))} in rework`),
-    tile("Waiting PH HO / Director", fmtInt(n("fin")), "CPRs", "may come back as rework"),
-    tile("Seq 8 days so far", `${lv.good} / ${lv.warn} / ${lv.bad}`, "", "≤5 · 6–14 · >14 working days"),
-    tile("Speed last week", sp === undefined ? "–" : fmtNum(sp, 1), "/day", "Seq 8 approved per working day"),
-    tile("Rework rate", fmtNum(rate * 100, 1), "%", "KA error, renego not counted"),
-    tile("Est. finish of one more CPR", fin === null ? "–" : fmtNum(fin, 1), "days", s ? `limit ${fmtNum(s.maxPerDay, 0)} · ${held + res + 1 <= s.maxPerDay * capOf(ka) ? "within" : "over"} the limit` : "")
-  );
-  dr.append(t1);
+  const dr = el("div", { class: "drawer kd lv-" + lvl, id: "kaDrawer", role: "dialog", "aria-label": "Key Account " + kaLabel(ka) });
+  // header band: who, status, period
+  const head = el("div", { class: "kd-head" });
+  const who = el("div", { class: "kd-who" });
+  const av = kaCell(ka).querySelector(".avatar"); av.classList.add("big");
+  const nm = el("div"); nm.append(el("h2", {}, kaLabel(ka)), el("div", { class: "kd-sub" }, `Data up to ${D !== null ? fmtDay(D) : "–"} · period ${fmtShort(rg.from)} – ${fmtShort(rg.to)} · ${fmtInt(nW)} working days`));
+  who.append(av, nm);
+  const x = el("button", { class: "kd-x", type: "button", "aria-label": "Close" }, "✕"); x.onclick = closeKaPanel;
+  head.append(who, el("span", { class: "kd-st" }, lvl === "over" ? "Over limit" : lvl === "near" ? "Near limit" : "Within limit"), x);
+  dr.append(head);
+  // now: ring (load vs limit) + the three numbers the allocation uses
+  const now = el("div", { class: "kd-card kd-now" });
+  const C = 2 * Math.PI * 40, ring = svgEl("svg", { viewBox: "0 0 100 100", class: "kd-ring" });
+  ring.append(svgEl("circle", { cx: 50, cy: 50, r: 40, fill: "none", stroke: "#e6ecf7", "stroke-width": 10 }));
+  ring.append(svgEl("circle", { cx: 50, cy: 50, r: 40, fill: "none", class: "kd-arc", "stroke-width": 10, "stroke-linecap": "round", "stroke-dasharray": `${(Math.min(1, lim ? load / lim : 0) * C).toFixed(1)} ${C.toFixed(1)}`, transform: "rotate(-90 50 50)" }));
+  const rw = el("div", { class: "kd-ringwrap" }); rw.append(ring, el("div", { class: "kd-ringtxt" }, el("b", {}, fmtInt(load)), el("small", {}, lim === null ? "" : "of " + fmtNum(lim, 0))));
+  const stats = el("div", { class: "kd-stats" });
+  const stat = (label, val, unit, note) => { const d = el("div", { class: "kd-stat" }); d.append(el("small", {}, label), el("div", {}, el("b", {}, val), unit ? el("span", {}, " " + unit) : ""), note ? el("em", {}, note) : ""); return d; };
+  stats.append(stat("Speed last week", sp === undefined ? "–" : fmtNum(sp, 1), "/ day", "Seq 8 approved"), stat("Rework rate", fmtNum(rate * 100, 1), "%", "KA error only"), stat("One more CPR done in", fin === null ? "–" : fmtNum(fin, 1), "days", "estimate"));
+  now.append(rw, stats);
+  // what the load is made of
+  const parts = el("div", { class: "kd-parts" });
+  for (const [lab, v, cls] of [["Seq 3", n("rec"), "s3"], ["Seq 8", n("mat"), "s8"], ["Rework", n("rw"), "rw"], ["Coming", coming, "nx"], ["Waiting PH / Dir.", n("fin"), "fin"]]) parts.append(el("span", { class: "kd-part" }, el("i", { class: cls }), lab + " ", el("b", {}, fmtInt(v))));
+  now.append(parts);
+  // Seq 8 days so far: one bar in three colours
+  const tot8 = lv.good + lv.warn + lv.bad;
+  if (tot8) {
+    const seg = el("div", { class: "kd-seg" });
+    for (const [k, v] of [["good", lv.good], ["warn", lv.warn], ["bad", lv.bad]]) if (v) { const sp2 = el("span", { class: k, title: `${v}` }); sp2.style.flex = String(v); seg.append(sp2); }
+    const lg = el("div", { class: "kd-seglg" }); lg.append(el("span", { class: "good" }, `${lv.good} on time (≤ 5 d)`), el("span", { class: "warn" }, `${lv.warn} warning (6–14 d)`), el("span", { class: "bad" }, `${lv.bad} late (> 14 d)`));
+    const box = el("div", { class: "kd-segbox" }); box.append(el("small", {}, `Sequence 8 now · ${tot8} CPRs`), seg, lg); now.append(box);
+  }
+  dr.append(el("h3", {}, "Now"), now);
+  // the period, as four small numbers
   dr.append(el("h3", {}, "In the period"));
-  const t2 = el("div", { class: "tiles" });
-  t2.append(
-    tile("CPRs in / out", `${fmtInt(ins)} / ${fmtInt(outs)}`, "", `avg out ${fmtNum(outs / Math.max(1, nW), 1)} per working day`),
-    tile("Seq 3 avg", s3.length ? fmtNum(mean(s3), 1) : "–", "days", `${fmtInt(s3.length)} done · ${s3.length ? Math.round((s3.filter((d) => d <= TAT_LIMIT.s3).length / s3.length) * 100) : 0}% ≤ 1 day`),
-    tile("Seq 8 avg", s8.length ? fmtNum(mean(s8), 1) : "–", "days", `${fmtInt(s8.length)} done · ${pct((d) => d <= TAT_LIMIT.s8warn)} ≤ 5 days`),
-    tile("Reworks", fmtInt(rwK), "", `${n8 ? fmtNum((rwK / n8) * 100, 1) + "% of Seq 8 done" : "–"}${rwE ? ` · ${rwE} renego not counted` : ""}`)
+  const per = el("div", { class: "kd-period" });
+  const pc3 = pctOf(s3, (d) => d <= TAT_LIMIT.s3), pc8 = pctOf(s8, (d) => d <= TAT_LIMIT.s8warn);
+  const pstat = (label, val, unit, note, pctv) => { const d = el("div", { class: "kd-card kd-p" }); d.append(el("small", {}, label), el("div", {}, el("b", {}, val), unit ? el("span", {}, " " + unit) : ""), el("em", {}, note));
+    if (pctv !== null && pctv !== undefined) { const b = el("div", { class: "kd-pbar" }); const f = el("span"); f.style.width = pctv + "%"; b.append(f); d.append(b); } return d; };
+  per.append(
+    pstat("CPRs in / out", `${fmtInt(ins)} / ${fmtInt(outs)}`, "", `${fmtNum(outs / Math.max(1, nW), 1)} out per working day`),
+    pstat("Seq 3 average", s3.length ? fmtNum(mean(s3), 1) : "–", "days", `${fmtInt(s3.length)} done · ${pc3 ?? "–"}% within 1 day`, pc3),
+    pstat("Seq 8 average", s8.length ? fmtNum(mean(s8), 1) : "–", "days", `${fmtInt(s8.length)} done · ${pc8 ?? "–"}% within 5 days`, pc8),
+    pstat("Reworks", fmtInt(rwK), "", `${n8 ? fmtNum((rwK / n8) * 100, 1) + "% of Seq 8 done" : "–"}${rwE ? ` · ${rwE} renego not counted` : ""}`)
   );
-  dr.append(t2);
+  dr.append(per);
   dr.append(el("h3", {}, `Open CPRs (${fmtInt(ot.length)})`));
   const wrap = el("div", { class: "tbl-wrap tall" }), tb = el("table"); wrap.append(tb); dr.append(wrap);
   const rows = ot.slice().sort((a, b) => (a.since ?? 0) - (b.since ?? 0));
   renderTable(tb, [
     { key: "cpr", label: "CPR", sortable: false, render: (t) => cprCell(t.r.cpr, t.r.vendorName) },
-    { key: "unit", label: "Hospital", sortable: false, render: (t) => t.r.unit || "–" },
-    { key: "task", label: "Task", sortable: false, render: (t) => TASK_LABEL[t.task] || t.task },
+    { key: "unit", label: "Hospital", sortable: false, render: (t) => unitChip(t.r.unit) },
+    { key: "task", label: "Step", sortable: false, render: (t) => (t.task === "fin" ? "Waiting PH / Dir." : TASK_LABEL[t.task] || t.task) },
     { key: "days", label: "Days", num: true, sortable: false, render: (t) => { const d = t.since !== null && t.since !== undefined && D !== null ? workDaysBetween(t.since, D) : null; if (d === null) return "–"; const l = t.task === "mat" ? tatLevel(8, d) : t.task === "rec" ? tatLevel(3, d) : null; return l ? pill(fmtInt(d), l) : fmtInt(d); } }
   ], rows);
   document.body.append(bg, dr);
@@ -5738,6 +5806,7 @@ function renderTaskLoad() {
   const lvCell = (c, seq) => { const box = el("div", { style: "display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap" }); for (const k of seq === 3 ? ["good", "bad"] : ["good", "warn", "bad"]) if (c[k]) box.append(pill(fmtInt(c[k]), k)); return box.childNodes.length ? box : "–"; };
   for (const t of ot) { if (t.task === "rec" && t.tat3) (run3[t.ka] = run3[t.ka] || []).push(t.tat3.d); if (t.task === "mat" && t.tat8) (run8[t.ka] = run8[t.ka] || []).push(t.tat8.d); }
   for (const t of ot) { if (t.age !== null && t.age > 7) old[t.ka] = (old[t.ka] || 0) + 1; if (t.risk && t.risk.level === "High") high[t.ka] = (high[t.ka] || 0) + 1; }
+  for (const k of SIM.allocKas || []) if (!per[k]) per[k] = { rec: 0, mat: 0, rw: 0, fin: 0, wRec: 0, wMat: 0, wRw: 0, wFin: 0, big: 0 };   // a KA with nothing open still gets a card
   const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin, work: per[ka].mat + per[ka].rw, open: per[ka].mat + per[ka].rw + per[ka].fin, res: SIM.reserve && SIM.reserve[ka] ? SIM.reserve[ka] : null, lv3: lvCount(run3[ka], 3), lv8: lvCount(run8[ka], 8), tat3: mean(run3[ka] || []), tat8: mean(run8[ka] || []), max3: run3[ka] ? Math.max(...run3[ka]) : null, max8: run8[ka] ? Math.max(...run8[ka]) : null })).filter((k) => !G.ka || k.ka === G.ka).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.open - a.open || b.work - a.work));
   const rr = reworkRates();
   $("subTask").textContent = `Data as of ${D !== null ? fmtDay(D) : "–"}. Open tasks = Sequence 8 not done + rework + waiting at Purchasing Head HO / Director (may still come back as rework). Seq 8 days so far: ≤ 5 green, 6–14 yellow, > 14 red (working days). Daily limit = limit − rework reserve (hover a number). Rework reserve uses each KA's rework rate as of ${rr.asOf !== undefined ? fmtDay(rr.asOf) : "–"}, next refresh ${rr.next !== undefined ? fmtDay(rr.next) : "–"}.`;
@@ -5745,7 +5814,8 @@ function renderTaskLoad() {
   const W = TL_ON.weights;
   // one card per KA: CPRs held (Seq 8 + rework) against the daily limit, speed and rework rate
   $("kaCards").replaceChildren(...kas.map((k) => {
-    const held = k.mat + k.rw, lim = SIM.maxPerDay * capOf(k.ka) - (k.res ? k.res.reserve : 0), ratio = lim > 0 ? held / lim : 0;
+    // same load as the side panel and "How the KA is chosen": Seq 3 + Seq 8 + rework now, plus CPRs still coming
+    const cm = SIM.coming ? SIM.coming[k.ka] || 0 : 0, held = k.rec + k.mat + k.rw + cm, lim = SIM.maxPerDay * capOf(k.ka) - (k.res ? k.res.reserve : 0), ratio = lim > 0 ? held / lim : 0;
     const lv = ratio >= 1 ? "over" : ratio >= 0.8 ? "near" : "ok";
     const sp = SIM.speed && SIM.speed.perDay ? SIM.speed.perDay[k.ka] ?? SIM.speed.team : null, rw = rr.rate[k.ka] ?? rr.team;
     const card = el("div", { class: "kacard lv-" + lv, role: "button", tabIndex: 0, title: "Show this KA's CPRs" });
@@ -5755,7 +5825,7 @@ function renderTaskLoad() {
     ring.append(svgEl("circle", { cx: 32, cy: 32, r: 26, fill: "none", class: "kc-arc", "stroke-width": 7, "stroke-linecap": "round", "stroke-dasharray": `${(Math.min(1, ratio) * C).toFixed(1)} ${C.toFixed(1)}`, transform: "rotate(-90 32 32)" }));
     const mid = el("div", { class: "kc-mid" }); const rw2 = el("div", { class: "kc-ringwrap" }); rw2.append(ring, el("div", { class: "kc-held" }, el("b", {}, fmtInt(held)), el("small", {}, "of " + fmtNum(lim, 0))));
     const list = el("div", { class: "kc-list" });
-    for (const [lab, v, cls] of [["Seq 8", k.mat, "s8"], ["Rework", k.rw, "rw"], ["Waiting PH / Dir.", k.fin, "fin"]]) { const r = el("div"); r.append(el("i", { class: cls }), el("span", {}, lab), el("b", {}, fmtInt(v))); list.append(r); }
+    for (const [lab, v, cls] of [["Seq 3", k.rec, "s3"], ["Seq 8", k.mat, "s8"], ["Rework", k.rw, "rw"], ["Coming", cm, "nx"], ["Waiting PH / Dir.", k.fin, "fin"]]) { const r = el("div"); r.append(el("i", { class: cls }), el("span", {}, lab), el("b", {}, fmtInt(v))); list.append(r); }
     mid.append(rw2, list); card.append(mid);
     const foot = el("div", { class: "kc-foot" }); foot.append(el("span", {}, el("b", {}, sp === null ? "–" : fmtNum(sp, 1)), " / day"), el("span", {}, el("b", {}, fmtNum(rw * 100, 1) + "%"), " rework")); card.append(foot);
     card.onclick = () => openKaPanel(k.ka); card.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openKaPanel(k.ka); } };
