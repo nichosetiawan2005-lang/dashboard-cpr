@@ -3966,11 +3966,19 @@ function kaSpeeds(kaList) {
   const D = dataDate(), out = { perDay: {}, done: {}, days: {}, from: null, to: null, team: 1 };
   if (D === null) return out;
   const monday = D - weekday(D) - 7, friday = monday + 4;   // last week
-  out.from = monday; out.to = friday;
-  for (const k of kaList) { let n = 0; for (let d = monday; d <= friday; d++) if (isWorkDay(d) && !isAbsent(k, d)) n++; out.days[k] = n; out.done[k] = 0; }
-  for (const r of RECS) { const b = r.backOutFirst ?? r.backOut; if (b === null || b === undefined || b < monday || b > friday) continue; const k = recKa(r, r.ka8User); if (k in out.done) out.done[k]++; }
+  // speed = MEDIAN of the last 4 weeks (each week: Seq 8 approvals ÷ working days present), so one unusual week
+  // (go live, a batch of approvals, a quiet week) does not change the speed much
+  const WEEKS = 4; out.from = monday - 7 * (WEEKS - 1); out.to = friday; out.weeks = {}; out.lastWeek = {};
+  const doneIn = {}; for (const k of kaList) doneIn[k] = new Array(WEEKS).fill(0);
+  for (const r of RECS) { const b = r.backOutFirst ?? r.backOut; if (b === null || b === undefined || b < out.from || b > friday) continue; const k = recKa(r, r.ka8User); if (!(k in doneIn)) continue; const w = Math.floor((friday - b) / 7); if (w >= 0 && w < WEEKS) doneIn[k][w]++; }
   const rates = [];
-  for (const k of kaList) { if (out.days[k] > 0 && out.done[k] > 0) { out.perDay[k] = out.done[k] / out.days[k]; rates.push(out.perDay[k]); } }
+  for (const k of kaList) {
+    const wk = [];
+    for (let w = 0; w < WEEKS; w++) { const mon = monday - 7 * w; let n = 0; for (let d = mon; d <= mon + 4; d++) if (isWorkDay(d) && !isAbsent(k, d)) n++; if (n > 0) wk.push({ mon, n, done: doneIn[k][w], rate: doneIn[k][w] / n }); }
+    out.weeks[k] = wk; out.days[k] = wk.reduce((a, x) => a + x.n, 0); out.done[k] = wk.reduce((a, x) => a + x.done, 0);
+    out.lastWeek[k] = wk.length && wk[0].mon === monday ? wk[0].rate : undefined;
+    if (out.done[k] > 0) { out.perDay[k] = median(wk.map((x) => x.rate)); if (out.perDay[k] <= 0) out.perDay[k] = out.done[k] / out.days[k]; rates.push(out.perDay[k]); }
+  }
   out.team = rates.length ? mean(rates) : 1;
   // working days one CPR stays with the KA at Sequence 8 (from arrival back at KA to the KA approval), from the data
   const held = (from, to) => { const m = {}; for (const r of RECS) { const a = r.backFirst ?? r.back, b = r.backOutFirst ?? r.backOut; if (a == null || b == null || b < from || b > to || b < a) continue; const k = recKa(r, r.ka8User); if (k) (m[k] = m[k] || []).push(workDaysBetween(a, b)); } return m; };
@@ -4139,7 +4147,7 @@ function simulate() {
   for (const r of RECS) if (taskOf(r) === "fin") { const k = dataKa(r); if (k) waiting[k] = (waiting[k] || 0) + 1; }
   const reserveOf = (k) => (waiting[k] || 0) * (RW.rate[k] ?? RW.team);
   const reserve = Object.fromEntries(kaList.map((k) => [k, { waiting: waiting[k] || 0, rate: RW.rate[k] ?? RW.team, n: RW.n[k] || 0, reserve: reserveOf(k) }]));
-  // speed of each KA = CPRs approved at Sequence 8 last week (Mon–Fri before the data date) ÷ working days present that week
+  // speed of each KA = median over the last 4 weeks of (CPRs approved at Sequence 8 ÷ working days present that week)
   const SPEED = kaSpeeds(kaList);
   // rework risk = rework rate × average working days to fix a rework (team average when a KA has fewer than 3 reworks)
   const fix = reworkFixDays();
@@ -4262,7 +4270,7 @@ function simulate() {
         if (!best) { for (const k of allocKas) { if (capOf(k) <= 0) continue; const held = loadOf(k, c, days) + reserveOf(k), f = finishOf(k, held, c); if (!best || f < fin) { fin = f; best = k; bestPeak = held + 1; over = bestPeak > maxPerDay; } } } // everyone absent
         ka = best; rule = over ? "Exception" : "Beban terendah";
         const sp = SPEED.perDay[ka] ?? SPEED.team;
-        c.why = `${over ? "All KAs above the limit; " : ""}fastest finish: ${fmtNum(fin, 1)} working days (${fmtNum(bestPeak - 1, 0)} held, ${fmtNum(sp, 1)}/day last week, rework ${fmtNum((RW.rate[ka] ?? RW.team) * 100, 0)}%)`;
+        c.why = `${over ? "All KAs above the limit; " : ""}fastest finish: ${fmtNum(fin, 1)} working days (${fmtNum(bestPeak - 1, 0)} held, ${fmtNum(sp, 1)}/day (4-week median), rework ${fmtNum((RW.rate[ka] ?? RW.team) * 100, 0)}%)`;
       }
       if (rule === "Vendor sama") c.why = "Same vendor as a CPR this KA holds";
       if (rule === "PIC unit") c.why = "Hospital PIC, within the limit";
@@ -4341,13 +4349,13 @@ function renderSpeed() {
   renderTable($("tblSpeed"), [
     { key: "name", label: "Key Account", render: (r) => kaCell(r.ka) },
     { key: "held", label: "Held + coming", num: true, render: (r) => fmtInt(r.held) },
-    { key: "sp", label: "Speed /day", num: true, render: (r) => (r.sp === undefined ? el("span", { title: "No Seq 8 approval last week: team average used" }, fmtNum(s.speed.team, 1) + "*") : fmtNum(r.sp, 1)) },
+    { key: "sp", label: "Speed /day", num: true, render: (r) => (r.sp === undefined ? el("span", { title: "No Seq 8 approval in the last 4 weeks: team average used" }, fmtNum(s.speed.team, 1) + "*") : fmtNum(r.sp, 1)) },
     { key: "rate", label: "Rework", num: true, render: (r) => fmtNum(r.rate * 100, 1) + "%" },
-    { key: "fin", label: "Est. finish (days)", num: true, render: (r) => el("b", { title: `Reserve ${fmtNum(r.res, 1)} · done last week ${fmtInt(r.done)} in ${fmtInt(r.days)} days · fix days ${fmtNum(r.fx, 1)}` }, fmtNum(r.fin, 1)) },
+    { key: "fin", label: "Est. finish (days)", num: true, render: (r) => el("b", { title: `Reserve ${fmtNum(r.res, 1)} · done in 4 weeks ${fmtInt(r.done)} in ${fmtInt(r.days)} days · fix days ${fmtNum(r.fx, 1)}` }, fmtNum(r.fin, 1)) },
     { key: "within", label: "Within limit", sortable: false, render: (r) => pill(r.within ? "Yes" : "No", r.within ? "good" : "bad") },
     { key: "given", label: "New", num: true, render: (r) => fmtInt(r.given) }
   ], rows);
-  $("speedNote").textContent = `Last week = ${s.speed.from !== null ? fmtDay(s.speed.from) + " – " + fmtDay(s.speed.to) : "–"}. All from the uploaded data, in working days. Est. finish = (held + reserve + 1) ÷ speed + rework rate × fix days. A new CPR goes to the fastest KA still within the limit of ${fmtNum(s.maxPerDay, 0)}; * = team average.`;
+  $("speedNote").textContent = `Speed = median of 4 weeks (${s.speed.from !== null ? fmtDay(s.speed.from) + " – " + fmtDay(s.speed.to) : "–"}): Seq 8 approvals ÷ working days present, per week, so one unusual week (go live, bulk approvals) does not change it much. All from the uploaded data, in working days. Est. finish = (held + reserve + 1) ÷ speed + rework rate × fix days. A new CPR goes to the fastest KA still within the limit of ${fmtNum(s.maxPerDay, 0)}; * = team average.`;
 }
 function renderSim() {
   try { syncCap(); syncTw(); renderTaskLoad(); renderSpeed(); } catch (e) {}
@@ -5381,7 +5389,7 @@ document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () 
 const INFO = [
   ["panel-overview", "All CPRs", ["#ovNote"], "CPRHistory (every approval step) + CPRSummary (current holder, PR / PO number) from the latest upload."],
   ["panel-distribusi", "Allocation settings", ["#simNote"], "CPRHistory + CPRSummary, Hospital PIC List, KA absences and KA capacity, and the forecast models (Forecast 1–4) trained on CPRHistory."],
-  ["panel-distribusi", "How the KA is chosen", ["#speedNote"], "CPRHistory: Sequence 8 approvals of last week per KA, CPRs held now, reworks (Revise To and the approver's note) and KA absences."],
+  ["panel-distribusi", "How the KA is chosen", ["#speedNote"], "CPRHistory: Sequence 8 approvals per KA (median of the last 4 weeks, so one unusual week such as a go live does not distort it), CPRs held now, reworks (Revise To and the approver's note) and KA absences."],
   ["panel-distribusi", "#hKaCount", ["#subKaCount", "#simCompare"], "Every CPR given to the KA that is not finished yet, at any stage: before KA (Seq 0–2), Seq 3, other approvers, Seq 8, rework, or waiting at Purchasing Head HO / Director. This is wider than \"Held\" in the table above, which counts only Seq 8 + rework (the KA's real work now)."],
   ["panel-distribusi", "Completed CPRs per KA", [], "CPRHistory: CPRs approved by each KA at Sequence 8."],
   ["panel-distribusi", "CPR assignment list", [], "One row per CPR: the KA chosen by the DSS and why, forecast dates (Forecast 1–4) and actual dates from CPRHistory."],
@@ -5525,7 +5533,7 @@ function openKaPanel(ka) {
   const rw = el("div", { class: "kd-ringwrap" }); rw.append(ring, el("div", { class: "kd-ringtxt" }, el("b", {}, fmtInt(load)), el("small", {}, lim === null ? "" : "of " + fmtNum(lim, 0))));
   const stats = el("div", { class: "kd-stats" });
   const stat = (label, val, unit, note) => { const d = el("div", { class: "kd-stat" }); d.append(el("small", {}, label), el("div", {}, el("b", {}, val), unit ? el("span", {}, " " + unit) : ""), note ? el("em", {}, note) : ""); return d; };
-  stats.append(stat("Speed last week", sp === undefined ? "–" : fmtNum(sp, 1), "/ day", "Seq 8 approved"), stat("Rework rate", fmtNum(rate * 100, 1), "%", "KA error only"), stat("One more CPR done in", fin === null ? "–" : fmtNum(fin, 1), "days", "estimate"));
+  stats.append(stat("Speed", sp === undefined ? "–" : fmtNum(sp, 1), "/ day", s && s.speed.lastWeek && s.speed.lastWeek[ka] !== undefined ? `4-week median · last week ${fmtNum(s.speed.lastWeek[ka], 1)}` : "4-week median"), stat("Rework rate", fmtNum(rate * 100, 1), "%", "KA error only"), stat("One more CPR done in", fin === null ? "–" : fmtNum(fin, 1), "days", "estimate"));
   now.append(rw, stats);
   // what the load is made of
   const parts = el("div", { class: "kd-parts" });
