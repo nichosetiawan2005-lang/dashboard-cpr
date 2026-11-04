@@ -649,6 +649,41 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
 .drawer.kd > .tbl-wrap { margin: 0 22px; }
 .drawer.kd .desc1 { max-width: 230px; }
 @media (max-width: 520px) { .kd-now { grid-template-columns: 1fr; justify-items: center; } .kd-period { grid-template-columns: 1fr; } }
+
+/* CPR tracking window v2 */
+#track { border: 0; border-radius: 20px; overflow: hidden; box-shadow: 0 24px 70px rgba(12,42,130,.35); background: var(--mint); }
+#track::backdrop { background: rgba(10,20,60,.45); backdrop-filter: blur(2px); }
+.tr-head { background: linear-gradient(120deg, #0a2470, #1b3f9e); color: #fff; border-bottom: 0; padding: 20px 22px 16px; }
+.tr-head h3 { font-family: var(--font-ui) !important; font-size: 20px; font-weight: 800; letter-spacing: -0.01em; color: #fff; margin: 0; }
+.tr-sub { color: rgba(255,255,255,.78); font-size: 13px; }
+.tr-meta { gap: 8px; margin-top: 12px; align-items: center; }
+.tr-meta > * { display: inline-flex; align-items: center; min-height: 28px; padding: 3px 12px; border-radius: 999px; background: rgba(255,255,255,.12); color: #fff; font-size: 12px; font-weight: 600; }
+.tr-meta .tm-ka { padding-left: 4px; } .tr-meta .tm-ka .kalink { color: #fff !important; font-weight: 700; } .tr-meta .tm-ka .avatar { width: 22px; height: 22px; font-size: 11px; }
+.tr-meta .tm-why { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-meta .pill { background: #fff; }
+.tr-meta .tm-date { background: transparent; color: rgba(255,255,255,.7); font-weight: 500; padding-left: 4px; }
+.tr-body { padding: 18px 22px 22px; max-height: 72vh; }
+#track .section-title h2 { font-size: 13px !important; color: var(--muted) !important; }
+.steps::before { left: 110px; width: 2px; background: linear-gradient(180deg, #c9d4ec, #e3e9f5); }
+.steps li { padding: 7px 0; }
+.steps .t { color: var(--head); font-weight: 700; }
+.steps .t small { font-family: var(--font-ui); font-style: normal; color: var(--faint); }
+.steps .dot { width: 14px; height: 14px; border: 3px solid #fff; box-shadow: 0 0 0 1px #c9d4ec; margin-top: 16px; }
+.steps .card2 { border: 0; border-radius: 14px; background: #fff; box-shadow: 0 1px 2px rgba(12,42,130,.05), 0 4px 14px rgba(12,42,130,.05); padding: 12px 14px; }
+.steps .seq { border-radius: 12px; background: #edf1fb; color: var(--ward); font-weight: 800; }
+.steps li.ka .card2 { box-shadow: inset 4px 0 0 var(--ward), 0 4px 14px rgba(12,42,130,.07); }
+.steps li.ka .seq { background: var(--ward); color: #fff; } .steps li.ka .seq small { color: var(--siloam-yellow); }
+.steps .role { font-weight: 700; color: var(--head); }
+.steps .badge { text-transform: none; letter-spacing: 0; font-weight: 700; border: 0; border-radius: 999px; padding: 4px 10px; }
+.steps .badge.now { background: var(--siloam-yellow); color: #3b2a00; }
+.steps .dur { border: 0; background: #f2f5fc; border-radius: 999px; padding: 3px 9px; }
+.steps .notes { background: #f6f8fd; border-radius: 10px; padding: 8px 10px; }
+.steps .est { background: #eef2fb; border-radius: 10px; padding: 8px 10px; gap: 4px 16px; }
+.steps li.future .card2 { border: 2px dashed #c9d4ec; background: rgba(255,255,255,.6); box-shadow: none; }
+.steps li.future.ka .card2, .steps li.ka.future .card2 { border-color: #8ea6e6; }
+.tr-hist { list-style: none; padding: 0; display: grid; gap: 6px; }
+.tr-hist li { background: #fff; border-radius: 10px; padding: 8px 12px 8px 30px; position: relative; box-shadow: 0 1px 2px rgba(12,42,130,.05); }
+.tr-hist li::before { content: ""; position: absolute; left: 12px; top: 13px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 </style>
 
 <div class="top">
@@ -1048,7 +1083,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
 </dialog>
 <dialog id="track" aria-labelledby="trTitle">
   <div class="tr-head"><div><h3 id="trTitle"></h3><div class="tr-sub" id="trSub"></div><div class="tr-meta" id="trMeta"></div></div>
-    <button class="btn ghost" type="button" id="trClose" style="align-self:flex-start;padding:4px 10px">Close</button></div>
+    <button class="kd-x" type="button" id="trClose" aria-label="Close" style="align-self:flex-start">✕</button></div>
   <div class="tr-body"><ol class="tl" id="trLine" hidden></ol>
     <div class="section-title" style="margin:2px 0 4px"><h2 style="font-size:14px">Approval steps (CPRHistory)</h2></div><ol class="steps" id="trSteps"></ol>
     <div class="section-title" style="margin:14px 0 4px"><h2 style="font-size:14px">Assignment history</h2></div><ul class="tr-hist" id="trHist"></ul></div>
@@ -4637,11 +4672,12 @@ function openTrack(cpr) {
   const [statusText, statusKind] = progressStatus(c);
   $("trTitle").textContent = r.cpr;
   $("trSub").textContent = [r.vendorName, c.unit].filter(Boolean).join(" · ");
+  const kaChip = el("span", { class: "tm-ka" }); kaChip.append(kaCell(c.ka));
   $("trMeta").replaceChildren(
-    el("span", {}, "Key Account: "), el("b", {}, kaLabel(c.ka)),
-    el("span", {}, "Why this KA: " + (c.why || ruleLabel(c.rule))),
+    kaChip,
+    el("span", { class: "tm-why", title: c.why || ruleLabel(c.rule) }, c.why || ruleLabel(c.rule)),
     pill(statusText, statusKind),
-    el("span", { class: "note", style: "margin:0" }, D !== null ? `Data as of ${fmtDay(D)}` : "")
+    el("span", { class: "tm-date" }, D !== null ? `Data as of ${fmtDay(D)}` : "")
   );
   // one step = [label, detail, actual day or null, estimated day or null]
   const arrive = actualArrival(r);
