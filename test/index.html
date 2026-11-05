@@ -421,6 +421,17 @@ i.nx, .nowbar .nx { background: repeating-linear-gradient(135deg, #8ea6e6 0 5px,
 .now-dsub { color: var(--muted); font-size: 12.5px; }
 #tblNow td { padding-top: 10px; padding-bottom: 10px; }
 @media (max-width: 860px) { .nowrow { grid-template-columns: 1fr 1fr; } .nowbar { grid-column: 1 / -1; } }
+.tab[data-tab="fcast"] { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M3 10h18M8 3v4M16 3v4M8 15l3 2 5-5'/%3E%3C/svg%3E"); }
+.fcrule { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.fcrule div { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; background: var(--panel); font-size: 13px; line-height: 1.5; }
+.fcrule b { display: block; font-size: 13px; margin-bottom: 2px; }
+.fcgrid { overflow-x: auto; }
+.fcgrid table td.c { text-align: center; font-variant-numeric: tabular-nums; min-width: 46px; }
+.fcgrid td.c.near { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
+.fcgrid td.c.over { background: var(--bad-bg); color: var(--bad); font-weight: 700; }
+.fcgrid td.c.off { color: var(--faint); background: color-mix(in srgb, var(--faint) 10%, transparent); }
+.fcgrid td.c small { display: block; font-size: 10px; color: var(--accent-ink); font-weight: 500; }
+@media (max-width: 860px) { .fcrule { grid-template-columns: 1fr; } }
 .tab[data-tab="now"] { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M3 12h4l3-8 4 16 3-8h4'/%3E%3C/svg%3E"); }
 .barnum { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .bn-track { width: 64px; height: 6px; border-radius: 3px; background: #e6ecf7; overflow: hidden; flex: none; }
@@ -718,6 +729,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
       <button class="tab" role="tab" aria-selected="true" data-tab="distribusi" id="tab-distribusi">CPR Allocation</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="ka" id="tab-ka">KA Performance</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="now" id="tab-now">Workload Now</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="fcast" id="tab-fcast">Workload Forecast</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="spv" id="tab-spv">Supervisor Control</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="bukti" id="tab-bukti">Evaluation</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="kualitas" id="tab-kualitas">Data Management</button>
@@ -853,6 +865,28 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
     <div class="card" id="nowDetail" style="margin-top:14px" hidden>
       <div class="now-dhead"><div id="nowDTitle"></div><div class="filters" style="border:0;padding:0;margin:0;box-shadow:none"><div class="field"><label for="nowShow">Show</label><select id="nowShow"><option value="">All CPRs held</option><option value="late">Late only</option><option value="warn">Warning only</option><option value="rec">Sequence 3</option><option value="mat">Sequence 8</option><option value="rw">Rework</option><option value="fin">Waiting PH HO / Director</option><option value="next">Coming (given by the system, not at KA yet)</option></select></div><button class="btn ghost" type="button" id="nowClose">Close</button></div></div>
       <div class="tbl-wrap tall" style="margin-top:10px"><table id="tblNow"></table></div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-fcast" role="tabpanel" aria-labelledby="tab-fcast">
+    <div class="section-title"><h2>Workload forecast</h2><p id="fcAsOf"></p></div>
+    <div class="fcrule">
+      <div><b>1 · When does the CPR arrive?</b>Forecast 1 gives the day each coming CPR reaches the KA (Sequence 3).</div>
+      <div><b>2 · What is still in hand then?</b>CPRs held now + coming CPRs that arrive first − CPR/day last week × working days until arrival.</div>
+      <div><b>3 · Who finishes first?</b>Est. finish = (in hand + 1) ÷ CPR/day. The CPR goes to the fastest KA still within the daily limit.</div>
+    </div>
+    <div class="tiles" id="fcTiles" style="margin-top:14px"></div>
+    <div class="card" style="margin-top:14px">
+      <h3>CPRs in hand per KA, next 10 working days</h3>
+      <div class="sub" id="fcGridSub"></div>
+      <div class="legend"><span class="pill muted">within limit</span> <span class="pill warn">80% of the limit or more</span> <span class="pill bad">over the limit</span> <span class="desc1">· small blue number = CPRs forecast to arrive that day</span></div>
+      <div class="fcgrid tbl-wrap" style="margin-top:8px"><table id="tblFcGrid"></table></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3>Coming CPRs and the KA chosen</h3>
+      <div class="sub">CPRs not at a KA yet (Sequence 0–2), in order of forecast arrival.</div>
+      <div class="filters" style="border:0;padding:0;margin:8px 0 0"><div class="field"><label for="fcKa">Key Account</label><select id="fcKa"><option value="">All</option></select></div></div>
+      <div class="tbl-wrap tall" style="margin-top:8px"><table id="tblFcList"></table></div>
     </div>
   </section>
 
@@ -4248,9 +4282,11 @@ function simulate() {
   // FORECAST: a coming CPR arrives at KA on its forecast day (Forecast 1). Until then the KA keeps working at its own speed:
   //   in hand on arrival = CPRs held now + coming CPRs forecast to arrive first − CPRs per day × working days until arrival (not below 0)
   const daysUntil = (day) => { const DD = dataDate(); return DD === null || day === null || day === undefined || day <= DD ? 0 : workDaysBetween(DD, day); };
+  // a forecast day that has already passed (CPR still not at KA) counts as tomorrow
+  const arrOf = (c) => { const DD = dataDate(); return DD === null ? c.s1 : Math.max(c.s1, DD + 1); };
   const inHandOn = (k, day, extra = 0) => { const first = (comingAt[k] || []).filter((d) => d <= day).length; return Math.max(0, (nowHeld[k] || 0) + first + extra - speedOf(k) * daysUntil(day)); };
-  const loadOf = (k, c, days, extra = 0) => (c && c.r && isComing(c.r) ? inHandOn(k, c.s1, extra) : peak(L, k, days, extra));
-  const countComing0 = (c, k, d) => { if (!k || !isComing(c.r)) return; coming[k] = (coming[k] || 0) + d; const a = comingAt[k] || (comingAt[k] = []); if (d > 0) a.push(c.s1); else { const i = a.indexOf(c.s1); if (i >= 0) a.splice(i, 1); } };
+  const loadOf = (k, c, days, extra = 0) => (c && c.r && isComing(c.r) ? inHandOn(k, arrOf(c), extra) : peak(L, k, days, extra));
+  const countComing0 = (c, k, d) => { if (!k || !isComing(c.r)) return; coming[k] = (coming[k] || 0) + d; const a = comingAt[k] || (comingAt[k] = []); if (d > 0) a.push(arrOf(c)); else { const i = a.indexOf(arrOf(c)); if (i >= 0) a.splice(i, 1); } };
   const countComing = countComing0;
   const bestKa = (c, days, exclude) => {
     // 1) KAs that are present and stay within the limit with this CPR; 2) the fastest estimated finish among them
@@ -4359,7 +4395,7 @@ function simulate() {
         if (!best) { for (const k of allocKas) { if (capOf(k) <= 0) continue; const held = loadOf(k, c, days) + reserveOf(k), f = finishOf(k, held, c); if (!best || f < fin) { fin = f; best = k; bestPeak = held + 1; over = bestPeak > maxPerDay; } } } // everyone absent
         ka = best; rule = over ? "Exception" : "Beban terendah";
         const sp = SPEED.perDay[ka] ?? SPEED.team;
-        const tA = isComing(c.r) ? daysUntil(c.s1) : 0;
+        const tA = isComing(c.r) ? daysUntil(arrOf(c)) : 0;
         c.why = `${over ? "All KAs above the limit; " : ""}fastest finish: ${fmtNum(fin, 1)} working days (${tA ? `forecast arrival in ${fmtInt(tA)} working days, ` : ""}${fmtNum(bestPeak - 1, 0)} still in hand then, ${perWeek(sp)} CPR/day (${SPEED.basis[ka] || "team average"}))`;
       }
       if (rule === "Vendor sama") c.why = "Same vendor as a CPR this KA holds";
@@ -5495,7 +5531,85 @@ function renderBukti() {
 }
 
 /* ---------- Tabs and boot ---------- */
-const renderers = { overview: renderOverview, now: renderNow, distribusi: renderSim, ka: renderKa, spv: renderSpv, bukti: renderBukti, kualitas: renderQuality };
+// ---------- Workload Forecast tab: CPRs in hand per KA on the next working days, using Forecast 1 arrival days ----------
+// day by day: in hand = max(0, yesterday + CPRs forecast to arrive today − CPR/day last week); 0 work on a day the KA is absent
+function fcComing() {
+  const D = dataDate(), out = [];
+  if (!SIM || D === null) return out;
+  let next = D + 1; while (!isWorkDay(next)) next++;
+  for (const c of SIM.assigned) {
+    const r = c.r;
+    if (!c.ka || !isCurrentKa(c.ka) || dataKaUser(r) || r.done || isInactive(r) || IGNORED[r.cpr] || /reject|cancel/i.test(r.hstatus || "")) continue;
+    if (r.kaIn !== null && r.kaIn !== undefined) continue;
+    let arrive = Math.max(c.predArrival ?? next, next); while (!isWorkDay(arrive)) arrive++;   // forecast day already passed: tomorrow
+    out.push({ c, r, ka: c.ka, arrive, late: (c.predArrival ?? next) < next, until: workDaysBetween(D, arrive) });
+  }
+  return out.sort((a, b) => a.arrive - b.arrive);
+}
+function renderFc() {
+  const D = dataDate();
+  if (!SIM || D === null) { $("fcAsOf").textContent = "Select Run allocation first."; $("fcTiles").replaceChildren(); $("tblFcGrid").replaceChildren(); $("tblFcList").replaceChildren(); return; }
+  const list = fcComing(), kas = SIM.allocKas.filter(isCurrentKa);
+  const days = []; for (let d = D + 1; days.length < 10; d++) if (isWorkDay(d)) days.push(d);
+  const speed = (k) => Math.max(0.2, SIM.speed.perDay[k] ?? SIM.speed.team), limit = (k) => SIM.maxPerDay * capOf(k);
+  // simulate each KA day by day
+  const grid = {}, onArrive = new Map();
+  for (const k of kas) {
+    let hand = SIM.nowHeld[k] || 0; const mine = list.filter((x) => x.ka === k); grid[k] = [];
+    for (const d of days) {
+      const arr = mine.filter((x) => x.arrive === d);
+      hand += arr.length;
+      for (const x of arr) onArrive.set(x.r.cpr, hand);   // in hand on the arrival day, this CPR included
+      const off = isAbsent(k, d);
+      grid[k].push({ d, hand, arr: arr.length, off });
+      if (!off) hand = Math.max(0, hand - speed(k));
+    }
+    for (const x of mine) if (!onArrive.has(x.r.cpr)) onArrive.set(x.r.cpr, null);   // arrives after the 10 days
+  }
+  $("fcAsOf").textContent = `Data as of ${fmtDay(D)} · daily limit ${fmtNum(SIM.maxPerDay, 0)} CPRs (× KA capacity)`;
+  const in10 = list.filter((x) => x.arrive <= days[days.length - 1]).length;
+  const overKas = kas.filter((k) => grid[k].some((g) => g.hand > limit(k)));
+  let peakDay = null, peakN = -1; days.forEach((d, i) => { const n = list.filter((x) => x.arrive === d).length; if (n > peakN) { peakN = n; peakDay = d; } });
+  const t3 = tile("KAs over the limit", fmtInt(overKas.length), "KAs", overKas.length ? overKas.map(kaLabel).join(", ") : "none in the next 10 working days"); t3.classList.add(overKas.length ? "now-bad" : "now-good");
+  $("fcTiles").replaceChildren(
+    tile("Coming CPRs", fmtInt(list.length), "CPRs", "given to a KA, not at KA yet"),
+    tile("Arriving in 10 working days", fmtInt(in10), "CPRs", `until ${fmtDay(days[days.length - 1])}`),
+    t3,
+    tile("Busiest arrival day", peakN > 0 ? fmtShort(peakDay) : "–", "", peakN > 0 ? `${fmtInt(peakN)} CPRs forecast to arrive` : "no arrivals"));
+  $("fcGridSub").textContent = `In hand = CPRs held now + CPRs forecast to arrive − CPR/day last week, working day by working day. Grey = KA absent.`;
+  // grid table
+  const tb = $("tblFcGrid"); tb.replaceChildren();
+  const hr = el("tr"); hr.append(el("th", {}, "Key Account"), el("th", { class: "num" }, "Now"), el("th", { class: "num" }, "CPR/day"), ...days.map((d) => el("th", { class: "num" }, fmtShort(d)))); tb.append(el("thead", {}, hr));
+  const body = el("tbody");
+  for (const k of [...kas].sort((a, b) => (SIM.nowHeld[b] || 0) - (SIM.nowHeld[a] || 0))) {
+    const tr = el("tr"); tr.append(el("td", {}, kaCell(k)), el("td", { class: "num" }, fmtInt(SIM.nowHeld[k] || 0)), el("td", { class: "num" }, perWeek(speed(k))));
+    for (const g of grid[k]) {
+      const n = Math.round(g.hand), lv = g.off ? "off" : g.hand > limit(k) ? "over" : g.hand >= 0.8 * limit(k) ? "near" : "";
+      const td = el("td", { class: "c " + lv, title: `${kaLabel(k)} · ${fmtDay(g.d)}: ${n} CPRs in hand${g.arr ? `, ${g.arr} arriving` : ""}${g.off ? " · absent" : ""}` }, String(n));
+      if (g.arr) td.append(el("small", {}, `+${g.arr}`));
+      tr.append(td);
+    }
+    body.append(tr);
+  }
+  tb.append(body);
+  // coming CPR list
+  const sel = $("fcKa"), cur = sel.value;
+  sel.replaceChildren(el("option", { value: "" }, "All"), ...kas.map((k) => el("option", { value: k }, kaLabel(k)))); sel.value = kas.includes(cur) ? cur : "";
+  const rows = list.filter((x) => !sel.value || x.ka === sel.value);
+  renderTable($("tblFcList"), [
+    { key: "cpr", label: "CPR", sortable: false, render: (x) => cprCell(x.r.cpr, x.r.vendorName) },
+    { key: "unit", label: "Hospital", sortable: false, render: (x) => unitChip(unitName(x.r.unit, x.r.cpr)) },
+    { key: "where", label: "Now at", sortable: false, render: (x) => el("span", { class: "desc1" }, posLabel(x.r) || fallbackPos(x.r) || "–") },
+    { key: "arrive", label: "Forecast arrival at KA", sortable: false, render: (x) => el("span", { title: x.late ? "The forecast day has passed and the CPR has not arrived yet: tomorrow is used" : "" }, fmtDay(x.arrive) + (x.late ? " *" : "")) },
+    { key: "until", label: "Working days until", num: true, sortable: false, render: (x) => fmtInt(x.until) },
+    { key: "ka", label: "KA chosen", sortable: false, render: (x) => kaCell(x.ka) },
+    { key: "hand", label: "In hand on arrival", num: true, sortable: false, render: (x) => { const h = onArrive.get(x.r.cpr); return h === null || h === undefined ? "–" : fmtInt(Math.round(h)); } },
+    { key: "fin", label: "Est. finish (days)", num: true, sortable: false, render: (x) => { const h = onArrive.get(x.r.cpr); return h === null || h === undefined ? "–" : fmtNum(h / speed(x.ka), 1); } },
+    { key: "rule", label: "Why", sortable: false, render: (x) => el("span", { class: "desc1" }, x.c.why || x.c.rule || "") }
+  ], rows);
+}
+$("fcKa").addEventListener("change", renderFc);
+const renderers = { overview: renderOverview, now: renderNow, fcast: renderFc, distribusi: renderSim, ka: renderKa, spv: renderSpv, bukti: renderBukti, kualitas: renderQuality };
 let currentTab = "distribusi";
 function showTab(name) {
   if ($("tab-" + name).hidden) name = "distribusi"; // a tab hidden for this access level cannot be opened
