@@ -702,7 +702,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
 .spdcell.flag-up { background: #fdf3dc; color: #8a6200; } .spdcell.flag-down { background: #fcecec; color: #b52f2f; }
 .spdst { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; } .spdst .btn { padding: 4px 10px; font-size: 12px; }
 .subtabs .cnt { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 6px; border-radius: 9px; background: var(--siloam-yellow); color: #3b2a00; font-size: 11px; line-height: 18px; }
-.spdwarn { padding: 8px 12px; border-radius: 10px; background: #fdf3dc; color: #6b4d00; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-bottom: 4px; }
+.spdwarn { padding: 8px 12px; border-radius: 10px; background: #fdf3dc; color: #6b4d00; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
 </style>
 
 <div class="top">
@@ -976,16 +976,16 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
     <div style="margin-top:10px"><button class="btn ghost" type="button" id="trOpen">Reassign by CPR number</button></div>
 
     <div class="subtabs" role="tablist">
-      <button type="button" data-sub="subSpd" aria-selected="true">Weekly speed check <span class="cnt" id="spdCnt" hidden></span></button>
-      <button type="button" data-sub="subAbs" aria-selected="false">KA absences</button>
+      <button type="button" data-sub="subSpd" aria-selected="false" hidden>Weekly speed check <span class="cnt" id="spdCnt" hidden></span></button>
+      <button type="button" data-sub="subAbs" aria-selected="true">KA absences</button>
       <button type="button" data-sub="subChg" aria-selected="false">KA left the team</button>
       <button type="button" data-sub="subLog" aria-selected="false">Reassignment log</button>
     </div>
-    <div id="subSpd">
+    <div id="subSpd" hidden>
       <div class="card"><div class="sub" style="margin-bottom:10px">CPRs each KA approved at Seq 8 per day, week by week. The allocation uses last week, unless it is more than 1.5× or less than ⅔ of the KA's usual (2-month average): then the usual is used until you review it.</div>
       <div class="tbl-wrap"><table id="tblSpd"></table></div></div>
     </div>
-    <div id="subAbs" hidden>
+    <div id="subAbs">
     <div class="card">
       <div class="filters" style="border:0;padding:0;margin:0" id="absForm">
         <div class="field"><label for="absKa">KA</label><select id="absKa"></select></div>
@@ -4079,11 +4079,11 @@ function kaSpeeds(kaList) {
       let m = n2 ? (done2[k] || 0) / n2 : 0; if (m <= 0) m = out.done[k] / out.days[k];
       const lw = out.lastWeek[k]; out.usual[k] = m;
       const normal = lw !== undefined && lw > 0 && (wk.length < 3 || (lw <= m * BAND && lw >= m / BAND));
-      const rv = SPEED_REVIEW[k] && SPEED_REVIEW[k].mon === monday ? SPEED_REVIEW[k] : null;
+      const rv = null;   // no supervisor review: an unusual week automatically uses the 2-month average
       if (!normal && lw !== undefined) { out.flag[k] = lw > m ? "up" : "down"; out.review[k] = rv ? rv.use : null; }
       const useLast = normal || (out.flag[k] && rv && rv.use === "last");
       out.perDay[k] = useLast ? lw : m;
-      out.basis[k] = normal ? "last week" : lw === undefined ? "2-month average (absent last week)" : rv ? (rv.use === "last" ? "last week (accepted after review)" : "2-month average (reviewed)") : "2-month average (last week unusual, waiting for review)";
+      out.basis[k] = normal ? "last week" : lw === undefined ? "2-month average (absent last week)" : rv ? (rv.use === "last" ? "last week (accepted after review)" : "2-month average (reviewed)") : "2-month average (last week unusual)";
       rates.push(out.perDay[k]);
     }
   }
@@ -4465,7 +4465,7 @@ function renderSpeed() {
   // ranked bars: estimated finish (working days), fastest first; the first KA within the limit gets the next CPR
   const maxFin = Math.max(1, ...rows.map((r) => r.fin)), next = rows.find((r) => r.within);
   const pend = s.allocKas.filter((k) => s.speed.flag && s.speed.flag[k] && !s.speed.review[k]);
-  const warnBox = pend.length ? [Object.assign(el("div", { class: "spdwarn", role: "button", tabIndex: 0 }, `${pend.map(kaLabel).join(", ")}: last week was unusual, the 2-month average is used. Review in Supervisor Control › Weekly speed check.`), { onclick: () => { showTab("spv"); } })] : [];
+  const warnBox = pend.length ? [el("div", { class: "spdwarn" }, `${pend.map(kaLabel).join(", ")}: last week was unusual, so the 2-month average is used automatically.`)] : [];
   $("speedViz").replaceChildren(...warnBox, ...rows.map((r) => {
     const row = el("div", { class: "rk" + (r.within ? "" : " over") + (r === next ? " next" : "") });
     const bar = el("div", { class: "rk-bar" }); const f = el("span"); f.style.width = Math.max(3, (r.fin / maxFin) * 100) + "%"; bar.append(f);
@@ -4482,7 +4482,7 @@ function renderSpeed() {
     { key: "within", label: "Within limit", sortable: false, render: (r) => pill(r.within ? "Yes" : "No", r.within ? "good" : "bad") },
     { key: "given", label: "New", num: true, render: (r) => fmtInt(r.given) }
   ], rows);
-  $("speedNote").textContent = `Speed = last week (Seq 8 approvals ÷ working days present). If last week is more than 1.5× or less than ⅔ of the KA's usual speed (average of ${s.speed.usualFrom !== undefined ? fmtDay(s.speed.usualFrom) + " – " + fmtDay(s.speed.to) : "the last 2 months"}), the usual speed is used instead (ⓜ) until the supervisor reviews the week. Days per CPR = average of the last 2 months. All from the uploaded data, in working days. Est. finish = (CPRs in hand when the new CPR arrives + 1) ÷ CPR/day. For a CPR not yet at KA, the forecast arrival day is used: in hand then = held now + coming CPRs that arrive first − CPR/day × working days until arrival. A new CPR goes to the fastest KA still within the limit of ${fmtNum(s.maxPerDay, 0)}; * = team average.`;
+  $("speedNote").textContent = `Speed = last week (Seq 8 approvals ÷ working days present). If last week is more than 1.5× or less than ⅔ of the KA's usual speed (average of ${s.speed.usualFrom !== undefined ? fmtDay(s.speed.usualFrom) + " – " + fmtDay(s.speed.to) : "the last 2 months"}), the usual speed is used instead (ⓜ), automatically. Days per CPR = average of the last 2 months. All from the uploaded data, in working days. Est. finish = (CPRs in hand when the new CPR arrives + 1) ÷ CPR/day. For a CPR not yet at KA, the forecast arrival day is used: in hand then = held now + coming CPRs that arrive first − CPR/day × working days until arrival. A new CPR goes to the fastest KA still within the limit of ${fmtNum(s.maxPerDay, 0)}; * = team average.`;
 }
 function renderSim() {
   try { syncCap(); syncTw(); renderTaskLoad(); renderSpeed(); } catch (e) {}
@@ -5064,6 +5064,7 @@ function renderSpv() {
 }
 // weekly speed check: last 8 weeks per KA, the 2-month average, and the supervisor's decision for an unusual week
 function renderSpeedCheck(editable) {
+  return;   // weekly speed check removed: the 2-month average is used automatically for an unusual week
   const s = SIM; if (!s || !s.speed || !s.speed.series) { $("tblSpd").replaceChildren(); return; }
   const sp = s.speed, kas = s.allocKas.filter(isCurrentKa);
   const pending = kas.filter((k) => sp.flag[k] && !sp.review[k]).length;
@@ -5625,7 +5626,7 @@ document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () 
 const INFO = [
   ["panel-overview", "All CPRs", ["#ovNote"], "CPRHistory (every approval step) + CPRSummary (current holder, PR / PO number) from the latest upload."],
   ["panel-distribusi", "Allocation settings", ["#simNote"], "CPRHistory + CPRSummary, Hospital PIC List, KA absences and KA capacity, and the forecast models (Forecast 1–4) trained on CPRHistory."],
-  ["panel-distribusi", "How the KA is chosen", ["#speedNote"], "CPRHistory: Sequence 8 approvals per KA (last week; the 2-month average when last week is unusual for the KA, until the supervisor reviews it; days per CPR = 2-month average), CPRs held now, reworks (Revise To and the approver's note) and KA absences."],
+  ["panel-distribusi", "How the KA is chosen", ["#speedNote"], "CPRHistory: Sequence 8 approvals per KA (last week; the 2-month average when last week is unusual for the KA; days per CPR = 2-month average), CPRs held now, reworks (Revise To and the approver's note) and KA absences."],
   ["panel-distribusi", "#hKaCount", ["#subKaCount", "#simCompare"], "Every CPR given to the KA that is not finished yet, at any stage: before KA (Seq 0–2), Seq 3, other approvers, Seq 8, rework, or waiting at Purchasing Head HO / Director. This is wider than \"Held\" in the table above, which counts only Seq 8 + rework (the KA's real work now)."],
   ["panel-distribusi", "Completed CPRs per KA", [], "CPRHistory: CPRs approved by each KA at Sequence 8."],
   ["panel-distribusi", "CPR assignment list", [], "One row per CPR: the KA chosen by the DSS and why, forecast dates (Forecast 1–4) and actual dates from CPRHistory."],
