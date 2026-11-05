@@ -799,7 +799,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
       <details class="capbox" id="capBox"><summary>More settings</summary>
         <div class="filters" style="border:0;padding:0;margin:8px 0">
           <div class="field" hidden><label for="sVendor">Same-vendor weight</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
-          <label class="check" hidden><input type="checkbox" id="sPic"> Prioritize hospital PIC</label>
+          <label class="check" title="Off (default): universal, any KA can get any CPR. On: the hospital PIC of the unit gets the CPR first, as long as the PIC is within the limit and not above the average."><input type="checkbox" id="sPic"> Per unit (hospital PIC first)</label>
         </div>
         <div class="sub">KA capacity (%): saved right away and kept until changed. Used from the next Run allocation; 0% = no new CPRs.</div><div class="capgrid" id="capGrid"></div></details>
       <p class="note" id="runInfo" style="font-weight:500;color:var(--fg)"></p>
@@ -972,7 +972,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
         <div class="field"><label for="chgTo">Replaced by</label><select id="chgTo"></select></div>
         <button class="btn" type="button" id="chgAdd">Save</button>
       </div>
-      <p class="sub" style="margin:8px 0 0">Their open CPRs move to the chosen KA, or (Automatic) are shared by the system like new CPRs.</p>
+      <p class="sub" style="margin:8px 0 0">Their open CPRs move to the chosen KA. Automatic: shared by the system like new CPRs (or to the hospital PIC when "Per unit" is on).</p>
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblChg"></table></div>
     </div>
 
@@ -1950,8 +1950,10 @@ const dataKa = (r) => {
   const own = poKa({ ka: u, kaName: null }).ka;
   const left = kaStillOpen(r) ? kaLeft(u) : null;
   if (!left) return own;
-  // universal: a chosen replacement takes them; otherwise (null) the allocation gives them to the fastest KA
-  return left.to || null;
+  // a chosen replacement takes them; otherwise: per unit ON -> the hospital PIC of the unit; OFF (universal) -> null = the allocation decides
+  if (left.to) return left.to;
+  if ($("sPic").checked) { const p = picNameFor(r.unit), heir = p && (META.kaList || []).find((k) => k.toLowerCase() === String(p).toLowerCase()); if (heir) return heir; }
+  return null;
 };
 // ---------- Overview tab: totals per status, the CPRs behind each box, and tracking for any CPR ----------
 const OV_GROUPS = [
@@ -4075,7 +4077,7 @@ function simulate() {
   const start = isoToDay($("sFrom").value), end = isoToDay($("sTo").value);
   const vf = Math.max(0, Math.min(1, parseFloat($("sVendor").value) || 0.5));
   // PIC rule is optional: the PIC only gets the CPR while his CPR count stays within the fair share (+ tolerance)
-  const usePic = false;   // universal allocation: the hospital unit / PIC never decides the KA
+  const usePic = $("sPic").checked;   // OFF (default) = universal allocation; ON = per unit: the hospital PIC first, while within the limit
   const userMax = parseFloat($("sMax").value);
   // Validation mode: only CPRs with complete dates, so the real KA load can be compared.
   // Operational mode: every CPR created in the period, finished or still in progress.
@@ -5999,9 +6001,9 @@ function allocStep() {
   const field = (id, label, type, value, extra = {}) => { const d = el("div", { class: "field" }); d.append(el("label", { for: id }, label)); const i = el("input", { id, type, ...extra }); i.value = value; d.append(i); return d; };
   f.append(field("e4From", "CPR created from", "date", $("sFrom").value), field("e4To", "to", "date", $("sTo").value),
     field("e4Max", "Daily workload limit", "number", $("sMax").value, { min: "1", step: "0.5", placeholder: "automatic" }));
-  const pic = el("span", { hidden: "" });   // hospital PIC option removed (universal allocation)
+  const pic = el("label", { class: "check" }); const cb = el("input", { type: "checkbox", id: "e4Pic" }); cb.checked = $("sPic").checked; pic.append(cb, document.createTextNode(" Per unit (hospital PIC first) · off = universal"));
   const run = Object.assign(el("button", { class: "btn", type: "button", id: "e4Run" }, "Run allocation"), { onclick: async () => {
-    $("sFrom").value = $("e4From").value; $("sTo").value = $("e4To").value; $("sMax").value = $("e4Max").value;
+    $("sFrom").value = $("e4From").value; $("sTo").value = $("e4To").value; $("sMax").value = $("e4Max").value; $("sPic").checked = $("e4Pic").checked;
     run.disabled = true; run.textContent = "Allocating …"; await runSimulation();
     if (SIM) await setSetupPending(false); else { run.disabled = false; run.textContent = "Run allocation"; }
     renderAll(); showTab("distribusi");
