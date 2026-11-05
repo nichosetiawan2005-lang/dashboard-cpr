@@ -1260,14 +1260,13 @@ function simSplit(items) {
   const work = items.filter((x) => x.task !== "fin").sort((a, b) => (a.task === "next") - (b.task === "next") || (b.days ?? 0) - (a.days ?? 0) || rank[a.task] - rank[b.task]);
   const load = {}, out = [];
   for (const x of work) {
-    let best = null, bestFin = Infinity, over = null, overLoad = Infinity, overFin = Infinity;
+    let best = null, bestFin = Infinity;
     for (const k of kas) {
-      const n = load[k] || 0, fin = s.finishOf(k, n), lim = s.maxPerDay * capOf(k);
-      if (n + 1 <= lim) { if (fin < bestFin) { best = k; bestFin = fin; } }
-      else if (fin < overFin) { over = k; overFin = fin; }
+      const n = load[k] || 0, fin = s.finishOf(k, n);
+      if (fin < bestFin) { best = k; bestFin = fin; }   // the fastest estimated finish, same as the allocation
     }
-    const k = best || over; const pos = load[k] || 0; load[k] = pos + 1;
-    const sp = Math.max(0.2, s.speed.perDay[k] ?? s.speed.team), wait = Math.ceil((pos + 1) / sp), total = (x.days ?? 0) + wait;
+    const k = best; const pos = load[k] || 0; load[k] = pos + 1;
+    const sp = s.speedOf(k), wait = Math.ceil((pos + 1) / sp), total = (x.days ?? 0) + wait;
     let lv = x.lv;
     if (x.task === "rec") lv = total > TAT_LIMIT.s3 ? "late" : "ok";
     if (x.task === "mat") lv = total > TAT_LIMIT.s8bad ? "late" : total > TAT_LIMIT.s8warn ? "warn" : "ok";
@@ -4270,7 +4269,7 @@ function simulate() {
   const holdOf = (k) => SPEED.holdDays[k] ?? SPEED.holdTeam;
   // everything in CPRs PER DAY: working days until KA k has finished the CPRs it holds + this new one =
   //   (CPRs held + 1) ÷ (CPRs the KA approves per day × (1 − rework rate))   — reworks use part of the KA's day
-  const speedOf = (k) => Math.max(0.2, SPEED.perDay[k] ?? SPEED.team);
+  const speedOf = (k) => Math.max(0.2, SPEED.perDay[k] ?? SPEED.team) * Math.max(0.05, capOf(k));   // CPR/day last week × KA capacity %
   // SIMPLE RULE: working days until the KA finishes = (CPRs still in hand when the new CPR arrives + 1) ÷ CPRs per day last week
   const finishOf = (k, held) => (held + 1) / speedOf(k);
   // load used when choosing a KA for a CPR that has not reached any KA yet ("coming"):
@@ -4289,18 +4288,15 @@ function simulate() {
   const countComing0 = (c, k, d) => { if (!k || !isComing(c.r)) return; coming[k] = (coming[k] || 0) + d; const a = comingAt[k] || (comingAt[k] = []); if (d > 0) a.push(arrOf(c)); else { const i = a.indexOf(arrOf(c)); if (i >= 0) a.splice(i, 1); } };
   const countComing = countComing0;
   const bestKa = (c, days, exclude) => {
-    // 1) KAs that are present and stay within the limit with this CPR; 2) the fastest estimated finish among them
-    // nobody within the limit: the least loaded one (Exception for the supervisor)
-    let best = null, bestFin = Infinity, bestPeak = Infinity, over = null, overFin = Infinity, overPeak = Infinity, overDw = Infinity;
+    // the KA with the fastest estimated finish = (CPRs in hand + 1) ÷ (CPR/day last week × capacity %), among KAs present.
+    // A busy KA only gets more once the others would finish later. Above the daily limit = Exception for the supervisor.
+    let best = null, bestFin = Infinity, bestPeak = Infinity;
     for (const k of allocKas) {
       if (k === exclude || absent(k, days) || capOf(k) <= 0) continue;
-      const held = loadOf(k, c, days) + reserveOf(k), fin = finishOf(k, held, c), pk = (held + (c.weight || 1)) / capOf(k);
-      if (pk <= maxPerDay) { if (fin < bestFin || (fin === bestFin && pk < bestPeak)) { best = k; bestFin = fin; bestPeak = pk; } }
-      // everybody above the limit: again the fastest estimated finish (queue ÷ speed + days per CPR + rework risk).
-      // Tested on the October UAT (queue model): fewest CPRs waiting > 14 days; a slow or very busy KA still gets fewer.
-      else { const dw = fin; if (dw < overDw) { over = k; overFin = fin; overPeak = pk; overDw = dw; } }
+      const held = loadOf(k, c, days), fin = finishOf(k, held), pk = (held + (c.weight || 1)) / capOf(k);
+      if (fin < bestFin || (fin === bestFin && pk < bestPeak)) { best = k; bestFin = fin; bestPeak = pk; }
     }
-    return best ? { best, bestPeak, fin: bestFin, over: false } : { best: over, bestPeak: over ? overPeak : Infinity, fin: overFin, over: !!over };
+    return { best, bestPeak, fin: bestFin, over: !!best && bestPeak > maxPerDay };
   };
   const moveTo = (c, to, reason) => {
     add(L, c, -1); cnt[c.ka] = (cnt[c.ka] || 1) - 1; countComing(c, c.ka, -1);
@@ -4322,8 +4318,9 @@ function simulate() {
   const byCreate = new Map(), byArrive = new Map(), byKaOut = new Map(), byBack = new Map();
   const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
   for (const r of test) {
-    const tr = transferMap.get(r.cpr);
-    const saved = useLocks() ? LOCKED.get(r.cpr) : null;
+    const notAtKa = (r.kaIn === null || r.kaIn === undefined) && !r.done;   // still at Seq 0–2: split again at every run
+    const tr0 = transferMap.get(r.cpr), tr = notAtKa && tr0 && tr0.by !== "SPV" ? null : tr0;
+    const saved = useLocks() && !notAtKa ? LOCKED.get(r.cpr) : null;
     // the KA in the data (already processing the CPR) is fixed; otherwise a transfer (by SPV or automatic) overrides the original assignment
     const fromData = META.hasKa ? null : dataKa(r);
     // already at KA according to CPRHistory, but the holder is not in the data (only CPRSummary names it): the hospital PIC is presumed,
@@ -4432,7 +4429,7 @@ function simulate() {
   for (const c of assigned) rules[c.rule] = (rules[c.rule] || 0) + 1;
   SIM_KA = new Map(assigned.map((c) => [c.r.cpr, c.ka]));
   return {
-    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, reserve, teamRate: RW.team, speed: SPEED, fix, allocKas, finishOf, nowHeld, coming,
+    start, end, vf, maxPerDay, autoMax, userMax: userMax > 0, usePic, picSource, w1, w2, f1All, f2All, reserve, teamRate: RW.team, speed: SPEED, fix, allocKas, finishOf, speedOf, nowHeld, coming,
     histCount: useModels && MODELS.f1 ? MODELS.f1.n : 0, models: useModels ? MODELS : null,
     f1Method: useModels && MODELS.f1 ? `${MODELS.f1.chosen.family} (${MODELS.f1.chosen.setting})` : "median per hospital",
     f2Method: useModels && MODELS.f2 ? `${MODELS.f2.chosen.family} (${MODELS.f2.chosen.setting})` : "median per hospital",
@@ -5552,7 +5549,7 @@ function renderFc() {
   if (!SIM || D === null) { $("fcAsOf").textContent = "Select Run allocation first."; $("fcTiles").replaceChildren(); $("tblFcGrid").replaceChildren(); $("tblFcList").replaceChildren(); return; }
   const list = fcComing(), kas = SIM.allocKas.filter(isCurrentKa);
   const days = []; for (let d = D + 1; days.length < 10; d++) if (isWorkDay(d)) days.push(d);
-  const speed = (k) => Math.max(0.2, SIM.speed.perDay[k] ?? SIM.speed.team), limit = (k) => SIM.maxPerDay * capOf(k);
+  const speed = (k) => SIM.speedOf(k), limit = (k) => SIM.maxPerDay * capOf(k);
   // simulate each KA day by day
   const grid = {}, onArrive = new Map();
   for (const k of kas) {
