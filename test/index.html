@@ -4220,8 +4220,8 @@ function simulate() {
   // rework, so part of the KA's daily limit is kept free: reserve = CPRs waiting × the KA's rework rate (KA errors only)
   const RW = reworkRates(), waiting = {};
   for (const r of RECS) if (taskOf(r) === "fin") { const k = dataKa(r); if (k) waiting[k] = (waiting[k] || 0) + 1; }
-  const reserveOf = (k) => (waiting[k] || 0) * (RW.rate[k] ?? RW.team);
-  const reserve = Object.fromEntries(kaList.map((k) => [k, { waiting: waiting[k] || 0, rate: RW.rate[k] ?? RW.team, n: RW.n[k] || 0, reserve: reserveOf(k) }]));
+  const reserveOf = () => 0;   // simple rule: no rework reserve (last week's speed already includes the time spent on reworks)
+  const reserve = Object.fromEntries(kaList.map((k) => [k, { waiting: waiting[k] || 0, rate: RW.rate[k] ?? RW.team, n: RW.n[k] || 0, reserve: 0 }]));
   // speed of each KA = last week (Seq 8 approvals ÷ working days present), or the 2-month average when last week is unusual
   const SPEED = kaSpeeds(kaList);
   // rework risk = rework rate × average working days to fix a rework (team average when a KA has fewer than 3 reworks)
@@ -4236,15 +4236,22 @@ function simulate() {
   const holdOf = (k) => SPEED.holdDays[k] ?? SPEED.holdTeam;
   // everything in CPRs PER DAY: working days until KA k has finished the CPRs it holds + this new one =
   //   (CPRs held + 1) ÷ (CPRs the KA approves per day × (1 − rework rate))   — reworks use part of the KA's day
-  const finishOf = (k, held) => (held + 1) / (Math.max(0.2, SPEED.perDay[k] ?? SPEED.team) * (1 - Math.min(0.5, RW.rate[k] ?? RW.team)));
+  const speedOf = (k) => Math.max(0.2, SPEED.perDay[k] ?? SPEED.team);
+  // SIMPLE RULE: working days until the KA finishes = (CPRs still in hand when the new CPR arrives + 1) ÷ CPRs per day last week
+  const finishOf = (k, held) => (held + 1) / speedOf(k);
   // load used when choosing a KA for a CPR that has not reached any KA yet ("coming"):
   // what the KA really holds now (Seq 3 + Seq 8 + rework in the data) + CPRs already given to the KA that are still coming.
   // A forecast that the KA will be free later is not trusted: a KA who is busy now does not get more.
   const isComing = (r) => !r.done && (r.kaIn === null || r.kaIn === undefined) && !isInactive(r) && !IGNORED[r.cpr] && !/reject|cancel/i.test(r.hstatus || "") && !dataKaUser(r);
-  const nowHeld = {}, coming = {};
+  const nowHeld = {}, coming = {}, comingAt = {};   // comingAt[k] = forecast arrival days of the coming CPRs given to k
   for (const r of RECS) { const t = taskOf(r); if (t === "rec" || t === "mat" || t === "rw") { const k = dataKa(r); if (k) nowHeld[k] = (nowHeld[k] || 0) + 1; } }
-  const loadOf = (k, c, days, extra = 0) => { const pk = peak(L, k, days, extra); return c && c.r && isComing(c.r) ? Math.max(pk, (nowHeld[k] || 0) + (coming[k] || 0) + extra) : pk; };
-  const countComing = (c, k, d) => { if (k && isComing(c.r)) coming[k] = (coming[k] || 0) + d; };
+  // FORECAST: a coming CPR arrives at KA on its forecast day (Forecast 1). Until then the KA keeps working at its own speed:
+  //   in hand on arrival = CPRs held now + coming CPRs forecast to arrive first − CPRs per day × working days until arrival (not below 0)
+  const daysUntil = (day) => { const DD = dataDate(); return DD === null || day === null || day === undefined || day <= DD ? 0 : workDaysBetween(DD, day); };
+  const inHandOn = (k, day, extra = 0) => { const first = (comingAt[k] || []).filter((d) => d <= day).length; return Math.max(0, (nowHeld[k] || 0) + first + extra - speedOf(k) * daysUntil(day)); };
+  const loadOf = (k, c, days, extra = 0) => (c && c.r && isComing(c.r) ? inHandOn(k, c.s1, extra) : peak(L, k, days, extra));
+  const countComing0 = (c, k, d) => { if (!k || !isComing(c.r)) return; coming[k] = (coming[k] || 0) + d; const a = comingAt[k] || (comingAt[k] = []); if (d > 0) a.push(c.s1); else { const i = a.indexOf(c.s1); if (i >= 0) a.splice(i, 1); } };
+  const countComing = countComing0;
   const bestKa = (c, days, exclude) => {
     // 1) KAs that are present and stay within the limit with this CPR; 2) the fastest estimated finish among them
     // nobody within the limit: the least loaded one (Exception for the supervisor)
@@ -4352,7 +4359,8 @@ function simulate() {
         if (!best) { for (const k of allocKas) { if (capOf(k) <= 0) continue; const held = loadOf(k, c, days) + reserveOf(k), f = finishOf(k, held, c); if (!best || f < fin) { fin = f; best = k; bestPeak = held + 1; over = bestPeak > maxPerDay; } } } // everyone absent
         ka = best; rule = over ? "Exception" : "Beban terendah";
         const sp = SPEED.perDay[ka] ?? SPEED.team;
-        c.why = `${over ? "All KAs above the limit; " : ""}fastest finish: ${fmtNum(fin, 1)} working days (${fmtNum(bestPeak - 1, 0)} held, ${perWeek(sp)} CPR/day (${SPEED.basis[ka] || "team average"}), rework ${fmtNum((RW.rate[ka] ?? RW.team) * 100, 0)}%)`;
+        const tA = isComing(c.r) ? daysUntil(c.s1) : 0;
+        c.why = `${over ? "All KAs above the limit; " : ""}fastest finish: ${fmtNum(fin, 1)} working days (${tA ? `forecast arrival in ${fmtInt(tA)} working days, ` : ""}${fmtNum(bestPeak - 1, 0)} still in hand then, ${perWeek(sp)} CPR/day (${SPEED.basis[ka] || "team average"}))`;
       }
       if (rule === "Vendor sama") c.why = "Same vendor as a CPR this KA holds";
       if (rule === "PIC unit") c.why = "Hospital PIC, within the limit";
@@ -4434,12 +4442,11 @@ function renderSpeed() {
     { key: "name", label: "Key Account", render: (r) => kaCell(r.ka) },
     { key: "held", label: "Held + coming", num: true, render: (r) => fmtInt(r.held) },
     { key: "sp", label: "CPR / day", num: true, render: (r) => (r.sp === undefined ? el("span", { title: "No Seq 8 approval in the last 4 weeks: team average used" }, perWeek(s.speed.team) + "*") : el("span", { title: `${s.speed.basis[r.ka]} · last week ${perWeek(s.speed.lastWeek[r.ka])} · usual ${perWeek(s.speed.usual[r.ka])} CPR/day` }, perWeek(r.sp) + (/unusual|absent/.test(s.speed.basis[r.ka] || "") ? " ⓜ" : ""))) },
-    { key: "rate", label: "Rework", num: true, render: (r) => fmtNum(r.rate * 100, 1) + "%" },
-    { key: "fin", label: "Est. finish (days)", num: true, render: (r) => el("b", { title: `Reserve ${fmtNum(r.res, 1)} · done in 4 weeks ${fmtInt(r.done)} in ${fmtInt(r.days)} days · fix days ${fmtNum(r.fx, 1)}` }, fmtNum(r.fin, 1)) },
+    { key: "fin", label: "Est. finish (days)", num: true, render: (r) => el("b", { title: `(held + 1) ÷ CPR/day · done ${fmtInt(r.done)} in ${fmtInt(r.days)} days ` }, fmtNum(r.fin, 1)) },
     { key: "within", label: "Within limit", sortable: false, render: (r) => pill(r.within ? "Yes" : "No", r.within ? "good" : "bad") },
     { key: "given", label: "New", num: true, render: (r) => fmtInt(r.given) }
   ], rows);
-  $("speedNote").textContent = `Speed = last week (Seq 8 approvals ÷ working days present). If last week is more than 1.5× or less than ⅔ of the KA's usual speed (average of ${s.speed.usualFrom !== undefined ? fmtDay(s.speed.usualFrom) + " – " + fmtDay(s.speed.to) : "the last 2 months"}), the usual speed is used instead (ⓜ) until the supervisor reviews the week. Days per CPR = average of the last 2 months. All from the uploaded data, in working days. Est. finish = (held + reserve + 1) ÷ speed + rework rate × fix days. A new CPR goes to the fastest KA still within the limit of ${fmtNum(s.maxPerDay, 0)}; * = team average.`;
+  $("speedNote").textContent = `Speed = last week (Seq 8 approvals ÷ working days present). If last week is more than 1.5× or less than ⅔ of the KA's usual speed (average of ${s.speed.usualFrom !== undefined ? fmtDay(s.speed.usualFrom) + " – " + fmtDay(s.speed.to) : "the last 2 months"}), the usual speed is used instead (ⓜ) until the supervisor reviews the week. Days per CPR = average of the last 2 months. All from the uploaded data, in working days. Est. finish = (CPRs in hand when the new CPR arrives + 1) ÷ CPR/day. For a CPR not yet at KA, the forecast arrival day is used: in hand then = held now + coming CPRs that arrive first − CPR/day × working days until arrival. A new CPR goes to the fastest KA still within the limit of ${fmtNum(s.maxPerDay, 0)}; * = team average.`;
 }
 function renderSim() {
   try { syncCap(); syncTw(); renderTaskLoad(); renderSpeed(); } catch (e) {}
@@ -5932,7 +5939,7 @@ function renderTaskLoad() {
   for (const k of SIM.allocKas || []) if (!per[k]) per[k] = { rec: 0, mat: 0, rw: 0, fin: 0, wRec: 0, wMat: 0, wRw: 0, wFin: 0, big: 0 };   // a KA with nothing open still gets a card
   const kas = Object.keys(per).filter(isCurrentKa).map((ka) => ({ ka, name: kaLabel(ka), old: old[ka] || 0, high: high[ka] || 0, ...per[ka], total: per[ka].wRec + per[ka].wMat + per[ka].wRw + per[ka].wFin, n: per[ka].rec + per[ka].mat + per[ka].rw + per[ka].fin, work: per[ka].mat + per[ka].rw, open: per[ka].mat + per[ka].rw + per[ka].fin, res: SIM.reserve && SIM.reserve[ka] ? SIM.reserve[ka] : null, lv3: lvCount(run3[ka], 3), lv8: lvCount(run8[ka], 8), tat3: mean(run3[ka] || []), tat8: mean(run8[ka] || []), max3: run3[ka] ? Math.max(...run3[ka]) : null, max8: run8[ka] ? Math.max(...run8[ka]) : null })).filter((k) => !G.ka || k.ka === G.ka).sort((a, b) => (TL_ON.weights ? b.total - a.total : b.open - a.open || b.work - a.work));
   const rr = reworkRates();
-  $("subTask").textContent = `Data as of ${D !== null ? fmtDay(D) : "–"}. Open tasks = Sequence 8 not done + rework + waiting at Purchasing Head HO / Director (may still come back as rework). Seq 8 days so far: ≤ 5 green, 6–14 yellow, > 14 red (working days). Daily limit = limit − rework reserve (hover a number). Rework reserve uses each KA's rework rate as of ${rr.asOf !== undefined ? fmtDay(rr.asOf) : "–"}, next refresh ${rr.next !== undefined ? fmtDay(rr.next) : "–"}.`;
+  $("subTask").textContent = `Data as of ${D !== null ? fmtDay(D) : "–"}. Open tasks = Sequence 8 not done + rework + waiting at Purchasing Head HO / Director (may still come back as rework). Seq 8 days so far: ≤ 5 green, 6–14 yellow, > 14 red (working days).`;
   $("lgTask").innerHTML = [["Sequence 8", "var(--s2)"], ["Rework", "var(--s3, #8e5bd8)"], ["Waiting at PH HO / Director", "var(--line-strong)"]].map(([n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("");
   const W = TL_ON.weights;
   // one card per KA: CPRs held (Seq 8 + rework) against the daily limit, speed and rework rate
@@ -5966,7 +5973,7 @@ function renderTaskLoad() {
     { key: "fin", label: "Waiting PH HO / Dir.", num: true, render: (r) => fmtInt(r.fin) },
     { key: "open", label: "Open tasks", num: true, render: (r) => el("b", {}, fmtInt(r.open)) },
     { key: "lv8", label: "Seq 8 days so far", num: true, sortable: false, render: (r) => lvCell(r.lv8, 8) },
-    { key: "lim", label: "Daily limit", num: true, render: (r) => (r.res ? el("span", { title: `Limit ${fmtNum(SIM.maxPerDay * capOf(r.ka), 0)} − rework reserve ${fmtNum(r.res.reserve, 1)} (${fmtInt(r.res.waiting)} waiting × ${fmtNum(r.res.rate * 100, 1)}%)` }, fmtNum(SIM.maxPerDay * capOf(r.ka) - r.res.reserve, 1)) : "–") },
+    { key: "lim", label: "Daily limit", num: true, render: (r) => fmtNum(SIM.maxPerDay * capOf(r.ka), 0) },
     ...(TL_ON.weights ? [{ key: "total", label: "Weighted load", num: true, render: (r) => fmtNum(r.total, 1) }] : []),
     ...(TL_ON.age ? [{ key: "old", label: "Open > 7 days", num: true, render: (r) => fmtInt(r.old) }] : []),
     ...(TL_ON.risk ? [{ key: "high", label: "High rework risk", num: true, render: (r) => (RISK ? fmtInt(r.high) : "–") }] : []),
