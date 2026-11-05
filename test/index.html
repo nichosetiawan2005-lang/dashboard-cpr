@@ -798,8 +798,8 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
       </div>
       <details class="capbox" id="capBox"><summary>More settings</summary>
         <div class="filters" style="border:0;padding:0;margin:8px 0">
-          <div class="field"><label for="sVendor">Same-vendor weight</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
-          <label class="check" title="The hospital PIC receives the CPR only while the PIC's CPR count does not exceed the average of all KAs"><input type="checkbox" id="sPic"> Prioritize hospital PIC</label>
+          <div class="field" hidden><label for="sVendor">Same-vendor weight</label><input type="number" id="sVendor" min="0" max="1" step="0.1" value="0.5"></div>
+          <label class="check" hidden><input type="checkbox" id="sPic"> Prioritize hospital PIC</label>
         </div>
         <div class="sub">KA capacity (%): saved right away and kept until changed. Used from the next Run allocation; 0% = no new CPRs.</div><div class="capgrid" id="capGrid"></div></details>
       <p class="note" id="runInfo" style="font-weight:500;color:var(--fg)"></p>
@@ -969,10 +969,10 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
       <div class="filters" style="border:0;padding:0;margin:0" id="chgForm">
         <div class="field"><label for="chgUser">Former KA (username)</label><input type="text" id="chgUser" list="chgUsers" placeholder="e.g. maria.nugraheni"><datalist id="chgUsers"></datalist></div>
         <div class="field"><label for="chgName">Name</label><input type="text" id="chgName" placeholder="e.g. Puspa"></div>
-        <div class="field"><label for="chgTo">Replaced by (if the unit has no PIC)</label><select id="chgTo"></select></div>
+        <div class="field"><label for="chgTo">Replaced by</label><select id="chgTo"></select></div>
         <button class="btn" type="button" id="chgAdd">Save</button>
       </div>
-      <p class="sub" style="margin:8px 0 0">Their open CPRs move to the Hospital PIC of each unit.</p>
+      <p class="sub" style="margin:8px 0 0">Their open CPRs move to the chosen KA, or (Automatic) are shared by the system like new CPRs.</p>
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblChg"></table></div>
     </div>
 
@@ -1246,7 +1246,7 @@ function nowItems() {
   if (D === null) return out;
   for (const r of RECS) {
     const task = taskOf(r); if (!task) continue;
-    const ka = dataKa(r); if (!ka || !isCurrentKa(ka)) continue;   // only CPRs a KA has really taken
+    const u = dataKaUser(r), ka = dataKa(r) || (u && kaLeft(u) ? SIM_KA.get(r.cpr) : null); if (!ka || !isCurrentKa(ka)) continue;   // only CPRs a KA has really taken
     const since = task === "rw" ? r.stageSince : task === "rec" ? r.kaIn : task === "mat" ? r.backFirst ?? r.back : r.backOutFirst ?? r.backOut;
     const days = since !== null && since !== undefined ? workDaysBetween(since, D) : null;
     // on time / warning / late, same targets as Supervisor Control (working days)
@@ -1950,8 +1950,8 @@ const dataKa = (r) => {
   const own = poKa({ ka: u, kaName: null }).ka;
   const left = kaStillOpen(r) ? kaLeft(u) : null;
   if (!left) return own;
-  const p = picNameFor(r.unit), heir = p && (META.kaList || []).find((k) => k.toLowerCase() === String(p).toLowerCase());
-  return heir || left.to || own;
+  // universal: a chosen replacement takes them; otherwise (null) the allocation gives them to the fastest KA
+  return left.to || null;
 };
 // ---------- Overview tab: totals per status, the CPRs behind each box, and tracking for any CPR ----------
 const OV_GROUPS = [
@@ -2793,22 +2793,23 @@ function renderKaChanges() {
   if (!$("tblChg")) return;
   const editable = canSave() && !IS_SAMPLE; $("chgForm").hidden = !editable;
   const kas = SIM ? SIM.kaList.filter((k) => (META.kaList || []).includes(k)) : META.kaList || [];
-  const cur = $("chgTo").value; $("chgTo").replaceChildren(...kas.map((k) => el("option", { value: k }, kaLabel(k)))); if (kas.includes(cur)) $("chgTo").value = cur;
+  const cur = $("chgTo").value; $("chgTo").replaceChildren(el("option", { value: "" }, "Automatic (system chooses the KA)"), ...kas.map((k) => el("option", { value: k }, kaLabel(k)))); if (kas.includes(cur)) $("chgTo").value = cur;
   $("chgUsers").replaceChildren(...[...HIST_KA_USERS].sort().map((u) => el("option", { value: u })));
   renderTable($("tblChg"), [
     { key: "name", label: "Former KA", sortable: false, render: (x) => `${x.name || x.user} (${x.user})` },
-    { key: "to", label: "Replaced by", sortable: false, render: (x) => `Hospital PIC of each unit (otherwise ${kaLabel(x.to)})` },
+    { key: "to", label: "Replaced by", sortable: false, render: (x) => (x.to ? kaLabel(x.to) : "Automatic (fastest finish)") },
     { key: "open", label: "CPRs in progress moved", num: true, sortable: false, render: (x) => fmtInt(SIM ? SIM.assigned.filter((c) => c.replacedFrom === x.user).length : 0) },
     { key: "act", label: "", sortable: false, render: (x) => (editable ? Object.assign(el("button", { class: "btn ghost", type: "button" }, "Remove"), { onclick: async () => { KA_CHANGES = KA_CHANGES.filter((y) => y !== x); await saveKaChanges(); await logEvent({ type: "KA replaced", note: `removed: ${x.user} → ${x.to}` }); await runSimulation(); } }) : "") }
   ], KA_CHANGES);
 }
 $("chgAdd").addEventListener("click", async () => {
   const user = $("chgUser").value.trim().toLowerCase(), name = $("chgName").value.trim(), to = $("chgTo").value;
-  if (!user || !to) { setStatus("Please enter the former KA's username and the replacement."); return; }
-  KA_CHANGES = KA_CHANGES.filter((x) => x.user !== user).concat([{ user, name: name || null, to, at: new Date().toISOString() }]);
-  try { await saveKaChanges(); await logEvent({ type: "KA replaced", note: `${name || user} (${user}) → ${kaLabel(to)}` }); } catch (err) { setStatus("Not saved: " + saveErrorText(err)); return; }
+  if (!user) { setStatus("Please enter the former KA's username."); return; }
+  KA_CHANGES = KA_CHANGES.filter((x) => x.user !== user).concat([{ user, name: name || null, to: to || null, at: new Date().toISOString() }]);
+  const toTxt = to ? kaLabel(to) : "the KA chosen by the system (fastest finish)";
+  try { await saveKaChanges(); await logEvent({ type: "KA replaced", note: `${name || user} (${user}) → ${toTxt}` }); } catch (err) { setStatus("Not saved: " + saveErrorText(err)); return; }
   $("chgUser").value = ""; $("chgName").value = "";
-  await runSimulation(); setStatus(`${name || user} is replaced by ${kaLabel(to)}: CPRs still in progress have moved to ${kaLabel(to)}.`);
+  await runSimulation(); setStatus(`${name || user} left: CPRs still in progress have moved to ${toTxt}.`);
 });
 function kaNameOf(user) {
   const ch = kaChange(user); if (ch && ch.name) return ch.name;
@@ -4074,7 +4075,7 @@ function simulate() {
   const start = isoToDay($("sFrom").value), end = isoToDay($("sTo").value);
   const vf = Math.max(0, Math.min(1, parseFloat($("sVendor").value) || 0.5));
   // PIC rule is optional: the PIC only gets the CPR while his CPR count stays within the fair share (+ tolerance)
-  const usePic = $("sPic").checked;
+  const usePic = false;   // universal allocation: the hospital unit / PIC never decides the KA
   const userMax = parseFloat($("sMax").value);
   // Validation mode: only CPRs with complete dates, so the real KA load can be compared.
   // Operational mode: every CPR created in the period, finished or still in progress.
@@ -4285,7 +4286,7 @@ function simulate() {
     const presumed = usePic && !fromData && !META.hasKa && r.kaIn !== null && !r.done && pic[r.unit] && kaList.includes(pic[r.unit]) ? pic[r.unit] : null;   // universal allocation: a CPR at KA without a name is allocated by workload
     const lock = fromData ? { ka: fromData, rule: "Diproses KA", weight: 1, fixed: true } : tr ? { ka: tr.to, rule: "Dialihkan", weight: 1 } : saved && !(presumed && saved.rule !== "Sudah di KA" && saved.on > r.kaIn) ? saved : presumed ? { ka: presumed, rule: "Sudah di KA", weight: 1 } : saved;
     // (a KA saved by the DSS only counts if it was chosen before the CPR reached KA; chosen afterwards it was only a guess)
-    const replacedFrom = fromData && kaStillOpen(r) && kaLeft(dataKaUser(r)) && fromData !== poKa({ ka: dataKaUser(r), kaName: null }).ka ? String(dataKaUser(r)).toLowerCase() : null;
+    const replacedFrom = dataKaUser(r) && kaStillOpen(r) && kaLeft(dataKaUser(r)) && fromData !== poKa({ ka: dataKaUser(r), kaName: null }).ka ? String(dataKaUser(r)).toLowerCase() : null;
     const [lo, hi] = f1Range(r);
     const c = {
       r, ka: null, vendor: r.vendor, unit: r.unit, w1, w2, transfer: tr || null, rw: reworkList(r), replacedFrom,
@@ -4337,7 +4338,7 @@ function simulate() {
         checkAbsence(c); rules[c.rule] = (rules[c.rule] || 0) + 1;
         continue;
       }
-      const hv = vendorHolder(c.vendor, c.s1);
+      const hv = null;   // same-vendor rule removed: CPRHistory has no vendor data; the allocation is universal
       if (hv && !absent(hv, days) && capOf(hv) > 0 && loadOf(hv, c, days, vf) + reserveOf(hv) <= maxPerDay * capOf(hv)) { ka = hv; weight = vf; rule = "Vendor sama"; }
       if (!ka && usePic) {
         const p = pic[c.unit];
@@ -5997,11 +5998,10 @@ function allocStep() {
   const f = el("div", { class: "filters", style: "border:0;padding:0;margin:8px 0 0;flex-basis:100%" });
   const field = (id, label, type, value, extra = {}) => { const d = el("div", { class: "field" }); d.append(el("label", { for: id }, label)); const i = el("input", { id, type, ...extra }); i.value = value; d.append(i); return d; };
   f.append(field("e4From", "CPR created from", "date", $("sFrom").value), field("e4To", "to", "date", $("sTo").value),
-    field("e4Vendor", "Same-vendor weight", "number", $("sVendor").value, { min: "0", max: "1", step: "0.1" }),
     field("e4Max", "Daily workload limit", "number", $("sMax").value, { min: "1", step: "0.5", placeholder: "automatic" }));
-  const pic = el("label", { class: "check" }); const cb = el("input", { type: "checkbox", id: "e4Pic" }); cb.checked = $("sPic").checked; pic.append(cb, document.createTextNode(" Prioritize hospital PIC"));
+  const pic = el("span", { hidden: "" });   // hospital PIC option removed (universal allocation)
   const run = Object.assign(el("button", { class: "btn", type: "button", id: "e4Run" }, "Run allocation"), { onclick: async () => {
-    $("sFrom").value = $("e4From").value; $("sTo").value = $("e4To").value; $("sVendor").value = $("e4Vendor").value; $("sMax").value = $("e4Max").value; $("sPic").checked = $("e4Pic").checked;
+    $("sFrom").value = $("e4From").value; $("sTo").value = $("e4To").value; $("sMax").value = $("e4Max").value;
     run.disabled = true; run.textContent = "Allocating …"; await runSimulation();
     if (SIM) await setSetupPending(false); else { run.disabled = false; run.textContent = "Run allocation"; }
     renderAll(); showTab("distribusi");
