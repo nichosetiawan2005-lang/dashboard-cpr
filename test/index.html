@@ -431,6 +431,11 @@ i.nx, .nowbar .nx { background: repeating-linear-gradient(135deg, #8ea6e6 0 5px,
 .fcgrid td.c.over { background: var(--bad-bg); color: var(--bad); font-weight: 700; }
 .fcgrid td.c.off { color: var(--faint); background: color-mix(in srgb, var(--faint) 10%, transparent); }
 .fcgrid td.c small { display: block; font-size: 10px; color: var(--accent-ink); font-weight: 500; }
+.s8grid td.c small .o { color: var(--good); }
+.s8grid th.fut, .s8grid td.fut0 { border-left: 2px solid var(--accent-ink); }
+.s8grid th.fut { color: var(--accent-ink); }
+.s8grid th .ph { display: block; font-size: 10px; font-weight: 500; color: var(--muted); }
+.s8grid td.k, .s8grid th.k { position: sticky; left: 0; background: var(--panel); z-index: 1; }
 @media (max-width: 860px) { .fcrule { grid-template-columns: 1fr; } }
 .tab[data-tab="now"] { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M3 12h4l3-8 4 16 3-8h4'/%3E%3C/svg%3E"); }
 .barnum { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
@@ -881,6 +886,12 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
       <div class="sub" id="fcGridSub"></div>
       <div class="legend"><span class="pill muted">within limit</span> <span class="pill warn">80% of the limit or more</span> <span class="pill bad">over the limit</span> <span class="desc1">· small blue number = CPRs forecast to arrive that day</span></div>
       <div class="fcgrid tbl-wrap" style="margin-top:8px"><table id="tblFcGrid"></table></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3>Sequence 8 per KA, day by day</h3>
+      <div class="sub" id="s8Sub"></div>
+      <div class="legend"><span class="pill muted">under 4 days of work</span> <span class="pill warn">4–5 days of work</span> <span class="pill bad">over 5 days of work (CPRs will wait)</span> <span class="desc1">· number = CPRs held at the end of the day, <span style="color:var(--accent-ink)">+in</span> <span style="color:var(--good)">−out</span></span></div>
+      <div class="fcgrid s8grid tbl-wrap" style="margin-top:8px"><table id="tblS8"></table></div>
     </div>
     <div class="card" style="margin-top:14px">
       <h3>Coming CPRs and the KA chosen</h3>
@@ -5589,6 +5600,7 @@ function renderFc() {
     body.append(tr);
   }
   tb.append(body);
+  renderSeq8();
   // coming CPR list
   const sel = $("fcKa"), cur = sel.value;
   sel.replaceChildren(el("option", { value: "" }, "All"), ...kas.map((k) => el("option", { value: k }, kaLabel(k)))); sel.value = kas.includes(cur) ? cur : "";
@@ -5604,6 +5616,67 @@ function renderFc() {
     { key: "fin", label: "Est. finish (days)", num: true, sortable: false, render: (x) => { const h = onArrive.get(x.r.cpr); return h === null || h === undefined ? "–" : fmtNum(h / speed(x.ka), 1); } },
     { key: "rule", label: "Why", sortable: false, render: (x) => el("span", { class: "desc1" }, x.c.why || x.c.rule || "") }
   ], rows);
+}
+// ---------- Sequence 8 per KA, day by day: actual until the data date, then forecast ----------
+// held (end of day) = held yesterday + CPRs that come back to the KA at Sequence 8 that day − CPRs the KA finishes that day
+// actual: CPRHistory dates · forecast: in = estimated return to KA (Forecast 1 + 3 + 2), out = return + Forecast 4
+function renderSeq8() {
+  const D = dataDate(), tb = $("tblS8"); tb.replaceChildren();
+  if (!SIM || D === null) { $("s8Sub").textContent = ""; return; }
+  const kas = SIM.allocKas.filter(isCurrentKa), cmap = new Map(SIM.assigned.map((c) => [c.r.cpr, c]));
+  const x0 = dayToDate(D); let start = Math.floor(Date.UTC(x0.getUTCFullYear(), x0.getUTCMonth() - 1, 1) / 864e5);
+  while (!isWorkDay(start)) start++;
+  const days = []; for (let d = start; d <= D; d++) if (isWorkDay(d)) days.push(d);
+  const nPast = days.length; for (let d = D + 1; days.length < nPast + 10; d++) if (isWorkDay(d)) days.push(d);
+  let next = D + 1; while (!isWorkDay(next)) next++;
+  const snap = (d) => { while (!isWorkDay(d)) d++; return d; };   // a weekend date counts on the next working day
+  // one entry per CPR: [ka, in day, out day or null]
+  const items = [];
+  for (const r of RECS) {
+    if (!r.hstatus || IGNORED[r.cpr] || /reject|cancel/i.test(r.hstatus || "") && (r.back ?? r.backFirst) == null) continue;
+    const c = cmap.get(r.cpr), ka = recKa(r, r.ka8User) || (c && c.ka) || dataKa(r);
+    if (!ka || !kas.includes(ka)) continue;
+    let a = r.backFirst ?? r.back, b = r.backOutFirst ?? r.backOut;
+    if ((b === null || b === undefined) && (r.done || isInactive(r)) && a != null) b = r.lastAct ?? a;   // closed without a Seq 8 approval
+    if (a === null || a === undefined) {                       // not at Sequence 8 yet: forecast
+      if (!c || r.done || isInactive(r) || /reject|cancel/i.test(r.hstatus || "")) continue;
+      a = Math.max(next, estReturn(c)); b = null;
+    }
+    if (b === null || b === undefined) {                       // still at Sequence 8 (or coming): the exit is forecast below
+      if (r.done || isInactive(r)) continue;
+      items.push([ka, snap(a), null, c && c.f4 ? Math.max(1, c.f4.days) : (c ? c.w2 : 3)]);
+    } else items.push([ka, snap(a), snap(b)]);
+  }
+  // forecast exit per KA: not before arrival + Forecast 4, and the KA finishes at most CPR/day (first come, first served)
+  const addWork = (d, n) => { while (n > 0) { d++; if (isWorkDay(d)) n--; } return d; };
+  for (const k of kas) {
+    const open = items.filter((x) => x[0] === k && x[2] === null).sort((x, y) => x[1] - y[1]);
+    let cap = 0; const sp = SIM.speedOf(k);
+    for (const x of open) {
+      const rel = x[1] <= D ? -workDaysBetween(x[1], D) : workDaysBetween(D, x[1]);   // working days from the data date (negative = already held)
+      cap = Math.max(cap, Math.max(0, rel) - 1) + 1 / sp;
+      x[2] = addWork(D, Math.max(1, Math.ceil(Math.max(rel + x[3], cap))));
+    }
+  }
+  $("s8Sub").textContent = `Actual from CPRHistory until ${fmtDay(D)}, forecast after: in = estimated return to the KA (Forecast 1 + 3 + 2); out = return + Forecast 4, at most CPR/day per KA. Days of work = CPRs held ÷ CPR/day; the target is 5 working days at Sequence 8.`;
+  const hr = el("tr"); hr.append(el("th", { class: "k" }, "Key Account"), el("th", { class: "num" }, "CPR/day"));
+  days.forEach((d, i) => { const th = el("th", { class: "num" + (i === nPast ? " fut" : "") }, fmtShort(d)); if (i === 0 || i === nPast) th.append(el("span", { class: "ph" }, i === 0 ? "actual" : "forecast")); hr.append(th); });
+  tb.append(el("thead", {}, hr));
+  const body = el("tbody");
+  for (const k of kas) {
+    const mine = items.filter((x) => x[0] === k), sp = SIM.speedOf(k);
+    const tr = el("tr"); tr.append(el("td", { class: "k" }, kaCell(k)), el("td", { class: "num" }, fmtNum(sp, 1)));
+    days.forEach((d, i) => {
+      const held = mine.filter((x) => x[1] <= d && x[2] > d).length, inn = mine.filter((x) => x[1] === d).length, out = mine.filter((x) => x[2] === d).length;
+      const work = held / sp, lv = work > 5 ? "over" : work >= 4 ? "near" : "";
+      const td = el("td", { class: `c ${lv}${i === nPast ? " fut0" : ""}`, title: `${kaLabel(k)} · ${fmtDay(d)} (${i < nPast ? "actual" : "forecast"}): ${held} CPRs held at Sequence 8 ≈ ${fmtNum(work, 1)} days of work · ${inn} in, ${out} out` }, String(held));
+      if (inn || out) { const sm = el("small"); if (inn) sm.append("+" + inn); if (inn && out) sm.append(" "); if (out) sm.append(el("span", { class: "o" }, "−" + out)); td.append(sm); }
+      tr.append(td);
+    });
+    body.append(tr);
+  }
+  tb.append(body);
+  const w = tb.closest(".tbl-wrap"); requestAnimationFrame(() => { const th = tb.querySelector("th.fut"); if (w && th) w.scrollLeft = Math.max(0, th.offsetLeft - w.clientWidth + 11 * 52); });
 }
 $("fcKa").addEventListener("change", renderFc);
 const renderers = { overview: renderOverview, now: renderNow, fcast: renderFc, distribusi: renderSim, ka: renderKa, spv: renderSpv, bukti: renderBukti, kualitas: renderQuality };
