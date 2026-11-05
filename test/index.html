@@ -4318,9 +4318,8 @@ function simulate() {
   const byCreate = new Map(), byArrive = new Map(), byKaOut = new Map(), byBack = new Map();
   const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
   for (const r of test) {
-    const notAtKa = (r.kaIn === null || r.kaIn === undefined) && !r.done;   // still at Seq 0–2: split again at every run
-    const tr0 = transferMap.get(r.cpr), tr = notAtKa && tr0 && tr0.by !== "SPV" ? null : tr0;
-    const saved = useLocks() && !notAtKa ? LOCKED.get(r.cpr) : null;
+    const tr = transferMap.get(r.cpr);
+    const saved = useLocks() ? LOCKED.get(r.cpr) : null;   // a CPR allocated in an earlier run keeps its KA: only new CPRs are split
     // the KA in the data (already processing the CPR) is fixed; otherwise a transfer (by SPV or automatic) overrides the original assignment
     const fromData = META.hasKa ? null : dataKa(r);
     // already at KA according to CPRHistory, but the holder is not in the data (only CPRSummary names it): the hospital PIC is presumed,
