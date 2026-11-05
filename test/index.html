@@ -724,7 +724,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
     </div>
     <div class="gbar" id="gbar" hidden>
       <div class="field"><label for="gKa">Key Account</label><select id="gKa"><option value="">All Key Accounts</option></select></div>
-      <div class="field"><label for="gPer">Period</label><select id="gPer"><option value="last90">Last 3 months</option><option value="thisMonth">This month</option><option value="lastMonth">Last month</option><option value="thisWeek">This week</option><option value="lastWeek">Last week</option><option value="custom">Custom …</option></select></div>
+      <div class="field"><label for="gPer">Period</label><select id="gPer"><option value="last90">Last 2 months</option><option value="thisMonth">This month</option><option value="lastMonth">Last month</option><option value="thisWeek">This week</option><option value="lastWeek">Last week</option><option value="custom">Custom …</option></select></div>
       <div class="field" id="gFromW" hidden><label for="gFrom">From</label><input type="date" id="gFrom"></div>
       <div class="field" id="gToW" hidden><label for="gTo">To</label><input type="date" id="gTo"></div>
       <span class="gnote" id="gNote"></span>
@@ -948,7 +948,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
       <button type="button" data-sub="subLog" aria-selected="false">Reassignment log</button>
     </div>
     <div id="subSpd">
-      <div class="card"><div class="sub" style="margin-bottom:10px">CPRs each KA approved at Seq 8 per day, week by week. The allocation uses last week, unless it is more than 1.5× or less than ⅔ of the KA's usual (3-month average): then the usual is used until you review it.</div>
+      <div class="card"><div class="sub" style="margin-bottom:10px">CPRs each KA approved at Seq 8 per day, week by week. The allocation uses last week, unless it is more than 1.5× or less than ⅔ of the KA's usual (2-month average): then the usual is used until you review it.</div>
       <div class="tbl-wrap"><table id="tblSpd"></table></div></div>
     </div>
     <div id="subAbs" hidden>
@@ -1015,7 +1015,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
       <div class="filters" style="border:0;padding:0;margin:8px 0 0">
         <div class="field"><label for="fcFrom">Learn from CPRs created from</label><input type="date" id="fcFrom"></div>
         <label class="check" title="Only CPRs that went through Key Account HO (Username Key Account Ho filled)"><input type="checkbox" id="fcOnlyNew"> Only 2026-process CPRs</label>
-        <div class="field"><label for="fcMonths">Test and validation window</label><select id="fcMonths"><option value="2">2 months each</option><option value="3">3 months each</option><option value="4">4 months each</option></select></div>
+        <div class="field"><label for="fcMonths">Test and validation window</label><select id="fcMonths"><option value="2">2 months each</option><option value="3">2 months each</option><option value="4">4 months each</option></select></div>
         <div class="field"><label for="fcMax">Ignore CPRs longer than (days)</label><input type="number" id="fcMax" min="1" step="1" placeholder="none"></div>
         <div class="field"><label for="fcModel">Model</label><select id="fcModel"></select></div>
         <button class="btn" id="fcApply" type="button">Apply and retrain</button>
@@ -1580,7 +1580,7 @@ function populateControls(keep) {
   fUnit.replaceChildren(el("option", { value: "" }, "All hospitals"));
   for (const u of META.units) fUnit.append(el("option", { value: u }, u));
   if (META.minCreate !== null) { $("fFrom").value = dayToIso(META.minCreate); $("fTo").value = dayToIso(META.maxCreate); }
-  // default test window: last ~3 months of CPR creation
+  // default test window: last ~2 months of CPR creation
   if (META.maxCreate !== null) {
     const end = META.maxCreate, d = dayToDate(end);
     const oldFrom = isoToDay($("sFrom").value), oldTo = isoToDay($("sTo").value);
@@ -2306,7 +2306,7 @@ async function applyHistory(rows, fileName, roleKa, roleBack) {
   RECS = mergeRecs(base, result.recs, HIST_KEYS).map(finishRec);
   for (const r of RECS) if (r.sumCreate !== null && r.sumCreate !== undefined) r.create = r.sumCreate;
   applyProgress();
-  setPoDates();   // KA performance period: the last 3 months of the new data
+  setPoDates();   // KA performance period: the last 2 months of the new data
   return result;
 }
 
@@ -2852,10 +2852,10 @@ async function loadPo() {
   setPoDates();
 }
 function setPoDates() {
-  if (RECS.some((r) => r.hstatus)) { const D = dataDate(); if (D !== null) { $("poTo").value = dayToIso(D); $("poFrom").value = dayToIso(D - 90); } return; }   // KA performance from CPRHistory: last 3 months
+  if (RECS.some((r) => r.hstatus)) { const D = dataDate(); if (D !== null) { $("poTo").value = dayToIso(D); $("poFrom").value = dayToIso(D - 90); } return; }   // KA performance from CPRHistory: last 2 months
   const d = PO_RECS.map((r) => r.po).filter((x) => x !== null); if (!d.length) return;
   const max = Math.max(...d), min = Math.min(...d);
-  $("poTo").value = dayToIso(max); $("poFrom").value = dayToIso(Math.max(min, max - 90)); // default: last 3 months of PO
+  $("poTo").value = dayToIso(max); $("poFrom").value = dayToIso(Math.max(min, max - 90)); // default: last 2 months of PO
 }
 $("filePo").addEventListener("change", async (e) => {
   const file = pickFiles(e.target.files); if (!file) return;
@@ -3476,7 +3476,7 @@ function solveLinear(A, b) {
    Forecast 2 = days from "Date Approved CPR by Key Account HO" to "Date Received CPR by PurchasingHO"
    Both learn log(1 + days). Candidates = Linear Regression (alpha 0, 0.1, 1, 10, 100) and XGBoost
    (300 trees, max_depth 2/3/4, learning_rate 0.03/0.1, absolute error). The model with the lowest MAE on the
-   validation window (2026-process CPRs) is chosen, tested on the latest 3 months, then retrained on all history. */
+   validation window (2026-process CPRs) is chosen, tested on the latest 2 months, then retrained on all history. */
 let TRAIN = new Map(), TRAIN_META = null;
 const TRAIN_FIELDS = ["cpr", "unit", "create", "kaIn", "kaOut", "back", "isNew", "capex", "text"];
 const ITEM_COL = "Item Description", SUBJECT_COL = "Subject";
@@ -3766,7 +3766,7 @@ const threeMonthsBefore = (day) => { const d = dayToDate(day); return toDay(new 
 
 // MODELS = { key, f1, f2, test, ... } - kept in memory; the chosen setting and the test result are saved so other visits skip the tuning.
 // Same steps as the notebook, anchored on the latest history (not on the allocation period):
-//   test = last 3 months of history, validation = the 3 months before it, tuning train = everything older
+//   test = last 2 months of history, validation = the 2 months before it, tuning train = everything older
 //   1) choose the setting with the lowest validation MAE   2) report its MAE on the test months (never used for choosing)
 //   3) retrain the chosen setting on ALL history -> forecasts for the queue
 let MODELS = null;
@@ -3839,7 +3839,7 @@ async function ensureModels(_start, onStatus) {
       // test: learn on everything before the test months, forecast the test months (2026 process only)
       const testRows = hist0.filter((r) => dateOf(r) >= testStart && r.isNew === 1);
       if (testRows.length >= 30 && before.length >= 100) {
-        onStatus && onStatus(`Testing the ${label} model on the latest 3 months …`); await new Promise((r) => setTimeout(r, 10));
+        onStatus && onStatus(`Testing the ${label} model on the latest 2 months …`); await new Promise((r) => setTimeout(r, 10));
         const m = fitOn(sel, before, stats, feats);
         const res = m.y.map((v, i) => v - m.f(m.X[i])), q20 = quantile(res, 0.2), q80 = quantile(res, 0.8);
         const newBefore = before.filter((r) => r.isNew === 1 && !r.cens), baseAll = median(newBefore.map((r) => r.y));
@@ -4023,13 +4023,13 @@ function kaSpeeds(kaList) {
   if (D === null) return out;
   const monday = D - weekday(D) - 7, friday = monday + 4;   // last week
   // speed = LAST WEEK (Seq 8 approvals ÷ working days present), unless last week is unusual for this KA:
-  // "usual" = the average of the last 3 months (13 weeks, moves forward every week). Last week more than 1.5× or less than 1/1.5
+  // "usual" = the average of the last 2 months (9 weeks, moves forward every week). Last week more than 1.5× or less than 1/1.5
   // of that -> the usual speed is used and the week is listed for the supervisor to review (Supervisor Control > Weekly speed check).
   // The supervisor can accept last week (a real improvement) or keep the usual speed. A lasting improvement also raises the average.
   const WEEKS = 4, BAND = 1.5; out.from = monday - 7 * (WEEKS - 1); out.to = friday; out.weeks = {}; out.lastWeek = {}; out.usual = {}; out.basis = {};
   const doneIn = {}; for (const k of kaList) doneIn[k] = new Array(WEEKS).fill(0);
   for (const r of RECS) { const b = r.backOutFirst ?? r.backOut; if (b === null || b === undefined || b < out.from || b > friday) continue; const k = recKa(r, r.ka8User); if (!(k in doneIn)) continue; const w = Math.floor((friday - b) / 7); if (w >= 0 && w < WEEKS) doneIn[k][w]++; }
-  const rates = [], U0 = monday - 84;   // 3 months = 13 weeks up to last Friday
+  const rates = [], U0 = monday - 56;   // 2 months = 9 weeks up to last Friday
   const done2 = {}; for (const r of RECS) { const b = r.backOutFirst ?? r.backOut; if (b === null || b === undefined || b < U0 || b > friday) continue; const k = recKa(r, r.ka8User); if (k) done2[k] = (done2[k] || 0) + 1; }
   out.usualFrom = U0; out.monday = monday; out.flag = {}; out.review = {}; out.series = {};
   // weekly series (last 8 weeks) for the supervisor
@@ -4049,17 +4049,17 @@ function kaSpeeds(kaList) {
       if (!normal && lw !== undefined) { out.flag[k] = lw > m ? "up" : "down"; out.review[k] = rv ? rv.use : null; }
       const useLast = normal || (out.flag[k] && rv && rv.use === "last");
       out.perDay[k] = useLast ? lw : m;
-      out.basis[k] = normal ? "last week" : lw === undefined ? "3-month average (absent last week)" : rv ? (rv.use === "last" ? "last week (accepted after review)" : "3-month average (reviewed)") : "3-month average (last week unusual, waiting for review)";
+      out.basis[k] = normal ? "last week" : lw === undefined ? "2-month average (absent last week)" : rv ? (rv.use === "last" ? "last week (accepted after review)" : "2-month average (reviewed)") : "2-month average (last week unusual, waiting for review)";
       rates.push(out.perDay[k]);
     }
   }
   out.team = rates.length ? mean(rates) : 1;
   // working days one CPR stays with the KA at Sequence 8 (from arrival back at KA to the KA approval), from the data
   const held = (from, to) => { const m = {}; for (const r of RECS) { const a = r.backFirst ?? r.back, b = r.backOutFirst ?? r.backOut; if (a == null || b == null || b < from || b > to || b < a) continue; const k = recKa(r, r.ka8User); if (k) (m[k] = m[k] || []).push(workDaysBetween(a, b)); } return m; };
-  const wk = held(monday, friday), w4 = held(monday - 84, friday), all = Object.values(w4).flat();   // w4 = the last 3 months
+  const wk = held(monday, friday), w4 = held(monday - 56, friday), all = Object.values(w4).flat();   // w4 = the last 2 months
   out.holdDays = {}; out.holdFrom = {}; out.holdTeam = all.length ? mean(all) : 2;
-  // how long the KA usually keeps one CPR at Sequence 8: average of the last 3 months (stable; one odd week does not move it much)
-  for (const k of kaList) { if ((w4[k] || []).length >= 3) { out.holdDays[k] = mean(w4[k]); out.holdFrom[k] = "last 3 months"; } else if ((wk[k] || []).length >= 3) { out.holdDays[k] = mean(wk[k]); out.holdFrom[k] = "last week"; } }
+  // how long the KA usually keeps one CPR at Sequence 8: average of the last 2 months (stable; one odd week does not move it much)
+  for (const k of kaList) { if ((w4[k] || []).length >= 3) { out.holdDays[k] = mean(w4[k]); out.holdFrom[k] = "last 2 months"; } else if ((wk[k] || []).length >= 3) { out.holdDays[k] = mean(wk[k]); out.holdFrom[k] = "last week"; } }
   return out;
 }
 // average working days to fix a rework (sent back by Purchasing Head HO / Director until the KA approves again), last 90 days
@@ -4222,7 +4222,7 @@ function simulate() {
   for (const r of RECS) if (taskOf(r) === "fin") { const k = dataKa(r); if (k) waiting[k] = (waiting[k] || 0) + 1; }
   const reserveOf = (k) => (waiting[k] || 0) * (RW.rate[k] ?? RW.team);
   const reserve = Object.fromEntries(kaList.map((k) => [k, { waiting: waiting[k] || 0, rate: RW.rate[k] ?? RW.team, n: RW.n[k] || 0, reserve: reserveOf(k) }]));
-  // speed of each KA = last week (Seq 8 approvals ÷ working days present), or the 3-month average when last week is unusual
+  // speed of each KA = last week (Seq 8 approvals ÷ working days present), or the 2-month average when last week is unusual
   const SPEED = kaSpeeds(kaList);
   // rework risk = rework rate × average working days to fix a rework (team average when a KA has fewer than 3 reworks)
   const fix = reworkFixDays();
@@ -4421,7 +4421,7 @@ function renderSpeed() {
   // ranked bars: estimated finish (working days), fastest first; the first KA within the limit gets the next CPR
   const maxFin = Math.max(1, ...rows.map((r) => r.fin)), next = rows.find((r) => r.within);
   const pend = s.allocKas.filter((k) => s.speed.flag && s.speed.flag[k] && !s.speed.review[k]);
-  const warnBox = pend.length ? [Object.assign(el("div", { class: "spdwarn", role: "button", tabIndex: 0 }, `${pend.map(kaLabel).join(", ")}: last week was unusual, the 3-month average is used. Review in Supervisor Control › Weekly speed check.`), { onclick: () => { showTab("spv"); } })] : [];
+  const warnBox = pend.length ? [Object.assign(el("div", { class: "spdwarn", role: "button", tabIndex: 0 }, `${pend.map(kaLabel).join(", ")}: last week was unusual, the 2-month average is used. Review in Supervisor Control › Weekly speed check.`), { onclick: () => { showTab("spv"); } })] : [];
   $("speedViz").replaceChildren(...warnBox, ...rows.map((r) => {
     const row = el("div", { class: "rk" + (r.within ? "" : " over") + (r === next ? " next" : "") });
     const bar = el("div", { class: "rk-bar" }); const f = el("span"); f.style.width = Math.max(3, (r.fin / maxFin) * 100) + "%"; bar.append(f);
@@ -4439,7 +4439,7 @@ function renderSpeed() {
     { key: "within", label: "Within limit", sortable: false, render: (r) => pill(r.within ? "Yes" : "No", r.within ? "good" : "bad") },
     { key: "given", label: "New", num: true, render: (r) => fmtInt(r.given) }
   ], rows);
-  $("speedNote").textContent = `Speed = last week (Seq 8 approvals ÷ working days present). If last week is more than 1.5× or less than ⅔ of the KA's usual speed (average of ${s.speed.usualFrom !== undefined ? fmtDay(s.speed.usualFrom) + " – " + fmtDay(s.speed.to) : "the last 3 months"}), the usual speed is used instead (ⓜ) until the supervisor reviews the week. Days per CPR = average of the last 3 months. All from the uploaded data, in working days. Est. finish = (held + reserve + 1) ÷ speed + rework rate × fix days. A new CPR goes to the fastest KA still within the limit of ${fmtNum(s.maxPerDay, 0)}; * = team average.`;
+  $("speedNote").textContent = `Speed = last week (Seq 8 approvals ÷ working days present). If last week is more than 1.5× or less than ⅔ of the KA's usual speed (average of ${s.speed.usualFrom !== undefined ? fmtDay(s.speed.usualFrom) + " – " + fmtDay(s.speed.to) : "the last 2 months"}), the usual speed is used instead (ⓜ) until the supervisor reviews the week. Days per CPR = average of the last 2 months. All from the uploaded data, in working days. Est. finish = (held + reserve + 1) ÷ speed + rework rate × fix days. A new CPR goes to the fastest KA still within the limit of ${fmtNum(s.maxPerDay, 0)}; * = team average.`;
 }
 function renderSim() {
   try { syncCap(); syncTw(); renderTaskLoad(); renderSpeed(); } catch (e) {}
@@ -5019,7 +5019,7 @@ function renderSpv() {
     { key: "res", label: "Result", sortable: false, render: (t) => trResult(t) }
   ], TRANSFERS.slice().reverse());
 }
-// weekly speed check: last 8 weeks per KA, the 3-month average, and the supervisor's decision for an unusual week
+// weekly speed check: last 8 weeks per KA, the 2-month average, and the supervisor's decision for an unusual week
 function renderSpeedCheck(editable) {
   const s = SIM; if (!s || !s.speed || !s.speed.series) { $("tblSpd").replaceChildren(); return; }
   const sp = s.speed, kas = s.allocKas.filter(isCurrentKa);
@@ -5036,14 +5036,14 @@ function renderSpeedCheck(editable) {
     ...weeks.map((w, i) => ({ key: "w" + i, label: fmtShort(w.mon), num: true, sortable: false, render: (k) => {
       const x = sp.series[k][i]; if (!x || x.rate === null) return el("span", { class: "desc1" }, "absent");
       const last = i === weeks.length - 1; return el("span", { class: "spdcell" + (last && sp.flag[k] ? " flag-" + sp.flag[k] : "") + (last ? " last" : ""), title: `${x.done} CPRs approved in ${x.n} working days` }, perWeek(x.rate)); } })),
-    { key: "usual", label: "Usual per day (3-month avg)", num: true, sortable: false, render: (k) => el("b", {}, perWeek(sp.usual[k])) },
+    { key: "usual", label: "Usual per day (2-month avg)", num: true, sortable: false, render: (k) => el("b", {}, perWeek(sp.usual[k])) },
     { key: "used", label: "Used now (per day)", num: true, sortable: false, render: (k) => el("b", { title: sp.basis[k] || "" }, perWeek(sp.perDay[k])) },
     { key: "st", label: "Last week", sortable: false, render: (k) => {
       if (!sp.flag[k]) return pill(sp.lastWeek[k] === undefined ? "Absent" : "Normal", sp.lastWeek[k] === undefined ? "muted" : "good");
       const ch = sp.usual[k] ? Math.round((sp.lastWeek[k] / sp.usual[k] - 1) * 100) : 0;
       const box = el("div", { class: "spdst" }); box.append(pill(`${sp.flag[k] === "up" ? "Sharp rise" : "Sharp drop"} ${ch > 0 ? "+" : ""}${ch}%`, "warn"));
-      if (sp.review[k]) box.append(el("span", { class: "desc1" }, sp.review[k] === "last" ? "accepted: last week used" : "kept: 3-month average used"));
-      else if (editable) { const b1 = Object.assign(el("button", { class: "btn ghost", type: "button" }, "Accept last week"), { onclick: () => decide(k, "last") }); const b2 = Object.assign(el("button", { class: "btn ghost", type: "button" }, "Keep 3-month avg"), { onclick: () => decide(k, "usual") }); box.append(b1, b2); }
+      if (sp.review[k]) box.append(el("span", { class: "desc1" }, sp.review[k] === "last" ? "accepted: last week used" : "kept: 2-month average used"));
+      else if (editable) { const b1 = Object.assign(el("button", { class: "btn ghost", type: "button" }, "Accept last week"), { onclick: () => decide(k, "last") }); const b2 = Object.assign(el("button", { class: "btn ghost", type: "button" }, "Keep 2-month avg"), { onclick: () => decide(k, "usual") }); box.append(b1, b2); }
       else box.append(el("span", { class: "desc1" }, "waiting for review"));
       return box; } }
   ], kas.slice().sort((a, b) => (!!sp.flag[b] && !sp.review[b]) - (!!sp.flag[a] && !sp.review[a])));
@@ -5137,7 +5137,7 @@ $("actIgnoreAll").addEventListener("click", () => {
 });
 
 /* ---------- Bukti & Akurasi ---------- */
-// real workload in the 3 months before the period, using the KA written in CPR_Cleaned
+// real workload in the 2 months before the period, using the KA written in CPR_Cleaned
 function actualFromPo() {
   if (!SIM || !PO_RECS.length) return null;
   const fileKa = (r) => { if (!r.ka) return null; const u = r.ka.toLowerCase(), nm = (r.kaName || "").toLowerCase(); return SIM.kaList.find((n) => u.includes(String(n).toLowerCase()) || nm === String(n).toLowerCase() || r.ka === n) || null; };
@@ -5381,7 +5381,7 @@ function renderBukti() {
     { key: "chosen", label: "", sortable: false, render: (r) => (r.chosen ? pill("Chosen", "good") : "") }
   ], mRows);
   $("bkNote").textContent = `Period: CPRs created ${fmtDay(SIM.start)} – ${fmtDay(SIM.end)} (${fmtInt(SIM.n)} CPRs).`;
-  // 1) forecast accuracy: notebook-style test on the latest 3 months of history
+  // 1) forecast accuracy: notebook-style test on the latest 2 months of history
   // one row per forecast, in the order of the CPR journey: easier to read than separate tiles
   const what = { f1: "days from CPR created to arrival at KA", f3: "days the KA holds the CPR at Sequence 3", f2: "days from the Sequence 3 approval to the return to KA", f4: "days the KA holds the CPR at Sequence 8" };
   const accRows = FC_LIST.map(([name, k]) => {
@@ -5504,7 +5504,7 @@ document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () 
 const INFO = [
   ["panel-overview", "All CPRs", ["#ovNote"], "CPRHistory (every approval step) + CPRSummary (current holder, PR / PO number) from the latest upload."],
   ["panel-distribusi", "Allocation settings", ["#simNote"], "CPRHistory + CPRSummary, Hospital PIC List, KA absences and KA capacity, and the forecast models (Forecast 1–4) trained on CPRHistory."],
-  ["panel-distribusi", "How the KA is chosen", ["#speedNote"], "CPRHistory: Sequence 8 approvals per KA (last week; the 3-month average when last week is unusual for the KA, until the supervisor reviews it; days per CPR = 3-month average), CPRs held now, reworks (Revise To and the approver's note) and KA absences."],
+  ["panel-distribusi", "How the KA is chosen", ["#speedNote"], "CPRHistory: Sequence 8 approvals per KA (last week; the 2-month average when last week is unusual for the KA, until the supervisor reviews it; days per CPR = 2-month average), CPRs held now, reworks (Revise To and the approver's note) and KA absences."],
   ["panel-distribusi", "#hKaCount", ["#subKaCount", "#simCompare"], "Every CPR given to the KA that is not finished yet, at any stage: before KA (Seq 0–2), Seq 3, other approvers, Seq 8, rework, or waiting at Purchasing Head HO / Director. This is wider than \"Held\" in the table above, which counts only Seq 8 + rework (the KA's real work now)."],
   ["panel-distribusi", "Completed CPRs per KA", [], "CPRHistory: CPRs approved by each KA at Sequence 8."],
   ["panel-distribusi", "CPR assignment list", [], "One row per CPR: the KA chosen by the DSS and why, forecast dates (Forecast 1–4) and actual dates from CPRHistory."],
