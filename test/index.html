@@ -400,12 +400,14 @@ body.loading .tile .v * , body.loading .tbl-wrap tbody td * { visibility: hidden
 .now-legend .avgkey { color: var(--head); }
 i.s3, .nowbar .s3 { background: var(--s1); } i.s8, .nowbar .s8 { background: var(--s2); } i.rw, .nowbar .rw { background: var(--s3); } i.fin, .nowbar .fin { background: #c5cfe4; }
 .nowlist { display: grid; gap: 4px; }
-.nowrow { display: grid; grid-template-columns: 150px 1fr 130px 90px 100px 170px; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 10px; cursor: pointer; }
+.nowrow { display: grid; grid-template-columns: 150px 1fr 190px 130px 100px 170px; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 10px; cursor: pointer; }
 .nowrow:hover { background: #f2f5fc; } .nowrow.sel { background: #e7edfa; box-shadow: inset 3px 0 0 var(--ward); }
 .nowbar { position: relative; display: flex; height: 16px; border-radius: 8px; background: #e9eef8; overflow: visible; }
 .nowbar span { height: 100%; } .nowbar span:first-child { border-radius: 8px 0 0 8px; } .nowbar span:last-of-type { border-radius: 0 8px 8px 0; } .nowbar span:only-of-type { border-radius: 8px; }
 .nowbar span + span { margin-left: 2px; }
 .nowbar .avgline { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px dashed var(--head); opacity: .55; }
+.nownum.bad b { color: var(--bad); }
+.nownum.warn b { color: var(--warn); }
 .nownum b { font-size: 18px; color: var(--head); } .nownum small { color: var(--muted); font-size: 12px; }
 .nowmode { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(12,42,130,.08); margin: -2px 0 14px; flex-wrap: wrap; }
 .nowmode button { border: 0; background: transparent; padding: 7px 14px; border-radius: 999px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; }
@@ -859,13 +861,14 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
   <!-- WORKLOAD NOW: straight from the uploaded data, who holds what today -->
   <section class="panel" id="panel-now" role="tabpanel" aria-labelledby="tab-now">
     <div class="section-title"><h2>Workload now</h2><p id="nowAsOf"></p></div>
-    <div class="nowmode" role="tablist">
+    <div class="nowmode" role="tablist" hidden>
       <button type="button" data-mode="sim" aria-selected="true">Simulation: the system splits every open CPR</button>
       <button type="button" data-mode="actual" aria-selected="false">Actual: who holds them in the data</button>
     </div>
     <div class="tiles" id="nowTiles"></div>
     <div class="card" style="margin-top:14px">
-      <div class="now-legend"><span><i class="s3"></i>Sequence 3</span><span><i class="s8"></i>Sequence 8</span><span><i class="rw"></i>Rework</span><span><i class="fin"></i>Waiting PH HO / Director</span><span class="avgkey">┊ team average</span><span><i class="nx"></i>Not at KA yet (Seq 0–2)</span><span style="margin-left:auto">Click a KA to see the CPRs they hold</span></div>
+      <p class="sub" style="margin-bottom:8px">Fair = every KA can finish its work in about the same number of days. Days of work = CPRs held at Sequence 8 + rework ÷ the KA's CPR/day. Only the KAs that really hold the CPRs are shown; CPRs already given to a KA keep their KA.</p>
+      <div class="now-legend"><span><i class="s3"></i>Sequence 3</span><span><i class="s8"></i>Sequence 8</span><span><i class="rw"></i>Rework</span><span><i class="fin"></i>Waiting PH HO / Director</span><span class="avgkey">┊ team average</span><span style="margin-left:auto">Click a KA to see the CPRs they hold</span></div>
       <div id="nowList" class="nowlist"></div>
     </div>
     <div class="card" id="nowDetail" style="margin-top:14px" hidden>
@@ -1270,7 +1273,7 @@ function showTip(evt, title, rows) {
 const hideTip = () => { tip.hidden = true; };
 
 /* ---------- Workload Now tab: who holds which CPR according to the uploaded data (not the allocation plan) ---------- */
-let NOW_KA = null, NOW_MODE = "sim";
+let NOW_KA = null, NOW_MODE = "actual";   // only the actual holders: CPRs already given to a KA keep their KA
 // Simulation: every CPR that is open today (Seq 3, Seq 8, rework, and CPRs still at Seq 0–2) is split again by the system,
 // WITHOUT looking at the KA in the data. Same rule as the allocation: the fastest estimated finish among KAs within the limit;
 // when every KA is above the limit, still the fastest estimated finish. The most urgent CPRs are placed first.
@@ -1342,21 +1345,28 @@ function renderNow() {
   $("nowAsOf").textContent = D !== null ? `${sim ? "If the system split today's open CPRs" : "From the uploaded data"}, as of ${fmtDay(D)}` : "";
   const lateNow = real.filter((x) => x.lv === "late").length, keep = sim ? expectLate(real) : null;
   const kas = [...new Set([...(META.kaList || []).filter(isCurrentKa), ...items.map((x) => x.ka)])];
+  // coming to Sequence 8 in the next 5 working days (Forecast 1), from the Sequence 8 forecast
+  const S8 = SIM ? s8Data() : null; let soon = null;
+  if (S8) { soon = S8.next; for (let n = 1; n < 5; ) { soon++; if (isWorkDay(soon)) n++; } }
+  const speedOfKa = (ka) => (SIM ? SIM.speedOf(ka) : 1);
   const per = kas.map((ka) => {
     const mine = items.filter((x) => x.ka === ka), n = (t) => mine.filter((x) => x.task === t).length;
     return { ka, rec: n("rec"), mat: n("mat"), rw: n("rw"), fin: n("fin"), next: n("next"), work: n("rec") + n("mat") + n("rw") + (sim ? n("next") : 0), total: mine.length - (sim ? 0 : n("next")),
       clears: sim ? Math.ceil((n("rec") + n("mat") + n("rw") + n("next")) / Math.max(0.2, SIM.speed.perDay[ka] ?? SIM.speed.team)) : null,
-      late: mine.filter((x) => x.lv === "late").length, warn: mine.filter((x) => x.lv === "warn").length, oldest: Math.max(0, ...mine.filter((x) => x.task !== "fin").map((x) => x.days || 0)) };
-  }).sort((a, b) => b.work - a.work || b.total - a.total);
-  // balance: how far apart the KAs are (work = Seq 3 + Seq 8 + rework)
-  const works = per.map((k) => k.work), avg = mean(works) ?? 0, sd = works.length ? Math.sqrt(mean(works.map((w) => (w - avg) ** 2))) : 0;
-  const cv = avg > 0 ? sd / avg : 0, busiest = per[0], least = per[per.length - 1];
-  const verdict = cv < 0.35 ? ["Balanced", "good"] : cv < 0.6 ? ["Slightly uneven", "warn"] : ["Uneven", "bad"];
+      late: mine.filter((x) => x.lv === "late").length, warn: mine.filter((x) => x.lv === "warn").length, oldest: Math.max(0, ...mine.filter((x) => x.task !== "fin").map((x) => x.days || 0)),
+      speed: speedOfKa(ka), dayWork: (n("mat") + n("rw")) / speedOfKa(ka), soon: S8 ? S8.items.filter((x) => x.ka === ka && !x.at && !x.past && x.a <= soon).length : 0 };
+  }).sort((a, b) => b.dayWork - a.dayWork || b.total - a.total);
+  // balance in days, not in CPR counts: days of work = (Seq 8 + rework held) ÷ CPR/day; fair = every KA finishes at about the same time
+  const works = per.map((k) => k.work), avg = mean(works) ?? 0;
+  const avgDays = mean(per.map((k) => k.dayWork)) ?? 0, busiest = per[0], least = per[per.length - 1];
+  const gap = busiest && least ? busiest.dayWork - least.dayWork : 0;
+  const verdict = gap <= 2 ? ["Balanced", "good"] : gap <= 4 ? ["Slightly uneven", "warn"] : ["Uneven", "bad"];
+  const overKas = per.filter((k) => k.dayWork > 5);
   const late = items.filter((x) => x.lv === "late").length, warn = items.filter((x) => x.lv === "warn").length;
-  const t1 = tile(sim ? "Spread after the split" : "Spread of work", verdict[0], "", busiest ? `busiest ${kaLabel(busiest.ka)} ${busiest.work} · least ${kaLabel(least.ka)} ${least.work}` : ""); t1.classList.add("now-" + verdict[1]);
-  const t2 = tile(sim ? "Open CPRs split" : "CPRs held by KAs", fmtInt(items.filter((x) => x.task !== "fin" && (sim || x.task !== "next")).length), "", sim ? `${fmtInt(items.filter((x) => x.task === "next").length)} of them not at KA yet` : `average ${fmtNum(avg, 1)} per KA · ${fmtInt(items.filter((x) => x.task === "next").length)} coming`);
-  const t3 = tile(sim ? "Expected late" : "Late", fmtInt(late), "CPRs", sim ? `with today's KAs: ${keep ? fmtInt(keep.late) : "–"} · late now ${fmtInt(lateNow)}` : "Seq 3 > 1 day or Seq 8 > 14 days"); t3.classList.add(late ? "now-bad" : "now-good");
-  const t4 = tile(sim ? "Expected warning" : "Warning", fmtInt(warn), "CPRs", sim ? `with today's KAs: ${keep ? fmtInt(keep.warn) : "–"}` : "Seq 8 6–14 working days"); t4.classList.add(warn ? "now-warn" : "now-good");
+  const t1 = tile("Spread between KAs", fmtNum(gap, 1), "days", busiest ? `busiest ${kaLabel(busiest.ka)} ${fmtNum(busiest.dayWork, 1)} d · least ${kaLabel(least.ka)} ${fmtNum(least.dayWork, 1)} d · ${verdict[0].toLowerCase()}` : ""); t1.classList.add("now-" + verdict[1]);
+  const t2 = tile("KAs over 5 days of work", fmtInt(overKas.length), "KAs", overKas.length ? overKas.map((k) => kaLabel(k.ka)).join(", ") : "none"); t2.classList.add(overKas.length ? "now-bad" : "now-good");
+  const t3 = tile("Late", fmtInt(late), "CPRs", "Seq 3 > 1 day or Seq 8 > 14 days"); t3.classList.add(late ? "now-bad" : "now-good");
+  const t4 = tile("Warning", fmtInt(warn), "CPRs", "Seq 8 6–14 working days"); t4.classList.add(warn ? "now-warn" : "now-good");
   $("nowTiles").replaceChildren(t1, t2, t3, t4);
   // one row per KA: stacked bar of what the KA holds, the team average as a dashed line
   const max = Math.max(1, ...per.map((k) => k.total));
@@ -1365,14 +1375,16 @@ function renderNow() {
     const bar = el("div", { class: "nowbar" });
     for (const [key, v] of [["s3", k.rec], ["s8", k.mat], ["rw", k.rw], ...(sim ? [["nx", k.next]] : []), ["fin", k.fin]]) if (v) { const seg = el("span", { class: key, title: `${v}` }); seg.style.width = (v / max) * 100 + "%"; bar.append(seg); }
     const line = el("i", { class: "avgline" }); line.style.left = (avg / max) * 100 + "%"; bar.append(line);
-    const diff = avg > 0 ? (k.work - avg) / avg : 0;
+    const diff = k.dayWork - avgDays;
     const chips = el("div", { class: "nowchips" });
     if (k.late) chips.append(el("span", { class: "nc late" }, `${k.late} late`));
     if (k.warn) chips.append(el("span", { class: "nc warn" }, `${k.warn} warning`));
     if (!k.late && !k.warn) chips.append(el("span", { class: "nc ok" }, "on time"));
-    row.append(kaCell(k.ka), bar, el("div", { class: "nownum" }, el("b", {}, fmtInt(k.work)), el("small", {}, ` ${sim ? "to do" : "held"}${k.fin ? ` + ${k.fin} waiting` : ""}`)),
-      sim ? el("div", { class: "nowcoming" }, el("small", {}, "clears in "), el("b", {}, fmtInt(k.clears)), el("small", {}, " d")) : el("div", { class: "nowcoming" + (k.next ? "" : " zero") }, el("b", {}, fmtInt(k.next)), el("small", {}, " coming")),
-      el("div", { class: "nowdiff " + (diff > 0.25 ? "up" : diff < -0.25 ? "down" : "") }, avg > 0 ? `${diff >= 0 ? "+" : ""}${fmtNum(diff * 100, 0)}% vs avg` : "–"), chips);
+    const lvDays = k.dayWork > 5 ? "bad" : k.dayWork >= 4 ? "warn" : "";
+    row.append(kaCell(k.ka), bar,
+      el("div", { class: "nownum " + lvDays, title: `${k.mat} at Seq 8 + ${k.rw} rework ÷ ${fmtNum(k.speed, 1)} CPR/day` }, el("b", {}, fmtNum(k.dayWork, 1)), el("small", {}, ` days of work · ${fmtNum(k.speed, 1)}/day`)),
+      el("div", { class: "nowcoming" + (k.soon ? "" : " zero"), title: "CPRs forecast to reach this KA at Sequence 8 in the next 5 working days (Forecast 1)" }, el("b", {}, fmtInt(k.soon)), el("small", {}, " to Seq 8 in 5 d")),
+      el("div", { class: "nowdiff " + (diff > 1 ? "up" : diff < -1 ? "down" : "") }, `${diff >= 0 ? "+" : ""}${fmtNum(diff, 1)} d vs avg`), chips);
     const open = () => { NOW_KA = NOW_KA === k.ka ? null : k.ka; renderNow(); if (NOW_KA) $("nowDetail").scrollIntoView({ behavior: "smooth", block: "start" }); };
     row.onclick = (e) => { if (e.target.closest(".kalink")) return; open(); }; row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
     return row;
