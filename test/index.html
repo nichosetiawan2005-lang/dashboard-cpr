@@ -435,8 +435,15 @@ i.nx, .nowbar .nx { background: repeating-linear-gradient(135deg, #8ea6e6 0 5px,
 .s8grid th.fut, .s8grid td.fut0 { border-left: 2px solid var(--accent-ink); }
 .s8grid th.fut { color: var(--accent-ink); }
 .s8grid th .ph { display: block; font-size: 10px; font-weight: 500; color: var(--muted); }
+.s8acc { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-top: 10px; }
+.s8acc h4 { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.s8acc p { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
+.s8acc td.num b { color: var(--good); }
+.s8part { color: var(--muted); }
+.s8part.done { color: var(--good); }
 .s8grid td.k, .s8grid th.k { position: sticky; left: 0; background: var(--panel); z-index: 1; }
 @media (max-width: 860px) { .fcrule { grid-template-columns: 1fr; } }
+.tab[data-tab="seq8"] { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12h11'/%3E%3Cpath d='m10 8 4 4-4 4'/%3E%3Crect x='15' y='6' width='6' height='12' rx='1.5'/%3E%3C/svg%3E"); }
 .tab[data-tab="now"] { --ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M3 12h4l3-8 4 16 3-8h4'/%3E%3C/svg%3E"); }
 .barnum { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .bn-track { width: 64px; height: 6px; border-radius: 3px; background: #e6ecf7; overflow: hidden; flex: none; }
@@ -735,6 +742,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
       <button class="tab" role="tab" aria-selected="false" data-tab="ka" id="tab-ka">KA Performance</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="now" id="tab-now">Workload Now</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="fcast" id="tab-fcast">Workload Forecast</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="seq8" id="tab-seq8">Sequence 8 Forecast</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="spv" id="tab-spv">Supervisor Control</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="bukti" id="tab-bukti">Evaluation</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="kualitas" id="tab-kualitas">Data Management</button>
@@ -888,16 +896,40 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
       <div class="fcgrid tbl-wrap" style="margin-top:8px"><table id="tblFcGrid"></table></div>
     </div>
     <div class="card" style="margin-top:14px">
+      <h3>Coming CPRs and the KA chosen</h3>
+      <div class="sub">CPRs not at a KA yet (Sequence 0–2), in order of forecast arrival.</div>
+      <div class="filters" style="border:0;padding:0;margin:8px 0 0"><div class="field"><label for="fcKa">Key Account</label><select id="fcKa"><option value="">All</option></select></div></div>
+      <div class="tbl-wrap tall" style="margin-top:8px"><table id="tblFcList"></table></div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-seq8" role="tabpanel" aria-labelledby="tab-seq8">
+    <div class="section-title"><h2>Sequence 8 forecast</h2><p id="s8AsOf"></p></div>
+    <div class="fcrule">
+      <div><b>Forecast 1 · When does the CPR reach Sequence 8?</b>Three parts added up: created → arrives at the KA, the KA review at Sequence 3, then the other approvers until it comes back to the KA.</div>
+      <div><b>Forecast 2 · How long will the KA hold it?</b>Working days at Sequence 8, from the KA's queue and the CPR. A KA finishes at most its CPR/day, so a long queue pushes the exit later.</div>
+      <div><b>Will CPRs wait?</b>Days of work = CPRs held at Sequence 8 ÷ CPR/day. Over 5 working days means CPRs will wait.</div>
+    </div>
+    <div class="tiles" id="s8Tiles" style="margin-top:14px"></div>
+    <div class="card" style="margin-top:14px">
       <h3>Sequence 8 per KA, day by day</h3>
       <div class="sub" id="s8Sub"></div>
       <div class="legend"><span class="pill muted">under 4 days of work</span> <span class="pill warn">4–5 days of work</span> <span class="pill bad">over 5 days of work (CPRs will wait)</span> <span class="desc1">· number = CPRs held at the end of the day, <span style="color:var(--accent-ink)">+in</span> <span style="color:var(--good)">−out</span></span></div>
       <div class="fcgrid s8grid tbl-wrap" style="margin-top:8px"><table id="tblS8"></table></div>
     </div>
     <div class="card" style="margin-top:14px">
-      <h3>Coming CPRs and the KA chosen</h3>
-      <div class="sub">CPRs not at a KA yet (Sequence 0–2), in order of forecast arrival.</div>
-      <div class="filters" style="border:0;padding:0;margin:8px 0 0"><div class="field"><label for="fcKa">Key Account</label><select id="fcKa"><option value="">All</option></select></div></div>
-      <div class="tbl-wrap tall" style="margin-top:8px"><table id="tblFcList"></table></div>
+      <h3>CPRs on the way to and at Sequence 8</h3>
+      <div class="sub">Each CPR's own forecast. Part 1–3 = forecast working days of each part of Forecast 1; ✓ = that part is already done.</div>
+      <div class="filters" style="border:0;padding:0;margin:8px 0 0">
+        <div class="field"><label for="s8Ka">Key Account</label><select id="s8Ka"><option value="">All</option></select></div>
+        <div class="field"><label for="s8Show">Show</label><select id="s8Show"><option value="">All</option><option value="coming">Coming to Sequence 8</option><option value="at">At Sequence 8 now</option><option value="wait">Will wait over 5 days</option></select></div>
+      </div>
+      <div class="tbl-wrap tall" style="margin-top:8px"><table id="tblS8List"></table></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3>How accurate are the two forecasts?</h3>
+      <div class="sub">Test on CPRs created September–October 2026 (trained on February–August). MAE = average miss in working days; lower is better. ★ = the model used.</div>
+      <div class="s8acc" id="s8Acc"></div>
     </div>
   </section>
 
@@ -5600,7 +5632,6 @@ function renderFc() {
     body.append(tr);
   }
   tb.append(body);
-  renderSeq8();
   // coming CPR list
   const sel = $("fcKa"), cur = sel.value;
   sel.replaceChildren(el("option", { value: "" }, "All"), ...kas.map((k) => el("option", { value: k }, kaLabel(k)))); sel.value = kas.includes(cur) ? cur : "";
@@ -5617,57 +5648,65 @@ function renderFc() {
     { key: "rule", label: "Why", sortable: false, render: (x) => el("span", { class: "desc1" }, x.c.why || x.c.rule || "") }
   ], rows);
 }
-// ---------- Sequence 8 per KA, day by day: actual until the data date, then forecast ----------
-// held (end of day) = held yesterday + CPRs that come back to the KA at Sequence 8 that day − CPRs the KA finishes that day
-// actual: CPRHistory dates · forecast: in = estimated return to KA (Forecast 1 + 3 + 2), out = return + Forecast 4
-function renderSeq8() {
-  const D = dataDate(), tb = $("tblS8"); tb.replaceChildren();
-  if (!SIM || D === null) { $("s8Sub").textContent = ""; return; }
+// ---------- Sequence 8 forecast tab ----------
+// Forecast 1 = when the CPR reaches Sequence 8 = part 1 (created → KA) + part 2 (KA review, Seq 3) + part 3 (other approvers → back to KA)
+// Forecast 2 = working days the KA holds it at Sequence 8 (Forecast 4 model); a KA finishes at most CPR/day
+// held (end of day) = held yesterday + CPRs that come back to the KA that day − CPRs the KA finishes that day
+function s8Data() {
+  const D = dataDate();
+  if (!SIM || D === null) return null;
   const kas = SIM.allocKas.filter(isCurrentKa), cmap = new Map(SIM.assigned.map((c) => [c.r.cpr, c]));
-  const x0 = dayToDate(D); let start = Math.floor(Date.UTC(x0.getUTCFullYear(), x0.getUTCMonth() - 1, 1) / 864e5);
-  while (!isWorkDay(start)) start++;
-  const days = []; for (let d = start; d <= D; d++) if (isWorkDay(d)) days.push(d);
-  const nPast = days.length; for (let d = D + 1; days.length < nPast + 10; d++) if (isWorkDay(d)) days.push(d);
   let next = D + 1; while (!isWorkDay(next)) next++;
   const snap = (d) => { while (!isWorkDay(d)) d++; return d; };   // a weekend date counts on the next working day
-  // one entry per CPR: [ka, in day, out day or null]
-  const items = [];
+  const items = [];   // one per CPR: { r, c, ka, a: in day, b: out day, f2: forecast days at Seq 8, at: already at Seq 8, late }
   for (const r of RECS) {
     if (!r.hstatus || IGNORED[r.cpr] || /reject|cancel/i.test(r.hstatus || "") && (r.back ?? r.backFirst) == null) continue;
     const c = cmap.get(r.cpr), ka = recKa(r, r.ka8User) || (c && c.ka) || dataKa(r);
     if (!ka || !kas.includes(ka)) continue;
-    let a = r.backFirst ?? r.back, b = r.backOutFirst ?? r.backOut;
+    let a = r.backFirst ?? r.back, b = r.backOutFirst ?? r.backOut, late = false;
     if ((b === null || b === undefined) && (r.done || isInactive(r)) && a != null) b = r.lastAct ?? a;   // closed without a Seq 8 approval
-    if (a === null || a === undefined) {                       // not at Sequence 8 yet: forecast
+    const at = a !== null && a !== undefined;
+    if (!at) {                                                  // not at Sequence 8 yet: Forecast 1
       if (!c || r.done || isInactive(r) || /reject|cancel/i.test(r.hstatus || "")) continue;
-      a = Math.max(next, estReturn(c)); b = null;
+      const est = estReturn(c); late = est < next; a = Math.max(next, est); b = null;
     }
-    if (b === null || b === undefined) {                       // still at Sequence 8 (or coming): the exit is forecast below
+    if (b === null || b === undefined) {                       // still at Sequence 8 (or coming): Forecast 2 below
       if (r.done || isInactive(r)) continue;
-      items.push([ka, snap(a), null, c && c.f4 ? Math.max(1, c.f4.days) : (c ? c.w2 : 3)]);
-    } else items.push([ka, snap(a), snap(b)]);
+      items.push({ r, c, ka, a: snap(a), b: null, f2: c && c.f4 ? Math.max(1, c.f4.days) : (c ? c.w2 : 3), at, late });
+    } else items.push({ r, c, ka, a: snap(a), b: snap(b), f2: null, at: true, past: true });
   }
-  // forecast exit per KA: not before arrival + Forecast 4, and the KA finishes at most CPR/day (first come, first served)
+  // forecast exit per KA: not before arrival + Forecast 2, and at most CPR/day (first come, first served)
   const addWork = (d, n) => { while (n > 0) { d++; if (isWorkDay(d)) n--; } return d; };
   for (const k of kas) {
-    const open = items.filter((x) => x[0] === k && x[2] === null).sort((x, y) => x[1] - y[1]);
+    const open = items.filter((x) => x.ka === k && x.b === null).sort((x, y) => x.a - y.a);
     let cap = 0; const sp = SIM.speedOf(k);
     for (const x of open) {
-      const rel = x[1] <= D ? -workDaysBetween(x[1], D) : workDaysBetween(D, x[1]);   // working days from the data date (negative = already held)
+      const rel = x.a <= D ? -workDaysBetween(x.a, D) : workDaysBetween(D, x.a);   // working days from the data date (negative = already held)
       cap = Math.max(cap, Math.max(0, rel) - 1) + 1 / sp;
-      x[2] = addWork(D, Math.max(1, Math.ceil(Math.max(rel + x[3], cap))));
+      x.b = addWork(D, Math.max(1, Math.ceil(Math.max(rel + x.f2, cap))));
+      x.days = x.a <= D ? workDaysBetween(x.a, x.b) : workDaysBetween(x.a, x.b);
     }
   }
-  $("s8Sub").textContent = `Actual from CPRHistory until ${fmtDay(D)}, forecast after: in = estimated return to the KA (Forecast 1 + 3 + 2); out = return + Forecast 4, at most CPR/day per KA. Days of work = CPRs held ÷ CPR/day; the target is 5 working days at Sequence 8.`;
+  return { D, next, kas, items };
+}
+function renderSeq8Grid(S) {
+  const tb = $("tblS8"); tb.replaceChildren();
+  if (!S) { $("s8Sub").textContent = ""; return; }
+  const { D, kas, items } = S;
+  const x0 = dayToDate(D); let start = Math.floor(Date.UTC(x0.getUTCFullYear(), x0.getUTCMonth() - 1, 1) / 864e5);
+  while (!isWorkDay(start)) start++;
+  const days = []; for (let d = start; d <= D; d++) if (isWorkDay(d)) days.push(d);
+  const nPast = days.length; for (let d = D + 1; days.length < nPast + 10; d++) if (isWorkDay(d)) days.push(d);
+  $("s8Sub").textContent = `Actual from CPRHistory until ${fmtDay(D)}, forecast after: in = Forecast 1, out = in + Forecast 2 (at most CPR/day per KA). Days of work = CPRs held ÷ CPR/day; the target is 5 working days at Sequence 8.`;
   const hr = el("tr"); hr.append(el("th", { class: "k" }, "Key Account"), el("th", { class: "num" }, "CPR/day"));
   days.forEach((d, i) => { const th = el("th", { class: "num" + (i === nPast ? " fut" : "") }, fmtShort(d)); if (i === 0 || i === nPast) th.append(el("span", { class: "ph" }, i === 0 ? "actual" : "forecast")); hr.append(th); });
   tb.append(el("thead", {}, hr));
   const body = el("tbody");
   for (const k of kas) {
-    const mine = items.filter((x) => x[0] === k), sp = SIM.speedOf(k);
+    const mine = items.filter((x) => x.ka === k), sp = SIM.speedOf(k);
     const tr = el("tr"); tr.append(el("td", { class: "k" }, kaCell(k)), el("td", { class: "num" }, fmtNum(sp, 1)));
     days.forEach((d, i) => {
-      const held = mine.filter((x) => x[1] <= d && x[2] > d).length, inn = mine.filter((x) => x[1] === d).length, out = mine.filter((x) => x[2] === d).length;
+      const held = mine.filter((x) => x.a <= d && x.b > d).length, inn = mine.filter((x) => x.a === d).length, out = mine.filter((x) => x.b === d).length;
       const work = held / sp, lv = work > 5 ? "over" : work >= 4 ? "near" : "";
       const td = el("td", { class: `c ${lv}${i === nPast ? " fut0" : ""}`, title: `${kaLabel(k)} · ${fmtDay(d)} (${i < nPast ? "actual" : "forecast"}): ${held} CPRs held at Sequence 8 ≈ ${fmtNum(work, 1)} days of work · ${inn} in, ${out} out` }, String(held));
       if (inn || out) { const sm = el("small"); if (inn) sm.append("+" + inn); if (inn && out) sm.append(" "); if (out) sm.append(el("span", { class: "o" }, "−" + out)); td.append(sm); }
@@ -5678,8 +5717,60 @@ function renderSeq8() {
   tb.append(body);
   const w = tb.closest(".tbl-wrap"); requestAnimationFrame(() => { const th = tb.querySelector("th.fut"); if (w && th) w.scrollLeft = Math.max(0, th.offsetLeft - w.clientWidth + 11 * 52); });
 }
+// model test results from the thesis code (Python, CPRHistory up to 4 Nov 2026); refreshed when the thesis is re-run
+const S8_ACC = [
+  { title: "Forecast 1 · created → reaches Sequence 8", n: 929, rows: [["Simple guess (median per part, per hospital)", 3.05], ["Linear Regression, per part then added", 2.97, true], ["Random Forest, per part then added", 2.98], ["XGBoost, per part then added", 3.16], ["Linear Regression, one model for the whole way", 3.39], ["Random Forest, one model for the whole way", 3.62], ["XGBoost, one model for the whole way", 3.83]],
+    note: "Forecasting each part and adding them up is better than one model for the whole way. The gain over the simple guess is small (2.9%) because the approval process got faster month by month." },
+  { title: "Forecast 2 · days held at Sequence 8", n: null, rows: [["Simple guess (median per hospital)", 4.59], ["Linear Regression", 6.56], ["Random Forest", 4.11], ["XGBoost", 4.00, true]],
+    note: "XGBoost is 12.9% better than the simple guess. The KA's queue is the most important input: the longer the queue, the bigger the gain." }
+];
+function renderS8Tab() {
+  const S = s8Data();
+  if (!S) { $("s8AsOf").textContent = "Select Run allocation first."; $("s8Tiles").replaceChildren(); renderSeq8Grid(null); $("tblS8List").replaceChildren(); $("s8Acc").replaceChildren(); return; }
+  const { D, next, kas, items } = S;
+  $("s8AsOf").textContent = `Data up to ${fmtDay(D)} · forecast from ${fmtDay(next)}`;
+  const open = items.filter((x) => !x.past), atNow = open.filter((x) => x.at), coming = open.filter((x) => !x.at);
+  const days10 = []; for (let d = next; days10.length < 10; d++) if (isWorkDay(d)) days10.push(d);
+  const in10 = coming.filter((x) => x.a <= days10[9]).length, wait = open.filter((x) => x.days > 5);
+  const overKas = kas.filter((k) => { const n = atNow.filter((x) => x.ka === k).length; return n / SIM.speedOf(k) > 5; });
+  const t3 = tile("Will wait over 5 days", fmtInt(wait.length), "CPRs", "forecast exit more than 5 working days after entry"); t3.classList.add(wait.length ? "now-bad" : "now-good");
+  const t4 = tile("KAs over 5 days of work now", fmtInt(overKas.length), "KAs", overKas.length ? overKas.map(kaLabel).join(", ") : "none"); t4.classList.add(overKas.length ? "now-bad" : "now-good");
+  $("s8Tiles").replaceChildren(
+    tile("At Sequence 8 now", fmtInt(atNow.length), "CPRs", "held by a KA for the final review"),
+    tile("Coming in 10 working days", fmtInt(in10), "CPRs", `Forecast 1, until ${fmtDay(days10[9])}`),
+    t3, t4);
+  renderSeq8Grid(S);
+  // CPR list
+  const sk = $("s8Ka"), cur = sk.value;
+  sk.replaceChildren(el("option", { value: "" }, "All"), ...kas.map((k) => el("option", { value: k }, kaLabel(k)))); sk.value = kas.includes(cur) ? cur : "";
+  const show = $("s8Show").value;
+  const rows = open.filter((x) => (!sk.value || x.ka === sk.value) && (!show || (show === "coming" ? !x.at : show === "at" ? x.at : x.days > 5))).sort((x, y) => x.a - y.a || x.b - y.b);
+  const part = (done, v) => el("span", { class: "s8part" + (done ? " done" : "") }, done ? "✓" : v === null || v === undefined ? "–" : fmtNum(v, 1));
+  renderTable($("tblS8List"), [
+    { key: "cpr", label: "CPR", sortable: false, render: (x) => cprCell(x.r.cpr, x.r.vendorName) },
+    { key: "unit", label: "Hospital", sortable: false, render: (x) => unitChip(unitName(x.r.unit, x.r.cpr)) },
+    { key: "where", label: "Now at", sortable: false, render: (x) => el("span", { class: "desc1" }, posLabel(x.r) || fallbackPos(x.r) || "–") },
+    { key: "ka", label: "KA", sortable: false, render: (x) => kaCell(x.ka) },
+    { key: "p1", label: "Part 1 · to KA", num: true, sortable: false, render: (x) => part(x.r.kaIn !== null, x.c && x.c.f1) },
+    { key: "p2", label: "Part 2 · KA review", num: true, sortable: false, render: (x) => part(x.r.kaOut !== null, x.c && x.c.w1) },
+    { key: "p3", label: "Part 3 · approvers", num: true, sortable: false, render: (x) => part(x.at, x.c && x.c.f2) },
+    { key: "a", label: "Enters Seq 8", sortable: false, render: (x) => el("span", { title: x.at ? "Actual date from CPRHistory" : x.late ? "The forecast day has passed and the CPR is not back yet: the next working day is used" : "Forecast 1" }, fmtDay(x.a) + (x.at ? "" : x.late ? " *" : "")) },
+    { key: "f2", label: "Forecast 2 (days)", num: true, sortable: false, render: (x) => fmtNum(x.f2, 1) },
+    { key: "b", label: "Leaves Seq 8", sortable: false, render: (x) => fmtDay(x.b) },
+    { key: "days", label: "Days at Seq 8", num: true, sortable: false, render: (x) => { const sp = el("span", { class: x.days > 5 ? "pill bad" : "" , title: "Working days from entry to the forecast exit, including the wait in the KA's queue" }, fmtInt(x.days)); return sp; } }
+  ], rows);
+  // accuracy
+  $("s8Acc").replaceChildren(...S8_ACC.map((g) => {
+    const box = el("div"); box.append(el("h4", {}, g.title));
+    const t = el("table"); t.append(el("thead", {}, el("tr", {}, el("th", {}, "Method"), el("th", { class: "num" }, "MAE (days)"))));
+    const tb = el("tbody"); g.rows.forEach(([m, v, star]) => tb.append(el("tr", {}, el("td", {}, m + (star ? " ★" : "")), el("td", { class: "num" }, star ? el("b", {}, fmtNum(v, 2)) : fmtNum(v, 2))))); t.append(tb);
+    const w = el("div", { class: "tbl-wrap" }); w.append(t); box.append(w, el("p", {}, g.note)); return box;
+  }));
+}
+$("s8Ka").addEventListener("change", renderS8Tab);
+$("s8Show").addEventListener("change", renderS8Tab);
 $("fcKa").addEventListener("change", renderFc);
-const renderers = { overview: renderOverview, now: renderNow, fcast: renderFc, distribusi: renderSim, ka: renderKa, spv: renderSpv, bukti: renderBukti, kualitas: renderQuality };
+const renderers = { overview: renderOverview, now: renderNow, fcast: renderFc, seq8: renderS8Tab, distribusi: renderSim, ka: renderKa, spv: renderSpv, bukti: renderBukti, kualitas: renderQuality };
 let currentTab = "distribusi";
 function showTab(name) {
   if ($("tab-" + name).hidden) name = "distribusi"; // a tab hidden for this access level cannot be opened
