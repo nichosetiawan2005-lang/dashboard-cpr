@@ -5603,10 +5603,12 @@ function renderBukti() {
   $("bkFcTiles").replaceChildren(Object.assign(el("div", { class: "tbl-wrap" }), {}));
   $("bkFcTiles").firstChild.append(accTbl);
   renderTable(accTbl, [
-    { key: "name", label: "Forecast", sortable: false, render: (r) => { const d = el("div"); d.append(el("b", {}, r.name)); d.append(smallNote(r.what)); return d; } },
+    { key: "name", label: "Forecast", sortable: false, render: (r) => { const d = el("div"); d.append(el("b", {}, r.name)); d.append(smallNote(r.what + (r.from !== undefined ? ` · tested on ${fmtDay(r.from)} – ${fmtDay(r.to)}` : ""))); return d; } },
     { key: "model", label: "Model", sortable: false, render: (r) => String(r.model || "–").split(" (")[0] },
     { key: "n", label: "CPRs tested", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtInt(r.n)) },
-    { key: "mae", label: "Avg error (days)", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.mae, 2)) },
+    { key: "mae", label: "Avg error (calendar days)", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.mae, 2)) },
+    { key: "base", label: "Median per hospital (calendar days)", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.base, 2)) },
+    { key: "imp", label: "Better by", num: true, sortable: false, render: (r) => (r.n === null || !r.base ? "–" : fmtNum((r.base - r.mae) / r.base * 100, 1) + "%") },
     { key: "within2", label: "Within ±2 days", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.within2 * 100, 0) + "%") },
     { key: "inRange", label: "Inside the likely range", num: true, sortable: false, render: (r) => (r.inRange === null || r.inRange === undefined ? "–" : fmtNum(r.inRange * 100, 0) + "%") },
     { key: "v", label: "", sortable: false, render: (r) => (r.n === null ? pill("Not enough history", "muted") : r.mae < r.base ? pill("Better than guessing", "good") : pill("Not better yet", "warn")) }
