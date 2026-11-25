@@ -3864,7 +3864,7 @@ function kaHoldRows(kind) {   // history rows for Forecast 3 ("s3") or Forecast 
     if (start === null || start === undefined || !ka) continue;
     const y = end !== null && end !== undefined && end >= start ? end - start : null;
     if (end !== null && end !== undefined && y === null) continue;   // wrong dates (approved before received)
-    items.push({ cpr: r.cpr, unit: r.unit, ka, start, end: y === null ? null : end, y, sp: spOf(r), rw: rwOf(r) });
+    items.push({ cpr: r.cpr, unit: r.unit, ka, start, end: y === null ? null : end, y, sp: spOf(r), rw: revOf(r) });
   }
   const state = kaQueue(items);
   const rows = items.filter((it) => it.y !== null).map((it) => ({ ...it, isNew: 1, q: state(it.ka, it.start) }));
@@ -3873,10 +3873,11 @@ function kaHoldRows(kind) {   // history rows for Forecast 3 ("s3") or Forecast 
   const open = items.filter((it) => it.y === null && active.has(it.cpr)).map((it) => ({ ...it, isNew: 1, q: state(it.ka, it.start) }));
   return { rows, state, open };
 }
-// thesis flags known when the CPR enters Sequence 8: special project category, and a return to the requester
-// after the first KA review but before Sequence 8 (a return after Sequence 8 is not known yet, so it is not used)
+// thesis flags known when the CPR enters Sequence 8: special project category, and a revision = a return to the requester
+// after the first KA review but before Sequence 8. This is not the company's rework (a return by Purchasing Head HO or
+// Purchasing Director after Sequence 8, renego excluded), which happens later and is therefore not a forecast feature.
 const spOf = (r) => (/special/i.test(String((r && r.capex) || "")) ? 1 : 0);
-const rwOf = (r) => (r && r.submitAt && r.kaOutAt && r.submitAt > r.kaOutAt && (!r.backAt || r.submitAt < r.backAt) ? 1 : 0);
+const revOf = (r) => (r && r.submitAt && r.kaOutAt && r.submitAt > r.kaOutAt && (!r.backAt || r.submitAt < r.backAt) ? 1 : 0);
 function f34Stats(L) {
   const allMed = median(L.map((r) => r.y));
   return { allMed, unitMed: groupStat(L, (r) => r.unit, (r) => r.y, median), kaMed: groupStat(L, (r) => r.ka, (r) => r.y, median) };
@@ -3884,7 +3885,7 @@ function f34Stats(L) {
 function f34Features(r, st) {   // unit_median, ka_median, start_day_of_week, start_month, ka_queue, ka_approvals_30d, queue_days, ka_recent_median, all_recent_median
   return [st.unitMed.get(r.unit) ?? st.allMed, st.kaMed.get(r.ka) ?? st.allMed, weekday(r.start), monthOf(r.start), ...r.q];
 }
-// Forecast 2 features of the thesis (10): median_unit, special_project, day_of_week, had_rework, trend_30_days,
+// Forecast 2 features of the thesis (10): median_unit, special_project, day_of_week, revised_before_seq8, trend_30_days,
 // ka_queue, ka_median, ka_speed_30 (CPRs finished in 30 days / 21), ka_median_30, queue_workdays (queue / speed, speed at least 0.2)
 function f8Features(r, st) {
   const [queue, done30, , kaRecent, allRecent] = r.q, speed = done30 / 21, kaMed = st.kaMed.get(r.ka) ?? st.allMed;
@@ -4114,7 +4115,7 @@ function predictF2(r, approveDay) {
 function predictHold(m, r, ka, start) {
   if (!m || !m.state || ka === null || ka === undefined || start === null || start === undefined || !Number.isFinite(start)) return null;
   const D = dataDate(), day = D !== null ? Math.min(start, D + 1) : start;
-  const lg = m.f((m.feats || f34Features)({ unit: r.unit, ka, start, q: m.state(ka, day), sp: spOf(r), rw: rwOf(r) }, m.st));
+  const lg = m.f((m.feats || f34Features)({ unit: r.unit, ka, start, q: m.state(ka, day), sp: spOf(r), rw: revOf(r) }, m.st));
   const g = (x) => roundHalfEven(Math.max(0, Math.expm1(x)));
   const days = g(lg), lo = Math.min(days, g(lg + m.q20)), hi = Math.max(days, g(lg + m.q80));
   return { days, lo, hi, load: Math.round(Math.max(0, Math.expm1(lg)) * (m.meanRatio || 1)) };   // load = expected days for the workload
@@ -5452,7 +5453,7 @@ function loadCheck() {
     const [ra, ru] = M.recent(r.unit, c0);
     const back = out3 + pr(b2, f2Features({ unit: r.unit, isNew: 1, approve: out3, recentAll: ra, recentUnit: ru }, b2.st));
     // workload = expected (average) days at Sequence 8, like the allocation
-    const out8 = back + Math.round(Math.max(0, Math.expm1(b4.f((M.f4.feats || f34Features)({ unit: r.unit, ka, start: back, q: M.f4.state(ka, c0), sp: spOf(r), rw: rwOf(r) }, b4.st)))) * (b4.meanRatio || 1));
+    const out8 = back + Math.round(Math.max(0, Math.expm1(b4.f((M.f4.feats || f34Features)({ unit: r.unit, ka, start: back, q: M.f4.state(ka, c0), sp: spOf(r), rw: revOf(r) }, b4.st)))) * (b4.meanRatio || 1));
     const b8 = r.backFirst ?? r.back, o8 = r.backOutFirst ?? r.backOut;
     // a step not approved yet is still held until the data date, unless the CPR was finished, rejected or became inactive
     const openEnd = r.done || isInactive(r) || IGNORED[r.cpr] ? Math.min(D, r.lastAct ?? D) : D;
