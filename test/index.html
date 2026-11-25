@@ -3734,9 +3734,9 @@ function fitXgb(X, y, depth, eta, nTrees = 300) {
   return modelFn({ kind: "xgb", base, trees: trees.map((t) => ({ s: t.splits, l: [...t.leafVal] })) });
 }
 
-// ---- XGBoost as in the thesis code (reg:squarederror, 300 trees, subsample 0.8, lambda 1, min_child_weight 1, hist 256 bins) ----
+// ---- XGBoost as in the thesis code (reg:squarederror, 300 trees, no row subsampling so results repeat, lambda 1, min_child_weight 1, hist 256 bins) ----
 // w = time weight of each row (0.5 ^ (age / half-life)); the trees use the same tree layout as fitXgb, so modelFn can read them
-function fitXgbL2(X, y, depth, eta, nTrees = 300, w = null, subsample = 0.8) {
+function fitXgbL2(X, y, depth, eta, nTrees = 300, w = null, subsample = 1.0) {
   const n = X.length, k = X[0].length, W = w || new Array(n).fill(1);
   const cuts = [], B = [];
   for (let j = 0; j < k; j++) {
