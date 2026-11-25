@@ -934,7 +934,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
       <div id="otDetail" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 id="otTitle"></h3><div class="sub" id="otSub"></div></div><button class="btn ghost" type="button" id="otClose">Close</button></div>
         <div class="tbl-wrap" style="max-height:520px;overflow:auto"><table id="tblOt"></table></div></div>
       <details class="capbox" id="twBox" hidden><summary>Task weights (current task load)</summary><div class="sub">Used only for the "Current task load" chart: how heavy the CPRs a KA is holding right now are. Default from CPRHistory Jan–Oct 2026 (median time at the KA, Sequence 3 = 1): Sequence 8 about 2.4–3× Sequence 3, Rework about 0.9×. Not used for the daily workload of the allocation, because the longer time at the KA is already counted there.</div>
-        <div class="capgrid"><label>Sequence 3<input type="number" id="twRec" min="0" step="0.1"></label><label>Sequence 8<input type="number" id="twMat" min="0" step="0.1"></label><label>Rework<input type="number" id="twRw" min="0" step="0.1"></label><label>× CPR &gt; Rp1 M<input type="number" id="twBig" min="1" step="0.1"></label></div></details></div>
+        <div class="capgrid"><label>Sequence 3<input type="number" id="twRec" min="0" step="0.1"></label><label>Sequence 8<input type="number" id="twMat" min="0" step="0.1"></label><label>Rework<input type="number" id="twRw" min="0" step="0.1"></label></div></details></div>
     <div class="section-title"><h2>Performance per KA</h2></div>
     <div class="card">
       
@@ -1099,7 +1099,7 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
       <div class="tbl-wrap" style="margin-top:10px"><table id="tblFcCompare"></table></div>
       <p class="note" id="fcSetNote"></p>
     </div>
-    <div class="card" style="margin-top:12px"><h3>Model selection in the dashboard (automatic)</h3><div class="sub">The model with the lowest validation MAE is used.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
+    <div class="card" style="margin-top:12px"><h3>Models used in the dashboard</h3><div class="sub">The models chosen in the thesis: Forecast 1 = median per hospital for each of the three parts, Forecast 2 = XGBoost with the KA queue features and more weight for recent data. Retrained in the browser on every run.</div><div class="tbl-wrap"><table id="tblModels"></table></div></div>
     <div class="card" style="margin-top:12px" hidden><h3>Comparison of the four models (analysis notebook)</h3><div class="sub">Python study on CPR_Cleaned 2023–2026 (validation Apr–Jun, test Jul–Sep 2026).</div><div class="tbl-wrap"><table id="tblStudy"></table></div></div>
     <div class="card" style="margin-top:12px" hidden><h3>Forecast 1: mean absolute error per week (test months)</h3><div class="legend" id="lgFc"></div><div class="chart" id="chFc"></div></div>
     </details>
@@ -1877,7 +1877,7 @@ function picNameFor(unit) {
   for (const [rs, name] of Object.entries(PIC_LIST)) if (picKey(rs) === k) return name;
   return null;
 }
-const HCOL = { consult: "Consult To", noteReq: "Notes Requester", noteAppr: "Notes Approver", noteCons: "Notes Consult", revise: "Revise To", cpr: "Capital Req ID", unit: "Unit", role: "Role", user: "Username", submit: "Submit Date", approve: "Approval Date", status: "Document Status", seq: "Sequence", asset: "Asset Code", category: "Category Type", subject: "Subject", amount: "Total Amount" };
+const HCOL = { consult: "Consult To", noteReq: "Notes Requester", noteAppr: "Notes Approver", noteCons: "Notes Consult", revise: "Revise To", cpr: "Capital Req ID", unit: "Unit", role: "Role", user: "Username", submit: "Submit Date", approve: "Approval Date", status: "Document Status", seq: "Sequence", asset: "Asset Code", category: "Category Type", subject: "Subject" };
 // only these two are needed: new CPRs that are still waiting have no approval yet, so "Approval Date" may be missing
 const HREQUIRED = ["cpr", "submit"];
 let HIST = null; // { rows, fileName } of the last history upload, kept in memory for role re-mapping
@@ -2312,7 +2312,7 @@ function pivotHistory(rows) {
       // a CPR sent back to the requester and submitted again: the latest submission restarts the way to KA
       createAt: created, submitAt: (req.length > 1 ? req.map((x) => toStamp(x[HCOL.submit])).filter(Boolean).sort().slice(-1)[0] : null) || null,
       kaInAt, kaOutAt, backAt, backOutAt: phoDone,
-      stage, stageSince: dayOf(stageAt), lastAct: dayOf(lastStamp), hstatus: status || null, pos, lastSeq, amount: Number(last[HCOL.amount]) || null,
+      stage, stageSince: dayOf(stageAt), lastAct: dayOf(lastStamp), hstatus: status || null, pos, lastSeq,
       backFirst: dayOf(backFirstAt), backOutFirst: dayOf(firstPhoDone), rework: reworks.length || null, kaUser,
       backFirstAt, backOutFirstAt: firstPhoDone,
       ka3User: kaRows.map((x) => x[HCOL.user]).filter(Boolean).slice(-1)[0] || null,
@@ -2518,7 +2518,7 @@ if (SB) {
 
 let DB = null, DB_READY = false, LOCKED = new Map(), SAVED_AT = null;
 const CHUNK = 1000;
-const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt", "waiting", "erp", "sumCreate", "pos", "lastSeq", "amount"];
+const FIELDS = ["cpr", "unit", "vendor", "vendorName", "ka", "kaName", "create", "phIn", "phOut", "kaIn", "kaOut", "back", "backOut", "capex", "createAt", "submitAt", "kaInAt", "kaOutAt", "backAt", "backOutAt", "stage", "stageSince", "lastAct", "hstatus", "backFirst", "rework", "rwk", "kaUser", "backOutFirst", "ka3User", "ka8User", "backFirstAt", "backOutFirstAt", "waiting", "erp", "sumCreate", "pos", "lastSeq"];
 const useLocks = () => !!DB && !IS_SAMPLE && !META.hasKa;
 const canSave = () => !!DB && (!SB || IS_ADMIN);
 const monthKey = (d) => dayToIso(d).slice(0, 7);
@@ -3660,6 +3660,8 @@ function fitRidge(X, y, alpha) {
 }
 // a trained model as plain data (so it can be kept in the browser) -> forecast function
 function modelFn(model) {
+  // "med" = Baseline: the unit median (first feature) as the forecast, like the median per unit in the thesis
+  if (model.kind === "med") { const f = (x) => Math.log1p(Math.max(0, x[0])); f.model = model; return f; }
   if (model.kind === "lin") { const f = (x) => model.b0 + x.reduce((s, v, j) => s + v * model.w[j], 0); f.model = model; return f; }
   const trees = model.trees.map((t) => ({ splits: t.s, leafVal: new Map(t.l) }));
   const walk = (tr, x) => {
@@ -3730,6 +3732,60 @@ function fitXgb(X, y, depth, eta, nTrees = 300) {
   return modelFn({ kind: "xgb", base, trees: trees.map((t) => ({ s: t.splits, l: [...t.leafVal] })) });
 }
 
+// ---- XGBoost as in the thesis code (reg:squarederror, 300 trees, subsample 0.8, lambda 1, min_child_weight 1, hist 256 bins) ----
+// w = time weight of each row (0.5 ^ (age / half-life)); the trees use the same tree layout as fitXgb, so modelFn can read them
+function fitXgbL2(X, y, depth, eta, nTrees = 300, w = null, subsample = 0.8) {
+  const n = X.length, k = X[0].length, W = w || new Array(n).fill(1);
+  const cuts = [], B = [];
+  for (let j = 0; j < k; j++) {
+    const vals = [...new Set(X.map((r) => r[j]))].sort((a, b) => a - b);
+    let c;
+    if (vals.length <= 256) c = vals.slice(0, -1).map((v, i) => (v + vals[i + 1]) / 2);
+    else { const sorted = Float64Array.from(X.map((r) => r[j])).sort(); c = Array.from({ length: 255 }, (_, i) => sorted[Math.min(n - 1, Math.floor(((i + 1) / 256) * n))]); }
+    c = [...new Set(c)]; cuts.push(c);
+    const col = new Uint16Array(n); for (let i = 0; i < n; i++) { let lo = 0, hi = c.length; const v = X[i][j]; while (lo < hi) { const m = (lo + hi) >> 1; if (v <= c[m]) hi = m; else lo = m + 1; } col[i] = lo; } B.push(col);
+  }
+  let sw = 0, swy = 0; for (let i = 0; i < n; i++) { sw += W[i]; swy += W[i] * y[i]; }
+  const base = sw > 0 ? swy / sw : mean(y), pred = new Float64Array(n).fill(base), trees = [];
+  let seed = 42; const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const node = new Int32Array(n), g = new Float64Array(n), h = new Float64Array(n);
+  for (let t = 0; t < nTrees; t++) {
+    for (let i = 0; i < n; i++) { const use = rnd() < subsample; g[i] = use ? W[i] * (pred[i] - y[i]) : 0; h[i] = use ? W[i] : 0; node[i] = use ? 0 : -999999; }
+    const splits = []; let nNodes = 1;
+    for (let d = 0; d < depth; d++) {
+      const G = new Float64Array(nNodes), H = new Float64Array(nNodes);
+      for (let i = 0; i < n; i++) if (node[i] >= 0) { G[node[i]] += g[i]; H[node[i]] += h[i]; }
+      const best = Array.from({ length: nNodes }, () => ({ gain: 0, f: -1, bin: -1 }));
+      for (let j = 0; j < k; j++) {
+        const nb = cuts[j].length + 1, hg = new Float64Array(nNodes * nb), hh = new Float64Array(nNodes * nb), col = B[j];
+        for (let i = 0; i < n; i++) { const m = node[i]; if (m < 0) continue; hg[m * nb + col[i]] += g[i]; hh[m * nb + col[i]] += h[i]; }
+        for (let m = 0; m < nNodes; m++) {
+          let gl = 0, hl = 0; const parent = (G[m] * G[m]) / (H[m] + 1);
+          for (let b = 0; b < nb - 1; b++) {
+            gl += hg[m * nb + b]; hl += hh[m * nb + b]; const gr = G[m] - gl, hr = H[m] - hl;
+            if (hl < 1 || hr < 1) continue;   // min_child_weight 1
+            const gain = 0.5 * ((gl * gl) / (hl + 1) + (gr * gr) / (hr + 1) - parent);
+            if (gain > best[m].gain + 1e-12) best[m] = { gain, f: j, bin: b };
+          }
+        }
+      }
+      let childCount = 0; const map = [];
+      for (let m = 0; m < nNodes; m++) if (best[m].f >= 0) { map[m] = childCount; childCount += 2; }
+      for (let i = 0; i < n; i++) { const m = node[i]; if (m < 0) continue; if (best[m].f < 0) { node[i] = -1 - (splits.length * 1000 + m); continue; } node[i] = map[m] + (B[best[m].f][i] <= best[m].bin ? 0 : 1); }
+      splits.push(best.map((b, m) => (b.f >= 0 ? { f: b.f, thr: cuts[b.f][b.bin], child: map[m] } : null)));
+      nNodes = childCount; if (!nNodes) break;
+    }
+    // leaf value = -eta * G / (H + lambda), from the sampled rows; every row is then updated through the tree
+    const GL = new Map(), HL = new Map();
+    for (let i = 0; i < n; i++) { if (node[i] === -999999) continue; const id = node[i] >= 0 ? node[i] : 100000 - 1 - node[i]; GL.set(id, (GL.get(id) || 0) + g[i]); HL.set(id, (HL.get(id) || 0) + h[i]); }
+    const leafVal = new Map(); for (const [id, gs] of GL) leafVal.set(id, -eta * gs / (HL.get(id) + 1));
+    const tree = { s: splits, l: [...leafVal] }; trees.push(tree);
+    const one = modelFn({ kind: "xgb", base: 0, trees: [tree] });
+    for (let i = 0; i < n; i++) pred[i] += one(X[i]);
+  }
+  return modelFn({ kind: "xgb", base, trees });
+}
+
 // ---- trained models kept in this browser (IndexedDB): the next visit with the same data skips the training ----
 function idbOpen() { return new Promise((ok, no) => { try { const r = indexedDB.open("cprDash", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); } catch (e) { no(e); } }); }
 async function idbGet(k) { try { const db = await idbOpen(); return await new Promise((ok) => { const q = db.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => ok(q.result ?? null); q.onerror = () => ok(null); }); } catch { return null; } }
@@ -3783,7 +3839,7 @@ const F4_CENSORED = false;   // tested 28 Oct 2026: learning also from CPRs stil
 //   Forecast 4 = days from the return to KA (Sequence 8) to the KA approval of Sequence 8
 // "How busy is the KA on that day" uses only CPRs that arrived or finished BEFORE that day, so it is known when the forecast is made.
 // CPRs the KA is still holding (not approved yet) also count in the queue.
-const F3_KA_DAYS = 30, F3_ALL_DAYS = 14, F3_WORK_DAYS = 22;
+const F3_KA_DAYS = 30, F3_ALL_DAYS = 30, F3_WORK_DAYS = 22;   // 30-day KA speed / median and 30-day trend, as in the thesis
 const kaKeyOf = (u) => (u ? poKa({ ka: u, kaName: null }).ka : null);
 function kaQueue(items) {   // items: [{ ka, start, end (null = still holding), y (null = still holding) }]
   const byKa = new Map(); for (const it of items) { if (!byKa.has(it.ka)) byKa.set(it.ka, []); byKa.get(it.ka).push(it); }
@@ -3808,7 +3864,7 @@ function kaHoldRows(kind) {   // history rows for Forecast 3 ("s3") or Forecast 
     if (start === null || start === undefined || !ka) continue;
     const y = end !== null && end !== undefined && end >= start ? end - start : null;
     if (end !== null && end !== undefined && y === null) continue;   // wrong dates (approved before received)
-    items.push({ cpr: r.cpr, unit: r.unit, ka, start, end: y === null ? null : end, y });
+    items.push({ cpr: r.cpr, unit: r.unit, ka, start, end: y === null ? null : end, y, sp: spOf(r), rw: rwOf(r) });
   }
   const state = kaQueue(items);
   const rows = items.filter((it) => it.y !== null).map((it) => ({ ...it, isNew: 1, q: state(it.ka, it.start) }));
@@ -3817,6 +3873,10 @@ function kaHoldRows(kind) {   // history rows for Forecast 3 ("s3") or Forecast 
   const open = items.filter((it) => it.y === null && active.has(it.cpr)).map((it) => ({ ...it, isNew: 1, q: state(it.ka, it.start) }));
   return { rows, state, open };
 }
+// thesis flags known when the CPR enters Sequence 8: special project category, and a return to the requester
+// after the first KA review but before Sequence 8 (a return after Sequence 8 is not known yet, so it is not used)
+const spOf = (r) => (/special/i.test(String((r && r.capex) || "")) ? 1 : 0);
+const rwOf = (r) => (r && r.submitAt && r.kaOutAt && r.submitAt > r.kaOutAt && (!r.backAt || r.submitAt < r.backAt) ? 1 : 0);
 function f34Stats(L) {
   const allMed = median(L.map((r) => r.y));
   return { allMed, unitMed: groupStat(L, (r) => r.unit, (r) => r.y, median), kaMed: groupStat(L, (r) => r.ka, (r) => r.y, median) };
@@ -3824,13 +3884,25 @@ function f34Stats(L) {
 function f34Features(r, st) {   // unit_median, ka_median, start_day_of_week, start_month, ka_queue, ka_approvals_30d, queue_days, ka_recent_median, all_recent_median
   return [st.unitMed.get(r.unit) ?? st.allMed, st.kaMed.get(r.ka) ?? st.allMed, weekday(r.start), monthOf(r.start), ...r.q];
 }
+// Forecast 2 features of the thesis (10): median_unit, special_project, day_of_week, had_rework, trend_30_days,
+// ka_queue, ka_median, ka_speed_30 (CPRs finished in 30 days / 21), ka_median_30, queue_workdays (queue / speed, speed at least 0.2)
+function f8Features(r, st) {
+  const [queue, done30, , kaRecent, allRecent] = r.q, speed = done30 / 21, kaMed = st.kaMed.get(r.ka) ?? st.allMed;
+  return [st.unitMed.get(r.unit) ?? st.allMed, r.sp ?? 0, weekday(r.start), r.rw ?? 0, allRecent ?? st.allMed,
+    queue, kaMed, speed, done30 > 0 ? kaRecent : kaMed, queue / Math.max(0.2, speed)];
+}
 
 // ---- model selection (lowest validation MAE), as in the notebook ----
 const CANDIDATES = [
+  { family: "Baseline", setting: "median per unit", fit: () => modelFn({ kind: "med" }) },
+  { family: "XGBoost", setting: "max_depth=2, learning_rate=0.1, half-life 30 days (thesis)", halfLife: 30, fit: (X, y, w) => fitXgbL2(X, y, 2, 0.1, 300, w) },
   ...[0, 0.1, 1, 10, 100].map((a) => ({ family: "Linear Regression", setting: `alpha=${a}`, fit: (X, y) => fitRidge(X, y, a) })),
   ...[2, 3, 4].flatMap((d) => [0.03, 0.1].map((lr) => ({ family: "XGBoost", setting: `max_depth=${d}, learning_rate=${lr}`, fit: (X, y) => fitXgb(X, y, d, lr) })))
 ];
 const findCandidate = (sel) => CANDIDATES.find((c) => c.family === sel.family && c.setting === sel.setting);
+// the models chosen in the thesis (Bab IV): Forecast 1 = median per unit for each of the three parts (as good as XGBoost per part
+// and simpler), Forecast 2 = XGBoost with the ten thesis features and time weights (half-life 30 days)
+const THESIS_MODEL = { "arrival": CANDIDATES[0], "Sequence 3": CANDIDATES[0], "return": CANDIDATES[0], "Sequence 8": CANDIDATES[1] };
 function chooseModel(tuneTrain, tuneVal, stats, feats) {
   const st = stats(tuneTrain), X = tuneTrain.map((r) => feats(r, st)), y = tuneTrain.map((r) => Math.log1p(r.y)), Xv = tuneVal.map((r) => feats(r, st));
   const rows = [];
@@ -3857,7 +3929,7 @@ let FC_SET = { ...FC_DEFAULT };
 let FC_RESULTS = {};   // settings key -> { f1, f2 } test MAE, so the default and the current setting can be compared
 const fcKey = (set) => JSON.stringify([set.from || "", !!set.onlyNew, Number(set.months) || 3, Number(set.maxDays) || 0, set.model || "auto"]);
 const fcIsDefault = (set) => fcKey(set) === fcKey(FC_DEFAULT);
-const choiceKey = () => `${TRAIN_META ? TRAIN_META.version : 0}|${TRAIN.size}|${fcKey(FC_SET)}|f4c${F4_CENSORED ? 1 : 0}`;   // depends only on the history and the settings
+const choiceKey = () => `${TRAIN_META ? TRAIN_META.version : 0}|${TRAIN.size}|${fcKey(FC_SET)}|f4c${F4_CENSORED ? 1 : 0}|thesis2`;   // depends only on the history and the settings
 const modelKey = () => `${choiceKey()}|${RECS.length}`;
 function testWindow(all, months = 3) {
   const last = Math.max(...all.filter((t) => t.y !== null && t.create !== null).map((t) => t.create));
@@ -3891,7 +3963,13 @@ async function ensureModels(_start, onStatus) {
   // a saved choice from before Forecast 3/4 or before the per-CPR check (test rows without the CPR number) is tuned again
   const fullTest = (m) => !m || !m.test || !m.test.rows.length || m.test.rows[0].length >= 10;
   const saved = MODEL_CHOICE && MODEL_CHOICE.key === choiceKey() && "f3" in MODEL_CHOICE && ["f1", "f2", "f3", "f4"].every((k) => fullTest(MODEL_CHOICE[k])) ? MODEL_CHOICE : null;
-  const fitOn = (sel, list0, stats, feats) => { const list = learnable(list0); const st = stats(list), X = list.map((r) => feats(r, st)), y = list.map((r) => Math.log1p(r.y)); const f = findCandidate(sel.chosen).fit(X, y); return { st, X, y, f }; };
+  const fitOn = (sel, list0, stats, feats, dateOf) => {
+    const list = learnable(list0); const st = stats(list), X = list.map((r) => feats(r, st)), y = list.map((r) => Math.log1p(r.y));
+    const cand = findCandidate(sel.chosen);
+    let w = null;   // time weight 0.5 ^ (age / half-life), age counted from the newest row
+    if (cand.halfLife && dateOf) { const ref = Math.max(...list.map(dateOf)); w = list.map((r) => Math.pow(0.5, Math.max(0, ref - dateOf(r)) / cand.halfLife)); }
+    const f = cand.fit(X, y, w); return { st, X, y, f };
+  };
   // Forecast 4 learns also from CPRs still held by the KA (censored): on a cut-off day, a CPR not approved yet has been held
   // "at least" (cut-off − start) days; its duration is filled with the median of the finished CPRs that took at least that long.
   // Without this, CPRs stuck for a long time are missing from the training data and the forecast is too optimistic.
@@ -3914,6 +3992,7 @@ async function ensureModels(_start, onStatus) {
       const tuneTrain = learnable(cens ? knownAt(hist0, openRows, valStart) : before.filter((r) => dateOf(r) < valStart)), tuneVal = (cens ? hist0.filter((r) => dateOf(r) < testStart) : before).filter((r) => dateOf(r) >= valStart && r.isNew === 1);
       const forced = FC_SET.model && FC_SET.model !== "auto" ? CANDIDATES.find((c) => `${c.family}|${c.setting}` === FC_SET.model) : null;
       if (forced) sel = { chosen: { family: forced.family, setting: forced.setting, valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true, forced: true };
+      else if (THESIS_MODEL[label]) sel = { chosen: { family: THESIS_MODEL[label].family, setting: THESIS_MODEL[label].setting, valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true, thesis: true };
       // too little older history to compare models fairly: use the model the notebook chose
       else if (tuneTrain.length < (fcIsDefault(FC_SET) ? 500 : 200) || tuneVal.length < (fcIsDefault(FC_SET) ? 50 : 30)) sel = { chosen: label === "arrival" ? { family: "Linear Regression", setting: "alpha=0", valMae: null } : { family: "XGBoost", setting: label === "Sequence 3" ? "max_depth=2, learning_rate=0.03" : "max_depth=2, learning_rate=0.1", valMae: null }, bestPerFamily: [], nTune: tuneTrain.length, nVal: tuneVal.length, fixed: true };
       else { onStatus && onStatus(`Selecting the best ${label} model (Linear Regression vs XGBoost) …`); await new Promise((r) => setTimeout(r, 10)); sel = chooseModel(tuneTrain, tuneVal, stats, feats); }
@@ -3921,7 +4000,7 @@ async function ensureModels(_start, onStatus) {
       const testRows = hist0.filter((r) => dateOf(r) >= testStart && r.isNew === 1);
       if (testRows.length >= 30 && before.length >= 100) {
         onStatus && onStatus(`Testing the ${label} model on the latest 2 months …`); await new Promise((r) => setTimeout(r, 10));
-        const m = fitOn(sel, before, stats, feats);
+        const m = fitOn(sel, before, stats, feats, dateOf);
         const res = m.y.map((v, i) => v - m.f(m.X[i])), q20 = quantile(res, 0.2), q80 = quantile(res, 0.8);
         const newBefore = before.filter((r) => r.isNew === 1 && !r.cens), baseAll = median(newBefore.map((r) => r.y));
         const baseUnit = groupStat(newBefore, (r) => r.unit, (r) => r.y, median);
@@ -3934,15 +4013,15 @@ async function ensureModels(_start, onStatus) {
     }
     // retrain the chosen setting on all history -> forecasts for the queue (or reuse the copy trained on the same data)
     const ratioOf = (mm) => { const a = mm.y.reduce((t, v) => t + Math.expm1(v), 0), b = mm.X.reduce((t, x) => t + Math.max(0, Math.expm1(mm.f(x))), 0); return b > 0 ? a / b : 1; };
-    let beforeModel = null; const fitBefore = () => beforeModel || (beforeModel = (() => { const mm = fitOn(sel, before, stats, feats); mm.meanRatio = ratioOf(mm); return mm; })());
+    let beforeModel = null; const fitBefore = () => beforeModel || (beforeModel = (() => { const mm = fitOn(sel, before, stats, feats, dateOf); mm.meanRatio = ratioOf(mm); return mm; })());
     const ck = [key, DDAY, label, sel.chosen.family, sel.chosen.setting, hist.length].join("|"), hit = oldCache[ck];
-    if (hit) { newCache[ck] = hit; return { ...sel, meanRatio: hit.meanRatio, n: hist.length, nCens: hist.filter((r) => r.cens).length, st: unpackStats(hit.st), f: modelFn(hit.model), q20: hit.q20, q80: hit.q80, fitBefore }; }
-    const m = fitOn(sel, hist, stats, feats);
+    if (hit) { newCache[ck] = hit; return { ...sel, feats, meanRatio: hit.meanRatio, n: hist.length, nCens: hist.filter((r) => r.cens).length, st: unpackStats(hit.st), f: modelFn(hit.model), q20: hit.q20, q80: hit.q80, fitBefore }; }
+    const m = fitOn(sel, hist, stats, feats, dateOf);
     const res = m.y.map((v, i) => v - m.f(m.X[i]));   // residuals in log days: P20-P80 range
     // the chosen setting learned only from history before the test months (in memory, for the daily workload check)
     // the model gives the most likely (median) duration; for WORKLOAD the average matters, and a few CPRs held very long make the
     // average larger than the median: meanRatio = total actual days ÷ total forecast days on the learning data (used for workload only)
-    const out = { ...sel, meanRatio: ratioOf(m), n: hist.length, nCens: hist.filter((r) => r.cens).length, st: m.st, f: m.f, q20: quantile(res, 0.2), q80: quantile(res, 0.8), fitBefore };
+    const out = { ...sel, feats, meanRatio: ratioOf(m), n: hist.length, nCens: hist.filter((r) => r.cens).length, st: m.st, f: m.f, q20: quantile(res, 0.2), q80: quantile(res, 0.8), fitBefore };
     newCache[ck] = { model: m.f.model, st: packStats(m.st), q20: out.q20, q80: out.q80, meanRatio: out.meanRatio };
     return out;
   };
@@ -3952,7 +4031,7 @@ async function ensureModels(_start, onStatus) {
   onStatus && onStatus("Preparing KA queue features …"); await new Promise((r) => setTimeout(r, 10));
   const h3 = kaHoldRows("s3"), h8 = kaHoldRows("s8");
   const f3 = await pick("Sequence 3", h3.rows, (r) => r.start, f34Stats, f34Features, saved && saved.f3);
-  const f4 = await pick("Sequence 8", h8.rows, (r) => r.start, f34Stats, f34Features, saved && saved.f4, F4_CENSORED ? h8.open : null);
+  const f4 = await pick("Sequence 8", h8.rows, (r) => r.start, f34Stats, f8Features, saved && saved.f4, F4_CENSORED ? h8.open : null);
   if (f3) f3.state = h3.state; if (f4) f4.state = h8.state;
   MODELS = { key, f1, f2, f3, f4, f0: combineF1(f1, f3, f2), simByCpr, recent, valStart, testStart };
   idbSet(STORE_PREFIX + "models", newCache);
@@ -3987,7 +4066,7 @@ async function loadModelChoice() { if (!DB) return; try { const d = await DB.doc
 // Forecast settings card (Evaluation tab)
 function renderFcSettings() {
   $("fcHistInfo").textContent = TRAIN.size ? `Forecast history: ${fmtInt(TRAIN.size)} CPRs (CPRHistory + CPRSummary).` : "No forecast history yet.";
-  if (!$("fcModel").options.length) { $("fcModel").append(el("option", { value: "auto" }, "Automatic (lowest validation MAE)")); for (const c of CANDIDATES) $("fcModel").append(el("option", { value: `${c.family}|${c.setting}` }, `${c.family} (${c.setting})`)); }
+  if (!$("fcModel").options.length) { $("fcModel").append(el("option", { value: "auto" }, "Thesis models (default)")); for (const c of CANDIDATES) $("fcModel").append(el("option", { value: `${c.family}|${c.setting}` }, `${c.family} (${c.setting})`)); }
   $("fcFrom").value = FC_SET.from || ""; $("fcOnlyNew").checked = !!FC_SET.onlyNew; $("fcMonths").value = String(FC_SET.months || 3);
   $("fcMax").value = FC_SET.maxDays ? String(FC_SET.maxDays) : ""; $("fcModel").value = FC_SET.model || "auto";
   for (const id of ["fcFrom", "fcOnlyNew", "fcMonths", "fcMax", "fcModel", "fcApply", "fcReset"]) $(id).disabled = !canSave();
@@ -4035,7 +4114,7 @@ function predictF2(r, approveDay) {
 function predictHold(m, r, ka, start) {
   if (!m || !m.state || ka === null || ka === undefined || start === null || start === undefined || !Number.isFinite(start)) return null;
   const D = dataDate(), day = D !== null ? Math.min(start, D + 1) : start;
-  const lg = m.f(f34Features({ unit: r.unit, ka, start, q: m.state(ka, day) }, m.st));
+  const lg = m.f((m.feats || f34Features)({ unit: r.unit, ka, start, q: m.state(ka, day), sp: spOf(r), rw: rwOf(r) }, m.st));
   const g = (x) => roundHalfEven(Math.max(0, Math.expm1(x)));
   const days = g(lg), lo = Math.min(days, g(lg + m.q20)), hi = Math.max(days, g(lg + m.q80));
   return { days, lo, hi, load: Math.round(Math.max(0, Math.expm1(lg)) * (m.meanRatio || 1)) };   // load = expected days for the workload
@@ -5373,7 +5452,7 @@ function loadCheck() {
     const [ra, ru] = M.recent(r.unit, c0);
     const back = out3 + pr(b2, f2Features({ unit: r.unit, isNew: 1, approve: out3, recentAll: ra, recentUnit: ru }, b2.st));
     // workload = expected (average) days at Sequence 8, like the allocation
-    const out8 = back + Math.round(Math.max(0, Math.expm1(b4.f(f34Features({ unit: r.unit, ka, start: back, q: M.f4.state(ka, c0) }, b4.st)))) * (b4.meanRatio || 1));
+    const out8 = back + Math.round(Math.max(0, Math.expm1(b4.f((M.f4.feats || f34Features)({ unit: r.unit, ka, start: back, q: M.f4.state(ka, c0), sp: spOf(r), rw: rwOf(r) }, b4.st)))) * (b4.meanRatio || 1));
     const b8 = r.backFirst ?? r.back, o8 = r.backOutFirst ?? r.backOut;
     // a step not approved yet is still held until the data date, unless the CPR was finished, rejected or became inactive
     const openEnd = r.done || isInactive(r) || IGNORED[r.cpr] ? Math.min(D, r.lastAct ?? D) : D;
@@ -5470,7 +5549,7 @@ function renderBukti() {
   for (const [label, m] of FC_LIST.map(([name, k]) => [name, SIM.models && SIM.models[k]])) {
     if (!m) { mRows.push({ fc: label, model: "Median per hospital", setting: "–", mae: null, test: null, chosen: true }); continue; }
     const testMae = m.test ? mean(m.test.rows.map((x) => Math.abs(x[1]))) : null;
-    if (!m.bestPerFamily.length) mRows.push({ fc: label, model: m.chosen.family, setting: m.chosen.setting + (m.combined ? "" : " (notebook choice)"), mae: null, test: testMae, chosen: true });
+    if (!m.bestPerFamily.length) mRows.push({ fc: label, model: m.chosen.family, setting: m.chosen.setting + (m.combined ? "" : m.chosen.thesis || m.thesis ? " (thesis choice)" : " (fixed)"), mae: null, test: testMae, chosen: true });
     for (const b of m.bestPerFamily) { const ch = b.family === m.chosen.family && b.setting === m.chosen.setting; mRows.push({ fc: label, model: b.family, setting: b.setting, mae: b.valMae, test: ch ? testMae : null, chosen: ch }); }
   }
   renderTable($("tblModels"), [
@@ -6021,10 +6100,10 @@ function renderEmptyState() {
   );
 }
 // ---------- task weights (current task load only) ----------
-const TW_DEFAULT = { rec: 1, mat: 2.5, rw: 1, big: 1.3 };
+const TW_DEFAULT = { rec: 1, mat: 2.5, rw: 1 };
 let TASK_W = { ...TW_DEFAULT };
-function syncTw() { const m = { twRec: "rec", twMat: "mat", twRw: "rw", twBig: "big" }; for (const [id, k] of Object.entries(m)) { const i = document.getElementById(id); if (i) i.value = String(TASK_W[k]); } }
-for (const [id, k] of [["twRec", "rec"], ["twMat", "mat"], ["twRw", "rw"], ["twBig", "big"]]) {
+function syncTw() { const m = { twRec: "rec", twMat: "mat", twRw: "rw" }; for (const [id, k] of Object.entries(m)) { const i = document.getElementById(id); if (i) i.value = String(TASK_W[k]); } }
+for (const [id, k] of [["twRec", "rec"], ["twMat", "mat"], ["twRw", "rw"]]) {
   document.getElementById(id).addEventListener("change", async (e) => { const v = parseFloat(e.target.value); TASK_W[k] = Number.isFinite(v) && v >= 0 ? v : TW_DEFAULT[k]; syncTw(); try { renderTaskLoad(); } catch {} if (canSave() && !IS_SAMPLE) { try { await saveParams(); } catch {} } });
 }
 // the CPRs each KA is holding right now (data date), by task, and their weighted load
@@ -6032,7 +6111,7 @@ for (const [id, k] of [["twRec", "rec"], ["twMat", "mat"], ["twRw", "rw"], ["twB
 // Learned from CPRs whose Sequence 8 was approved at least 14 days before the data date (so the label is known):
 // label = sent back by Purchasing Head HO / Purchasing Director. Two logistic regressions, averaged:
 //   a) the description words (TF-IDF, single words + word pairs, words in 3+ CPRs)
-//   b) the rework rate of the KA and of the hospital (smoothed), the CPR amount (log10) and capex category "fa"
+//   b) the rework rate of the KA and of the hospital (smoothed) and capex category "fa" (the CPR amount is not used)
 // Tested like the forecasts: learn from older CPRs, check on the latest ~70 days. It gives a risk level, not a certainty.
 const RW_MIN_AGE = 14, RW_SMOOTH = 20;
 const rwTokens = (s) => { const t = String(s || "").toLowerCase().match(/[\p{L}\p{N}_]{2,}/gu) || []; const out = t.slice(); for (let i = 0; i + 1 < t.length; i++) out.push(t[i] + " " + t[i + 1]); return out; };
@@ -6059,18 +6138,17 @@ function fitLogit(X, y, nF, C, iters = 500) {
 }
 function auc(y, p) { const idx = p.map((x, i) => i).sort((a, c) => p[a] - p[c]); let rank = 0, sumPos = 0, nPos = 0; for (let k = 0; k < idx.length;) { let e = k; while (e < idx.length && p[idx[e]] === p[idx[k]]) e++; const r = (k + e + 1) / 2; for (let q = k; q < e; q++) if (y[idx[q]]) { sumPos += r; nPos++; } k = e; } const nNeg = y.length - nPos; return nPos && nNeg ? (sumPos - (nPos * (nPos + 1)) / 2) / (nPos * nNeg) : null; }
 const rwKa = (r) => dataKa(r);
-const rwAmt = (r) => Math.log10(Math.max(1, Number(r.amount) || 1e8));
 function trainRisk(list) {   // list: [{ r, y }] -> predict(r) = probability
   const p0 = mean(list.map((x) => x.y));
   const rateMap = (rows, key) => { const g = new Map(); for (const x of rows) { const k = key(x.r); if (k === null || k === undefined) continue; const a = g.get(k) || [0, 0]; a[0] += x.y; a[1]++; g.set(k, a); } return (r) => { const a = g.get(key(r)); return a ? (a[0] + RW_SMOOTH * p0) / (a[1] + RW_SMOOTH) : p0; }; };
   // dense features; the KA / hospital rates of a training CPR come from the other folds (no peeking at its own label)
-  const dense = (r, kaR, unitR) => [kaR(r), unitR(r), rwAmt(r), String(r.capex || "").toLowerCase() === "fa" ? 1 : 0];
+  const dense = (r, kaR, unitR) => [kaR(r), unitR(r), String(r.capex || "").toLowerCase() === "fa" ? 1 : 0];
   const raw = list.map((x) => null);
   for (let f = 0; f < 5; f++) { const other = list.filter((x, i) => i % 5 !== f), kaR = rateMap(other, rwKa), unitR = rateMap(other, (r) => r.unit); list.forEach((x, i) => { if (i % 5 === f) raw[i] = dense(x.r, kaR, unitR); }); }
-  const mu = [0, 1, 2, 3].map((j) => mean(raw.map((v) => v[j]))), sd = [0, 1, 2, 3].map((j) => stdev(raw.map((v) => v[j])) || 1);
+  const mu = [0, 1, 2].map((j) => mean(raw.map((v) => v[j]))), sd = [0, 1, 2].map((j) => stdev(raw.map((v) => v[j])) || 1);
   const z = (v) => v.map((x, j) => [j, (x - mu[j]) / sd[j]]);
   const y = list.map((x) => x.y);
-  const mA = fitLogit(raw.map(z), y, 4, 1.0, 400);
+  const mA = fitLogit(raw.map(z), y, 3, 1.0, 400);
   const tf = fitTfidf(list.map((x) => x.r.vendorName || ""));
   const mT = fitLogit(list.map((x) => tf.transform(x.r.vendorName || "")), y, tf.size, 0.5, 500);
   const kaR = rateMap(list, rwKa), unitR = rateMap(list, (r) => r.unit);
@@ -6217,7 +6295,7 @@ function renderTaskLoad() {
     const r = c.r, task = taskOf(r);
     if (!task) continue;
     const x = per[c.ka] || (per[c.ka] = { rec: 0, mat: 0, rw: 0, fin: 0, wRec: 0, wMat: 0, wRw: 0, wFin: 0, big: 0 });
-    const mult = task === "mat" && Number(r.amount) > 1e9 ? TASK_W.big : 1; if (mult > 1) x.big++;
+    const mult = 1;
     x[task]++; x["w" + task[0].toUpperCase() + task.slice(1)] += (TASK_W[task] ?? 0) * mult;
   }
   const ot = openTasks(), old = {}, high = {}, run3 = {}, run8 = {};
@@ -6257,7 +6335,7 @@ function renderTaskLoad() {
   ], { stacked: true, dec: 0, label: "Open tasks per KA", onClick: (i) => openKaPanel(kas[i].ka), tipRows: () => [{ value: "", label: "click for the KA's details" }] });
   renderTable($("tblTask"), [
     { key: "name", label: "Key Account", render: (r) => kaCell(r.ka) },
-    { key: "mat", label: "Sequence 8", num: true, render: (r) => fmtInt(r.mat) + (TL_ON.weights && r.big ? ` (${r.big} > Rp1 M)` : "") },
+    { key: "mat", label: "Sequence 8", num: true, render: (r) => fmtInt(r.mat) },
     { key: "rw", label: "Rework", num: true, render: (r) => fmtInt(r.rw) },
     { key: "fin", label: "Waiting PH HO / Dir.", num: true, render: (r) => fmtInt(r.fin) },
     { key: "open", label: "Open tasks", num: true, render: (r) => el("b", {}, fmtInt(r.open)) },
