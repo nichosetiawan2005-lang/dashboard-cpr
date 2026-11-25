@@ -1015,13 +1015,13 @@ details.more > summary, details.capbox > summary { font-weight: 700; color: var(
     <div style="margin-top:10px"><button class="btn ghost" type="button" id="trOpen">Reassign by CPR number</button></div>
 
     <div class="subtabs" role="tablist">
-      <button type="button" data-sub="subSpd" aria-selected="false" hidden>Weekly speed check <span class="cnt" id="spdCnt" hidden></span></button>
+      <button type="button" data-sub="subSpd" aria-selected="false">Weekly speed check <span class="cnt" id="spdCnt" hidden></span></button>
       <button type="button" data-sub="subAbs" aria-selected="true">KA absences</button>
       <button type="button" data-sub="subChg" aria-selected="false">KA left the team</button>
       <button type="button" data-sub="subLog" aria-selected="false">Reassignment log</button>
     </div>
     <div id="subSpd" hidden>
-      <div class="card"><div class="sub" style="margin-bottom:10px">CPRs each KA approved at Seq 8 per day, week by week. The allocation uses last week, unless it is more than 1.5× or less than ⅔ of the KA's usual (2-month average): then the usual is used until you review it.</div>
+      <div class="card"><div class="sub" style="margin-bottom:10px">CPRs each KA approved at Seq 8 per day, week by week (in brackets: CPRs sent back for rework, renego not counted). The allocation uses last week. A week more than 1.5× or less than ⅔ of the KA's usual (2-month average) is treated as a one-off and the usual is used. When it lasts 3 weeks in a row, it is a real change and the speed of those 3 weeks is used, unless the KA became faster but has more rework: then the usual is kept, so work stays balanced without more CPRs being sent back.</div>
       <div class="tbl-wrap"><table id="tblSpd"></table></div></div>
     </div>
     <div id="subAbs">
@@ -4210,7 +4210,14 @@ function kaSpeeds(kaList) {
   out.usualFrom = U0; out.monday = monday; out.flag = {}; out.review = {}; out.series = {};
   // weekly series (last 8 weeks) for the supervisor
   const wkDone = {}; for (const r of RECS) { const b = r.backOutFirst ?? r.backOut; if (b === null || b === undefined || b < monday - 49 || b > friday) continue; const k = recKa(r, r.ka8User); if (!k) continue; const w = Math.floor((friday - b) / 7); (wkDone[k] = wkDone[k] || new Array(8).fill(0))[w]++; }
-  for (const k of kaList) { const ser = []; for (let w = 7; w >= 0; w--) { const mon = monday - 7 * w; let n = 0; for (let d = mon; d <= mon + 4; d++) if (isWorkDay(d) && !isAbsent(k, d)) n++; const done = wkDone[k] ? wkDone[k][w] : 0; ser.push({ mon, n, done, rate: n ? done / n : null }); } out.series[k] = ser; }
+  // rework (company rule: sent back by Purchasing Head HO / Director after Seq 8, renego not counted) of the CPRs each KA approved, per week
+  const wkRw = {}, rw2 = {};
+  for (const r of RECS) { const b = r.backOutFirst ?? r.backOut; if (b === null || b === undefined || b > friday) continue; const k = recKa(r, r.ka8User); if (!k) continue; const isRw = kaReworks(r).length > 0 ? 1 : 0;
+    if (b >= monday - 49) { const w = Math.floor((friday - b) / 7); (wkRw[k] || (wkRw[k] = new Array(8).fill(0)))[w] += isRw; }
+    if (b >= U0) { const a = rw2[k] || (rw2[k] = [0, 0]); a[0] += isRw; a[1]++; } }
+  out.rwUsual = {}; out.rw3 = {};
+  for (const k of kaList) { const ser = []; for (let w = 7; w >= 0; w--) { const mon = monday - 7 * w; let n = 0; for (let d = mon; d <= mon + 4; d++) if (isWorkDay(d) && !isAbsent(k, d)) n++; const done = wkDone[k] ? wkDone[k][w] : 0; const rw = wkRw[k] ? wkRw[k][w] : 0; ser.push({ mon, n, done, rw, rate: n ? done / n : null }); } out.series[k] = ser;
+    out.rwUsual[k] = rw2[k] && rw2[k][1] ? rw2[k][0] / rw2[k][1] : 0; }
   for (const k of kaList) {
     const wk = [];
     for (let w = 0; w < WEEKS; w++) { const mon = monday - 7 * w; let n = 0; for (let d = mon; d <= mon + 4; d++) if (isWorkDay(d) && !isAbsent(k, d)) n++; if (n > 0) wk.push({ mon, n, done: doneIn[k][w], rate: doneIn[k][w] / n }); }
@@ -4223,9 +4230,24 @@ function kaSpeeds(kaList) {
       const normal = lw !== undefined && lw > 0 && (wk.length < 3 || (lw <= m * BAND && lw >= m / BAND));
       const rv = null;   // no supervisor review: an unusual week automatically uses the 2-month average
       if (!normal && lw !== undefined) { out.flag[k] = lw > m ? "up" : "down"; out.review[k] = rv ? rv.use : null; }
+      // a change that lasts 3 weeks in a row in the same direction is a real change: the speed of those 3 weeks is used,
+      // except a rise that comes with more rework (faster but sent back more often): then the 2-month average is kept
+      const last3 = (out.series[k] || []).filter((x) => x.n > 0).slice(-3);
+      const dirOf = (x) => (x.rate > m * BAND ? "up" : x.rate < m / BAND ? "down" : null);
+      const lasting = !normal && lw !== undefined && last3.length === 3 && last3[2].mon === monday && last3.every((x) => dirOf(x) === out.flag[k]);
+      let lastingRate = null;
+      if (lasting) {
+        const d3 = last3.reduce((a, x) => a + x.done, 0), n3 = last3.reduce((a, x) => a + x.n, 0), r3 = last3.reduce((a, x) => a + x.rw, 0);
+        out.rw3[k] = d3 ? r3 / d3 : 0;
+        const moreRework = out.flag[k] === "up" && r3 >= 2 && out.rw3[k] > out.rwUsual[k] + 0.05 && out.rw3[k] > out.rwUsual[k] * 1.5;
+        if (moreRework) out.review[k] = "rework"; else { out.review[k] = "lasting"; lastingRate = n3 ? d3 / n3 : null; }
+      }
       const useLast = normal || (out.flag[k] && rv && rv.use === "last");
-      out.perDay[k] = useLast ? lw : m;
-      out.basis[k] = normal ? "last week" : lw === undefined ? "2-month average (absent last week)" : rv ? (rv.use === "last" ? "last week (accepted after review)" : "2-month average (reviewed)") : "2-month average (last week unusual)";
+      out.perDay[k] = lastingRate !== null ? lastingRate : useLast ? lw : m;
+      out.basis[k] = normal ? "last week" : lw === undefined ? "2-month average (absent last week)"
+        : out.review[k] === "lasting" ? `last 3 weeks (lasting ${out.flag[k] === "up" ? "rise" : "drop"})`
+        : out.review[k] === "rework" ? "2-month average (faster, but more rework)"
+        : rv ? (rv.use === "last" ? "last week (accepted after review)" : "2-month average (reviewed)") : "2-month average (last week unusual)";
       rates.push(out.perDay[k]);
     }
   }
@@ -5203,10 +5225,10 @@ function renderSpv() {
 }
 // weekly speed check: last 8 weeks per KA, the 2-month average, and the supervisor's decision for an unusual week
 function renderSpeedCheck(editable) {
-  return;   // weekly speed check removed: the 2-month average is used automatically for an unusual week
+  editable = false;   // automatic rules: nothing to approve, the table only shows what was decided and why
   const s = SIM; if (!s || !s.speed || !s.speed.series) { $("tblSpd").replaceChildren(); return; }
   const sp = s.speed, kas = s.allocKas.filter(isCurrentKa);
-  const pending = kas.filter((k) => sp.flag[k] && !sp.review[k]).length;
+  const pending = kas.filter((k) => sp.flag[k]).length;
   $("spdCnt").hidden = !pending; $("spdCnt").textContent = String(pending);
   const weeks = sp.series[kas[0]] || [];
   const decide = async (k, use) => {
@@ -5218,18 +5240,21 @@ function renderSpeedCheck(editable) {
     { key: "ka", label: "Key Account", sortable: false, render: (k) => kaCell(k) },
     ...weeks.map((w, i) => ({ key: "w" + i, label: fmtShort(w.mon), num: true, sortable: false, render: (k) => {
       const x = sp.series[k][i]; if (!x || x.rate === null) return el("span", { class: "desc1" }, "absent");
-      const last = i === weeks.length - 1; return el("span", { class: "spdcell" + (last && sp.flag[k] ? " flag-" + sp.flag[k] : "") + (last ? " last" : ""), title: `${x.done} CPRs approved in ${x.n} working days` }, perWeek(x.rate)); } })),
+      const last = i === weeks.length - 1; return el("span", { class: "spdcell" + (last && sp.flag[k] ? " flag-" + sp.flag[k] : "") + (last ? " last" : ""), title: `${x.done} CPRs approved in ${x.n} working days, ${x.rw} sent back for rework` }, perWeek(x.rate), x.rw ? el("small", { class: "desc1" }, ` (${x.rw})`) : ""); } })),
+    { key: "rwu", label: "Rework (2-month)", num: true, sortable: false, render: (k) => fmtNum((sp.rwUsual[k] || 0) * 100, 0) + "%" },
     { key: "usual", label: "Usual per day (2-month avg)", num: true, sortable: false, render: (k) => el("b", {}, perWeek(sp.usual[k])) },
     { key: "used", label: "Used now (per day)", num: true, sortable: false, render: (k) => el("b", { title: sp.basis[k] || "" }, perWeek(sp.perDay[k])) },
     { key: "st", label: "Last week", sortable: false, render: (k) => {
       if (!sp.flag[k]) return pill(sp.lastWeek[k] === undefined ? "Absent" : "Normal", sp.lastWeek[k] === undefined ? "muted" : "good");
       const ch = sp.usual[k] ? Math.round((sp.lastWeek[k] / sp.usual[k] - 1) * 100) : 0;
-      const box = el("div", { class: "spdst" }); box.append(pill(`${sp.flag[k] === "up" ? "Sharp rise" : "Sharp drop"} ${ch > 0 ? "+" : ""}${ch}%`, "warn"));
+      const box = el("div", { class: "spdst" });
+      if (sp.review[k] === "lasting") { box.append(pill(`Lasting ${sp.flag[k] === "up" ? "rise" : "drop"} ${ch > 0 ? "+" : ""}${ch}%`, "good"), el("span", { class: "desc1" }, "3 weeks in a row: the speed of those weeks is used")); return box; }
+      if (sp.review[k] === "rework") { box.append(pill(`Faster, more rework ${ch > 0 ? "+" : ""}${ch}%`, "serious"), el("span", { class: "desc1" }, `rework ${fmtNum((sp.rw3[k] || 0) * 100, 0)}% vs usual ${fmtNum((sp.rwUsual[k] || 0) * 100, 0)}%: 2-month average kept`)); return box; }
+      box.append(pill(`${sp.flag[k] === "up" ? "Sharp rise" : "Sharp drop"} ${ch > 0 ? "+" : ""}${ch}%`, "warn"));
       if (sp.review[k]) box.append(el("span", { class: "desc1" }, sp.review[k] === "last" ? "accepted: last week used" : "kept: 2-month average used"));
-      else if (editable) { const b1 = Object.assign(el("button", { class: "btn ghost", type: "button" }, "Accept last week"), { onclick: () => decide(k, "last") }); const b2 = Object.assign(el("button", { class: "btn ghost", type: "button" }, "Keep 2-month avg"), { onclick: () => decide(k, "usual") }); box.append(b1, b2); }
-      else box.append(el("span", { class: "desc1" }, "waiting for review"));
+      else box.append(el("span", { class: "desc1" }, "one-off week: 2-month average used"));
       return box; } }
-  ], kas.slice().sort((a, b) => (!!sp.flag[b] && !sp.review[b]) - (!!sp.flag[a] && !sp.review[a])));
+  ], kas.slice().sort((a, b) => (!!sp.flag[b]) - (!!sp.flag[a])));
 }
 // what happened to a reassigned CPR: "Done : By <KA who finished it>" or its current step
 function trResult(t) {
