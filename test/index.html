@@ -1582,8 +1582,8 @@ function hoursBetween(a, b) {
 function finishRec(rec) {
   if (rec.cpr && (!rec.unit || /^\d+$/.test(String(rec.unit).trim()))) rec.unit = unitName(rec.unit, rec.cpr);
   rec.isNew = META.hasKa ? !!rec.ka : true; // without a KA column every CPR is treated as the current process
-  rec.f1 = diff(rec.kaIn, rec.create); rec.rev1 = diff(rec.kaOut, rec.kaIn);
-  rec.f2 = diff(rec.back, rec.kaOut); rec.rev2 = diff(rec.backOut, rec.back);
+  rec.f1 = wdiff(rec.kaIn, rec.create); rec.rev1 = wdiff(rec.kaOut, rec.kaIn);
+  rec.f2 = wdiff(rec.back, rec.kaOut); rec.rev2 = wdiff(rec.backOut, rec.back);
   rec.ph = diff(rec.phOut, rec.phIn);
   rec.rev1h = hoursBetween(rec.kaInAt, rec.kaOutAt); rec.rev2h = hoursBetween(rec.backAt, rec.backOutAt);
   return rec;
@@ -2838,9 +2838,9 @@ const PO_COL = { po: "CREATEDDATETIME PO by PurchasingHO", poNo: "Nomor PO", poS
 let PO_RECS = [], PO_META = null;
 function poRecFromArray(a) { const r = {}; PO_FIELDS.forEach((k, i) => { r[k] = a[i]; }); return finishPoRec(r); }
 function finishPoRec(r) {
-  r.rev1 = diff(r.kaOut, r.kaIn); r.rev2 = diff(r.backOut, r.back);
+  r.rev1 = wdiff(r.kaOut, r.kaIn); r.rev2 = wdiff(r.backOut, r.back);
   r.toPo = diff(r.po, r.create); r.kaToPo = diff(r.po, r.kaIn);
-  r.f1 = diff(r.kaIn, r.create); r.f2 = diff(r.back, r.kaOut); r.isNew = true; // used as forecast history
+  r.f1 = wdiff(r.kaIn, r.create); r.f2 = wdiff(r.back, r.kaOut); r.isNew = true; // used as forecast history
   r.rev1h = hoursBetween(r.kaInAt, r.kaOutAt); r.rev2h = hoursBetween(r.backAt, r.backOutAt);
   return r;
 }
@@ -3864,7 +3864,7 @@ function kaHoldRows(kind) {   // history rows for Forecast 3 ("s3") or Forecast 
     const start = kind === "s3" ? r.kaIn : r.back, end = kind === "s3" ? r.kaOut : r.backOut;
     const ka = kaKeyOf(kind === "s3" ? r.ka3User : r.ka8User) || kaKeyOf(dataKaUser(r)) || (LOCKED.get(r.cpr) && isCurrentKa(LOCKED.get(r.cpr).ka) ? LOCKED.get(r.cpr).ka : null);
     if (start === null || start === undefined || !ka) continue;
-    const y = end !== null && end !== undefined && end >= start ? end - start : null;
+    const y = end !== null && end !== undefined && end >= start ? workDaysBetween(start, end) : null;   // working days
     if (end !== null && end !== undefined && y === null) continue;   // wrong dates (approved before received)
     items.push({ cpr: r.cpr, unit: r.unit, ka, start, end: y === null ? null : end, y, sp: spOf(r), rw: consOf(r) });
   }
@@ -3945,7 +3945,7 @@ async function ensureModels(_start, onStatus) {
   if (TRAIN.size < 100) { MODELS = null; return; }
   const key = modelKey();
   if (MODELS && MODELS.key === key) return;
-  const all = [...TRAIN.values()].map((t) => ({ ...t, y: diff(t.kaIn, t.create), y2: diff(t.back, t.kaOut) }));
+  const all = [...TRAIN.values()].map((t) => ({ ...t, y: wdiff(t.kaIn, t.create), y2: wdiff(t.back, t.kaOut) }));   // working days
   // similarity over every CPR text: history + queue CPRs that are not in the history file
   const docs = all.map((t) => ({ day: t.create, text: t.text }));
   const queueOnly = IS_SAMPLE ? [] : RECS.filter((r) => !TRAIN.has(r.cpr));
@@ -4324,7 +4324,7 @@ function simulate() {
   }
   // Day grid (covers real dates and forecast dates)
   const minDay = Math.min(...test.map((r) => r.create));
-  const lastPred = (r) => r.create + f1Pred(r) + w1 + Math.round(f2Unit[r.unit] ?? f2All) + w2;
+  const lastPred = (r) => addWD(r.create, f1Pred(r) + w1 + Math.round(f2Unit[r.unit] ?? f2All) + w2);
   const maxActual = Math.max(...test.map((r) => Math.max(lastPred(r), ...[r.kaIn, r.kaOut, r.back].filter((x) => x !== null).map((x) => x + w1 + w2 + 30))));
   const nDays = maxActual - minDay + 120;
   const newLoad = () => kaList.map(() => new Float64Array(nDays));
@@ -4353,10 +4353,10 @@ function simulate() {
   const heldUntil = (r) => holdEnd.get(r.cpr) ?? DD;
   const reworkEnd = (r, e) => (e.end ?? (DD !== null && inRework(r) ? Math.max(e.start, heldUntil(r)) : e.start));
   const setEnds = (c) => {
-    const r = c.r; if (!r) { c.e1 = c.s1 + c.w1 - 1; c.e2 = c.s2 + c.w2 - 1; return; }
+    const r = c.r; if (!r) { c.e1 = endWD(c.s1, c.w1); c.e2 = endWD(c.s2, c.w2); return; }
     const out8 = r.backOutFirst ?? r.backOut;
-    c.e1 = r.kaOut !== null && r.kaOut >= c.s1 ? r.kaOut : c.s1 + c.w1 - 1;
-    c.e2 = out8 !== null && out8 !== undefined && out8 >= c.s2 ? out8 : c.s2 + c.w2 - 1;
+    c.e1 = r.kaOut !== null && r.kaOut >= c.s1 ? r.kaOut : endWD(c.s1, c.w1);
+    c.e2 = out8 !== null && out8 !== undefined && out8 >= c.s2 ? out8 : endWD(c.s2, c.w2);
     // the KA is holding it right now (received, not approved yet): it stays in the KA's workload until the KA approves.
     // Once approved, the CPR moves on to the other approvers and leaves the KA's workload until it comes back for Sequence 8.
     if (DD !== null && !r.done) {
@@ -4371,7 +4371,7 @@ function simulate() {
   const activeDays = (c) => { const out = new Set(); if (c.e1 === undefined) setEnds(c); for (let d = c.s2; d <= c.e2; d++) out.add(off(d)); for (const e of c.rw || []) for (let d = e.start; d <= reworkEnd(c.r, e); d++) out.add(off(d)); return [...out].filter((x) => x >= 0 && x < nDays); };
   const add = (L, c, sign) => { if (c.r && (IGNORED[c.r.cpr] || isInactive(c.r))) return; // dismissed by SPV or inactive: no load for the KA
     const a = L[kaIdx.get(c.ka)]; for (const d of activeDays(c)) a[d] += sign * c.weight; };
-  const lastDay = (c) => (c.e2 !== undefined ? Math.max(c.e2, c.s2) : c.s2 + c.w2 - 1);
+  const lastDay = (c) => (c.e2 !== undefined ? Math.max(c.e2, c.s2) : endWD(c.s2, c.w2));
   const holding = (c, day) => c.s1 <= day && day <= lastDay(c);
   const peak = (L, ka, days, w) => { const a = L[kaIdx.get(ka)]; let p = 0; for (const d of days) p = Math.max(p, a[d] + w); return p; };
 
@@ -4411,7 +4411,7 @@ function simulate() {
   const L = newLoad(), byVendor = new Map(), assigned = [], cnt = {}, autoTransfers = [];
   const transferMap = useLocks() ? lastTransfers() : new Map();
   const absent = (ka, offs) => offs.some((o) => isAbsent(ka, o + minDay));
-  const review1Offs = (c) => { const out = []; for (let i = 0; i < c.w1; i++) out.push(off(c.s1 + i)); return out; };
+  const review1Offs = (c) => { const out = []; const e = endWD(c.s1, c.w1); for (let d = c.s1; d <= e; d++) if (d === c.s1 || isWorkDay(d)) out.push(off(d)); return out; };
   const notStarted = (c) => c.r.kaOut === null && c.r.back === null; // Sequence 3 not done and not in Sequence 8
   // best KA for a CPR: lowest peak load among KAs that are present on its review days
   // rework reserve: CPRs the KA approved at Sequence 8 that are still waiting at Purchasing Head HO / Director may come back as
@@ -4473,10 +4473,10 @@ function simulate() {
   // automatic rule 1: the KA is absent on the review-1 days of a CPR that has not been started
   const D = dataDate();
   // review-1 window of a CPR not yet started: planned review days, or - if it already sits at the KA - until the data date
-  const pendingOffs = (c) => { const end = Math.max(c.s1 + c.w1 - 1, c.r.kaIn !== null && D !== null ? D : -Infinity); const out = []; for (let d = c.s1; d <= end; d++) out.push(off(d)); return out.filter((x) => x >= 0 && x < nDays); };
+  const pendingOffs = (c) => { const end = Math.max(endWD(c.s1, c.w1), c.r.kaIn !== null && D !== null ? D : -Infinity); const out = []; for (let d = c.s1; d <= end; d++) out.push(off(d)); return out.filter((x) => x >= 0 && x < nDays); };
   const checkAbsence = (c) => { if (IGNORED[c.r.cpr] || isInactive(c.r) || (c.lock && c.lock.fixed)) return;
     if (!notStarted(c) || !ABSENCES.length || !absent(c.ka, pendingOffs(c))) return;
-    const a = absenceFor(c.ka, c.s1, Math.max(c.s1 + c.w1 - 1, D ?? 0));
+    const a = absenceFor(c.ka, c.s1, Math.max(endWD(c.s1, c.w1), D ?? 0));
     const { best } = bestKa(c, activeDays(c), c.ka);
     if (best) moveTo(c, best, `${kaLabel(c.ka)} absent${a ? ` (${a.reason} ${fmtShort(a.from)}–${fmtShort(a.to)})` : ""}`);
   };
@@ -4502,15 +4502,15 @@ function simulate() {
     };
     // Forecast 1 counts from creation, or from the latest resubmission after a revision (the way to KA starts again)
     c.base1 = r.kaIn === null ? Math.max(r.create, r.submitAt ? toDay(String(r.submitAt).slice(0, 10)) ?? r.create : r.create) : r.create;
-    c.predArrival = c.base1 + c.f1;
+    c.predArrival = addWD(c.base1, c.f1);
     // Forecast 2 starts at the KA approval: the actual date from PO Data, else arrival + Sequence 3 duration
-    const apDay = r.kaOut !== null ? r.kaOut : (r.kaIn ?? c.predArrival) + w1;
+    const apDay = r.kaOut !== null ? r.kaOut : addWD(r.kaIn ?? c.predArrival, w1);
     c.f2 = f2Pred(r, apDay);
     [c.f2Lo, c.f2Hi] = f2Range(r, apDay);
     // the range always contains the estimate itself
     if (c.f1Lo !== null) { c.f1Lo = Math.min(c.f1Lo, c.f1); c.f1Hi = Math.max(c.f1Hi, c.f1); }
     if (c.f2Lo !== null) { c.f2Lo = Math.min(c.f2Lo, c.f2); c.f2Hi = Math.max(c.f2Hi, c.f2); }
-    c.s1 = c.predArrival; c.s2 = c.s1 + w1 + c.f2; setEnds(c);
+    c.s1 = c.predArrival; c.s2 = addWD(c.s1, w1 + c.f2); setEnds(c);
     push(byCreate, r.create, c); if (r.kaIn !== null) push(byArrive, r.kaIn, c); if (r.kaOut !== null) push(byKaOut, r.kaOut, c); const backW = r.backFirst ?? r.back; if (backW !== null && backW !== undefined) push(byBack, backW, c);
   }
   // Forecast 3 / 4 once the KA is known: how many days this KA will hold the CPR at Sequence 3 and Sequence 8
@@ -4520,13 +4520,13 @@ function simulate() {
     c.f3 = useModels ? predictF3(r, c.ka, arrive) : null;
     c.w1 = c.f3 ? Math.max(1, c.f3.days) : w1;
     if (r.kaOut === null) {
-      const ap = arrive + c.w1; c.f2 = f2Pred(r, ap); [c.f2Lo, c.f2Hi] = f2Range(r, ap);
+      const ap = addWD(arrive, c.w1); c.f2 = f2Pred(r, ap); [c.f2Lo, c.f2Hi] = f2Range(r, ap);
       if (c.f2Lo !== null) { c.f2Lo = Math.min(c.f2Lo, c.f2); c.f2Hi = Math.max(c.f2Hi, c.f2); }
     }
-    const backDay = r.back ?? (r.kaOut ?? arrive + c.w1) + c.f2;
+    const backDay = r.back ?? addWD(r.kaOut ?? addWD(arrive, c.w1), c.f2);
     c.f4 = useModels ? predictF4(r, c.ka, backDay) : null;
     c.w2 = c.f4 ? Math.max(1, c.f4.load ?? c.f4.days) : w2;   // workload: expected (average) days held at Sequence 8
-    c.s2 = r.back ?? (r.kaOut !== null && r.kaOut >= c.s1 ? r.kaOut + c.f2 : c.s1 + c.w1 + c.f2);
+    c.s2 = r.back ?? (r.kaOut !== null && r.kaOut >= c.s1 ? addWD(r.kaOut, c.f2) : addWD(c.s1, c.w1 + c.f2));
     setEnds(c);
   };
   const vendorHolder = (vendor, day) => { if (!hasVendor(vendor)) return null; for (const x of byVendor.get(vendor) || []) if (holding(x, day)) return x.ka; return null; };
@@ -4566,7 +4566,7 @@ function simulate() {
       if (!byVendor.has(c.vendor)) byVendor.set(c.vendor, []); byVendor.get(c.vendor).push(c);
     }
     for (const c of byArrive.get(day) || []) {
-      if (!c.ka) continue; add(L, c, -1); c.s1 = day; c.s2 = day + c.w1 + c.f2; setEnds(c); add(L, c, 1);
+      if (!c.ka) continue; add(L, c, -1); c.s1 = day; c.s2 = addWD(day, c.w1 + c.f2); setEnds(c); add(L, c, 1);
       checkAbsence(c);
       // automatic rule 2: on arrival (before work starts) the KA is over the limit and another present KA still has room
       // only for CPRs given a KA in this run: a KA saved in an earlier allocation never moves because of workload
@@ -4575,7 +4575,7 @@ function simulate() {
         if (alt.best && !alt.over) moveTo(c, alt.best, `${kaLabel(c.ka)} exceeded the limit of ${fmtNum(maxPerDay)} CPRs when the CPR arrived`);
       }
     }
-    for (const c of byKaOut.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s2 = day + c.f2; setEnds(c); add(L, c, 1); }
+    for (const c of byKaOut.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s2 = addWD(day, c.f2); setEnds(c); add(L, c, 1); }
     for (const c of byBack.get(day) || []) { if (!c.ka) continue; add(L, c, -1); c.s2 = day; setEnds(c); add(L, c, 1); }
   }
   const lastDay2 = Math.max(end, ...assigned.map((c) => (META.hasKa ? c.r.back : lastDay(c))));
@@ -4793,7 +4793,7 @@ async function renderSteps(cpr) {
   const c = findAssigned(cpr), r0 = c ? c.r : null, D = dataDate();
   // estimated (forecast) vs actual for the two KA steps
   const estArr = c ? c.predArrival : null, actArr = r0 ? actualArrival(r0) : null;
-  const estBack = c ? (r0.kaOut !== null ? r0.kaOut : (actArr ?? estArr) + c.w1) + c.f2 : null, actBack = r0 ? (r0.backFirst ?? r0.back) : null;
+  const estBack = c ? addWD(r0.kaOut !== null ? r0.kaOut : addWD(actArr ?? estArr, c.w1), c.f2) : null, actBack = r0 ? (r0.backFirst ?? r0.back) : null;
   const diffTxt = (act, est) => { const d = act - est; return d === 0 ? el("span", { class: "early" }, "on the estimated day") : el("span", { class: d > 0 ? "late" : "early" }, `${Math.abs(d)} day${Math.abs(d) === 1 ? "" : "s"} ${d > 0 ? "later" : "earlier"} than estimated`); };
   const estLine = (label, est, act, range) => {
     const e = el("div", { class: "est" });
@@ -4803,7 +4803,7 @@ async function renderSteps(cpr) {
     else if (est !== null && est !== undefined && D !== null && est < D && !(r0 && r0.done)) e.append(el("span", { class: "late" }, "overdue"));
     return e;
   };
-  const range3 = c && c.f1Lo !== null && c.f1Lo !== undefined ? `${fmtDay((c.base1 ?? r0.create) + c.f1Lo)} – ${fmtDay((c.base1 ?? r0.create) + c.f1Hi)}` : null;
+  const range3 = c && c.f1Lo !== null && c.f1Lo !== undefined ? `${fmtDay(addWD(c.base1 ?? r0.create, c.f1Lo))} – ${fmtDay(addWD(c.base1 ?? r0.create, c.f1Hi))}` : null;
   // Forecast 3 / 4 ranges: from the (actual or estimated) start of the KA step
   const holdRange = (f, start) => (f && f.hi > f.lo ? `${fmtDay(start + f.lo)} – ${fmtDay(start + f.hi)}` : null);
   const out8 = r0 ? r0.backOutFirst ?? r0.backOut : null;
@@ -4922,11 +4922,11 @@ function openTrack(cpr) {
   // one step = [label, detail, actual day or null, estimated day or null]
   const arrive = actualArrival(r);
   const arriveEst = c.predArrival;
-  const kaOutEst = (arrive ?? arriveEst) + w1;
+  const kaOutEst = addWD(arrive ?? arriveEst, w1);
   const backEst = estReturn(c);
   const steps = [
     ["CPR created", r.submitAt && r.submitAt !== r.createAt ? "submitted " + fmtStampShort(r.submitAt) : "", r.create, null, r.createAt],
-    ["Arrived at Key Account", "estimate" + (c.f1Lo !== null && c.f1Lo !== undefined ? ` · likely ${fmtDay((c.base1 ?? r.create) + c.f1Lo)} – ${fmtDay((c.base1 ?? r.create) + c.f1Hi)}` : ""), arrive, arriveEst],
+    ["Arrived at Key Account", "estimate" + (c.f1Lo !== null && c.f1Lo !== undefined ? ` · likely ${fmtDay(addWD(c.base1 ?? r.create, c.f1Lo))} – ${fmtDay(addWD(c.base1 ?? r.create, c.f1Hi))}` : ""), arrive, arriveEst],
     ["Sequence 3 approved by KA", "estimate" + (c.f3 ? ` · KA holds it about ${c.f3.days} day${c.f3.days === 1 ? "" : "s"} (likely ${c.f3.lo}–${c.f3.hi})` : ` · usual ${w1} day${w1 === 1 ? "" : "s"}`), r.kaOut, kaOutEst],
     ["With other approvers", r.stage && r.back === null && r.kaOut !== null ? `currently: ${r.stage}` : r.back !== null ? "until the CPR returned to KA" : "", r.back !== null ? (r.backFirst ?? r.back) : null, null, null, r.kaOut !== null && r.back === null],
     ["Returned to KA (Sequence 8)", "Forecast 1" + (returnRange(c) ? ` · likely ${fmtDay(returnRange(c)[0])} – ${fmtDay(returnRange(c)[1])}` : ""), r.backFirst ?? r.back, backEst],
@@ -4970,11 +4970,11 @@ $("track").addEventListener("click", (e) => { if (e.target === $("track")) $("tr
 // actual arrival = "Date Received CPR by Key Account HO" from PO Data only (empty until PO Data confirms it)
 // estimated return to KA shown in the tables: actual approval (PO Data) or (arrival + Sequence 3 days), plus Forecast 2;
 // arrival = the PO Data date when confirmed, else the Forecast 1 estimate (same basis as the Estimated Arrival column)
-const estReturn = (c) => (c.r.back !== null ? c.r.back : (c.r.kaOut !== null ? c.r.kaOut : (actualArrival(c.r) ?? c.predArrival) + c.w1) + c.f2);
+const estReturn = (c) => (c.r.back !== null ? c.r.back : addWD(c.r.kaOut !== null ? c.r.kaOut : addWD(actualArrival(c.r) ?? c.predArrival, c.w1), c.f2));
 // likely ranges (P20-P80 of the model errors); only while the step has not happened yet
-const retBase = (c) => (c.r.kaOut !== null ? c.r.kaOut : (actualArrival(c.r) ?? c.predArrival) + c.w1);
-const arrivalRange = (c) => (actualArrival(c.r) === null && c.f1Lo !== null && c.f1Lo !== undefined ? [(c.base1 ?? c.r.create) + c.f1Lo, (c.base1 ?? c.r.create) + c.f1Hi] : null);
-const returnRange = (c) => (c.r.back === null && c.f2Lo !== null && c.f2Lo !== undefined ? [retBase(c) + c.f2Lo, retBase(c) + c.f2Hi] : null);
+const retBase = (c) => (c.r.kaOut !== null ? c.r.kaOut : addWD(actualArrival(c.r) ?? c.predArrival, c.w1));
+const arrivalRange = (c) => (actualArrival(c.r) === null && c.f1Lo !== null && c.f1Lo !== undefined ? [addWD(c.base1 ?? c.r.create, c.f1Lo), addWD(c.base1 ?? c.r.create, c.f1Hi)] : null);
+const returnRange = (c) => (c.r.back === null && c.f2Lo !== null && c.f2Lo !== undefined ? [addWD(retBase(c), c.f2Lo), addWD(retBase(c), c.f2Hi)] : null);
 const rangeText = (a) => (a[0] === a[1] ? fmtShort(a[0]) : `${fmtShort(a[0])} – ${fmtShort(a[1])}`);
 const smallNote = (t, color) => el("div", { style: `font-size:11px;color:${color || "var(--muted)"}` }, t);
 // estimated date + likely range; "late" once the data date is past the end of the range
@@ -4997,8 +4997,8 @@ function returnText(c) {
   return box;
 }
 // Forecast 3 / 4 columns: the actual KA approval when it happened, else the estimate (arrival + Forecast 3, return + Forecast 4)
-const estS3 = (c) => (c.r.kaOut !== null ? c.r.kaOut : (actualArrival(c.r) ?? c.r.kaIn ?? c.predArrival) + c.w1);
-const estS8 = (c) => { const out = c.r.backOutFirst ?? c.r.backOut; return out !== null && out !== undefined ? out : estReturn(c) + (c.f4 ? Math.max(1, c.f4.days) : c.w2); };
+const estS3 = (c) => (c.r.kaOut !== null ? c.r.kaOut : addWD(actualArrival(c.r) ?? c.r.kaIn ?? c.predArrival, c.w1));
+const estS8 = (c) => { const out = c.r.backOutFirst ?? c.r.backOut; return out !== null && out !== undefined ? out : addWD(estReturn(c), c.f4 ? Math.max(1, c.f4.days) : c.w2); };
 // test-month forecast of one CPR (made by a model that had not seen it): [forecast days, low, high] or null
 let TEST_PRED = { key: null, maps: {} };
 function testPred(k, cpr) {
@@ -5016,7 +5016,7 @@ function holdText(c, est, actual, f, startKnown, k, start) {
     return box;
   }
   if (f) box.append(smallNote(`${f.days === 0 ? "same day" : `${f.days} day${f.days === 1 ? "" : "s"}`} at KA${f.hi > f.lo ? ` · likely ${f.lo}–${f.hi} days` : ""}`));
-  const D = dataDate(), limit = est + (f ? f.hi - f.days : 0);
+  const D = dataDate(), limit = addWD(est, f ? Math.max(0, f.hi - f.days) : 0);
   if (startKnown && !c.r.done && !isInactive(c.r) && D !== null && D > limit) box.append(smallNote(`late ${D - limit} days`, "var(--warn)"));
   return box;
 }
@@ -5025,8 +5025,8 @@ function holdText(c, est, actual, f, startKnown, k, start) {
 const startS3 = (c) => actualArrival(c.r) ?? c.r.kaIn ?? c.predArrival;
 const startS8 = (c) => c.r.back ?? estReturn(c);
 // a CPR of the test months uses the forecast of the model that had not seen it
-const predS3 = (c) => { const tp = testPred("f3", c.r.cpr); return startS3(c) + (tp ? tp[0] : c.f3 ? c.f3.days : c.w1); };
-const predS8 = (c) => { const tp = testPred("f4", c.r.cpr); return startS8(c) + (tp ? tp[0] : c.f4 ? c.f4.days : c.w2); };
+const predS3 = (c) => { const tp = testPred("f3", c.r.cpr); return addWD(startS3(c), tp ? tp[0] : c.f3 ? c.f3.days : c.w1); };
+const predS8 = (c) => { const tp = testPred("f4", c.r.cpr); return addWD(startS8(c), tp ? tp[0] : c.f4 ? c.f4.days : c.w2); };
 const s3Text = (c) => holdText(c, estS3(c), c.r.kaOut !== null, c.f3, c.r.kaIn !== null, "f3", c.r.kaIn);
 const s8Text = (c) => { const out = c.r.backOutFirst ?? c.r.backOut; return holdText(c, estS8(c), out !== null && out !== undefined, c.f4, c.r.back !== null, "f4", c.r.back); };
 const actualArrival = (r) => (r.prog && r.prog.kaIn !== null && r.prog.kaIn !== undefined ? r.prog.kaIn : null);
@@ -5359,8 +5359,8 @@ function actualFromPo() {
   const load = new Map(SIM.kaList.map((k) => [k, new Map()])), counts = Object.fromEntries(SIM.kaList.map((k) => [k, 0]));
   for (const r of list) {
     const k = fileKa(r), m = load.get(k); counts[k]++;
-    for (let i = 0; i < SIM.w1; i++) m.set(r.kaIn + i, (m.get(r.kaIn + i) || 0) + 1);
-    if (r.back !== null) for (let i = 0; i < SIM.w2; i++) m.set(r.back + i, (m.get(r.back + i) || 0) + 1);
+    for (let d = r.kaIn, e = endWD(r.kaIn, SIM.w1); d <= e; d++) if (d === r.kaIn || isWorkDay(d)) m.set(d, (m.get(d) || 0) + 1);
+    if (r.back !== null) for (let d = r.back, e = endWD(r.back, SIM.w2); d <= e; d++) if (d === r.back || isWorkDay(d)) m.set(d, (m.get(d) || 0) + 1);
   }
   const days = []; for (let dd = from; dd <= to; dd++) if (weekday(dd) < 5) days.push(dd);
   const tbl = days.map((dd) => SIM.kaList.map((k) => load.get(k).get(dd) || 0));
@@ -5475,12 +5475,12 @@ function loadCheck() {
     const ka = dataKa(r); if (!ka || !isCurrentKa(ka)) continue;
     const t = TRAIN.get(r.cpr), c0 = r.create;
     // everything is forecast on the creation day: the KA queue and the recent speed are read on that day
-    const arr = c0 + pr(b1, f1Features({ unit: r.unit, create: c0, isNew: 1, capex: t ? t.capex : null, sim: M.simByCpr.get(r.cpr) ?? 0 }, b1.st));
-    const out3 = arr + pr(b3, f34Features({ unit: r.unit, ka, start: arr, q: M.f3.state(ka, c0) }, b3.st));
+    const arr = addWD(c0, pr(b1, f1Features({ unit: r.unit, create: c0, isNew: 1, capex: t ? t.capex : null, sim: M.simByCpr.get(r.cpr) ?? 0 }, b1.st)));
+    const out3 = addWD(arr, pr(b3, f34Features({ unit: r.unit, ka, start: arr, q: M.f3.state(ka, c0) }, b3.st)));
     const [ra, ru] = M.recent(r.unit, c0);
-    const back = out3 + pr(b2, f2Features({ unit: r.unit, isNew: 1, approve: out3, recentAll: ra, recentUnit: ru }, b2.st));
+    const back = addWD(out3, pr(b2, f2Features({ unit: r.unit, isNew: 1, approve: out3, recentAll: ra, recentUnit: ru }, b2.st)));
     // workload = expected (average) days at Sequence 8, like the allocation
-    const out8 = back + Math.round(Math.max(0, Math.expm1(b4.f((M.f4.feats || f34Features)({ unit: r.unit, ka, start: back, q: M.f4.state(ka, c0), sp: spOf(r), rw: consOf(r) }, b4.st)))) * (b4.meanRatio || 1));
+    const out8 = addWD(back, Math.round(Math.max(0, Math.expm1(b4.f((M.f4.feats || f34Features)({ unit: r.unit, ka, start: back, q: M.f4.state(ka, c0), sp: spOf(r), rw: consOf(r) }, b4.st)))) * (b4.meanRatio || 1)));
     const b8 = r.backFirst ?? r.back, o8 = r.backOutFirst ?? r.backOut;
     // a step not approved yet is still held until the data date, unless the CPR was finished, rejected or became inactive
     const openEnd = r.done || isInactive(r) || IGNORED[r.cpr] ? Math.min(D, r.lastAct ?? D) : D;
@@ -5606,8 +5606,8 @@ function renderBukti() {
     { key: "name", label: "Forecast", sortable: false, render: (r) => { const d = el("div"); d.append(el("b", {}, r.name)); d.append(smallNote(r.what + (r.from !== undefined ? ` · tested on ${fmtDay(r.from)} – ${fmtDay(r.to)}` : ""))); return d; } },
     { key: "model", label: "Model", sortable: false, render: (r) => String(r.model || "–").split(" (")[0] },
     { key: "n", label: "CPRs tested", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtInt(r.n)) },
-    { key: "mae", label: "Avg error (calendar days)", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.mae, 2)) },
-    { key: "base", label: "Median per hospital (calendar days)", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.base, 2)) },
+    { key: "mae", label: "Avg error (working days)", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.mae, 2)) },
+    { key: "base", label: "Median per hospital (working days)", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.base, 2)) },
     { key: "imp", label: "Better by", num: true, sortable: false, render: (r) => (r.n === null || !r.base ? "–" : fmtNum((r.base - r.mae) / r.base * 100, 1) + "%") },
     { key: "within2", label: "Within ±2 days", num: true, sortable: false, render: (r) => (r.n === null ? "–" : fmtNum(r.within2 * 100, 0) + "%") },
     { key: "inRange", label: "Inside the likely range", num: true, sortable: false, render: (r) => (r.inRange === null || r.inRange === undefined ? "–" : fmtNum(r.inRange * 100, 0) + "%") },
@@ -6286,6 +6286,11 @@ const HOLIDAYS = new Set(["2026-01-01", "2026-01-16", "2026-02-16", "2026-02-17"
 const isWorkDay = (d) => weekday(d) < 5 && !HOLIDAYS.has(dayToIso(d));
 // working days after day a up to and including day b (same day = 0; Friday → Monday = 1)
 function workDaysBetween(a, b) { let n = 0; for (let d = a + 1; d <= b; d++) if (isWorkDay(d)) n++; return n; }
+// all forecast durations are in WORKING days (as in the thesis): a duration from day b to day a, and a date n working days after d
+function wdiff(a, b) { return a === null || a === undefined || b === null || b === undefined || a < b ? null : workDaysBetween(b, a); }
+function addWD(d, n) { if (d === null || d === undefined || !Number.isFinite(d)) return d; n = Math.round(n || 0); let x = d; while (n > 0) { x++; if (isWorkDay(x)) n--; } return x; }
+// last working day of a stay of w working days that starts on day s (the start day counts as the first day)
+function endWD(s, w) { return addWD(s, Math.max(0, Math.round(w || 0) - 1)); }
 // TAT (turnaround time) of a KA step, in working days:
 //   Sequence 3 = from arrival at KA (Sequence 3) until the KA approves it
 //   Sequence 8 = from the return to KA (Sequence 8, first round) until the KA approves it
